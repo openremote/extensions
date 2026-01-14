@@ -20,12 +20,12 @@
 package org.openremote.extension.ems.manager;
 
 import org.apache.camel.builder.RouteBuilder;
+import org.openremote.container.message.MessageBrokerService;
+import org.openremote.container.timer.TimerService;
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset;
 import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
-import org.openremote.container.message.MessageBrokerService;
-import org.openremote.container.timer.TimerService;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.asset.AssetStorageService;
 import org.openremote.manager.datapoint.AssetDatapointService;
@@ -164,9 +164,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         ScheduledFuture<?> scheduledFuture = services.getScheduledExecutorService().scheduleAtFixedRate(command, 1, 1, TimeUnit.MINUTES);
         energyOptimisationAssetsMap.put(assetId, scheduledFuture);
 
-        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long triggerTimeMillis = currentTimeMillis - currentTimeMillis % (15 * 60 * 1000) + (15 * 60 * 1000);
-        energyOptimisationTimersMap.put(assetId, triggerTimeMillis);
+        energyOptimisationTimersMap.put(assetId, 0L);
     }
 
     private void runOptimisation(String energyOptimisationAssetId) throws Exception {
@@ -178,37 +176,24 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         }
 
         long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        Long previousTimeMillis = energyOptimisationTimersMap.get(energyOptimisationAssetId);
+        Long triggerTimeMillis = energyOptimisationTimersMap.get(energyOptimisationAssetId);
 
         // Update forecast attributes every 15 minutes
-        if (previousTimeMillis != null && currentTimeMillis > previousTimeMillis) {
+        if (triggerTimeMillis != null && currentTimeMillis > triggerTimeMillis) {
             // Convert milliseconds to date
             ZoneId zone = ZoneId.systemDefault();
-            LocalDate previousDate = Instant.ofEpochMilli(previousTimeMillis - 60000).atZone(zone).toLocalDate();
+            LocalDate previousDate = Instant.ofEpochMilli(triggerTimeMillis - 60000).atZone(zone).toLocalDate();
             LocalDate currentDate = Instant.ofEpochMilli(currentTimeMillis).atZone(zone).toLocalDate();
 
-            // Update forecasts after midnight
+            // Update manual forecasts after midnight
             if (!currentDate.equals(previousDate)) {
-                updatePowerLimitProfileForecasts(energyOptimisationAsset);
+                updatePowerLimitProfileManualForecasts(energyOptimisationAsset);
             }
-
-            long triggerTimeMillis = currentTimeMillis - currentTimeMillis % (15 * 60 * 1000) + (15 * 60 * 1000);
-            energyOptimisationTimersMap.put(energyOptimisationAssetId, triggerTimeMillis);
 
             EmsGOPACSAsset gopacsAsset = getGopacsAsset(energyOptimisationAsset);
 
-            if (gopacsAsset != null) {
-                // Update power limit profile totals
-                updatePowerLimitProfileTotalForecasts(energyOptimisationAsset, gopacsAsset);
-
-                // Update GOPACS asset attributes
-                String[] gopacsAttributeNames = new String[]{
-                        EmsGOPACSAsset.POWER_LIMIT_MAXIMUM_PROFILE_FLEX_ORDER.getName(),
-                        EmsGOPACSAsset.POWER_LIMIT_MINIMUM_PROFILE_FLEX_ORDER.getName()
-                };
-
-                updatePowerLimitProfileAttributes(gopacsAsset, gopacsAttributeNames);
-            }
+            // Update total forecasts
+            updatePowerLimitProfileTotalForecasts(energyOptimisationAsset, gopacsAsset);
 
             // Update energy optimisation asset attributes
             String[] energyOptimisationAssetAttributeNames = new String[]{
@@ -221,6 +206,20 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             };
 
             updatePowerLimitProfileAttributes(energyOptimisationAsset, energyOptimisationAssetAttributeNames);
+
+            if (gopacsAsset != null) {
+                // Update GOPACS asset attributes
+                String[] gopacsAttributeNames = new String[]{
+                        EmsGOPACSAsset.POWER_LIMIT_MAXIMUM_PROFILE_FLEX_ORDER.getName(),
+                        EmsGOPACSAsset.POWER_LIMIT_MINIMUM_PROFILE_FLEX_ORDER.getName()
+                };
+
+                updatePowerLimitProfileAttributes(gopacsAsset, gopacsAttributeNames);
+            }
+
+            // Calculate new trigger time
+            triggerTimeMillis = currentTimeMillis - currentTimeMillis % (15 * 60 * 1000) + (15 * 60 * 1000);
+            energyOptimisationTimersMap.put(energyOptimisationAssetId, triggerTimeMillis);
         }
 
         // Run selected optimisation method
@@ -487,26 +486,20 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         }
     }
 
-    private void updatePowerLimitProfileForecasts(EmsEnergyOptimisationAsset energyOptimisationAsset) {
-        String energyOptimisationAssetId = energyOptimisationAsset.getId();
+    private void updatePowerLimitProfileManualForecasts(EmsEnergyOptimisationAsset energyOptimisationAsset) {
         String logPrefix = String.format("assetType='%s', assetId='%s', assetName='%s'", energyOptimisationAsset.getAssetType(), energyOptimisationAsset.getId(), energyOptimisationAsset.getAssetName());
-
-        // Update forecast with new day one week from now
-        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long startTimeMillis = currentTimeMillis - currentTimeMillis % (24 * 60 * 60000) + (7L * 24 * 60 * 60000);
-        long endTimeMillis = startTimeMillis + (24 * 60 * 60000);
-
         String[] powerLimitTypes = {"maximum", "minimum"};
 
         for (String powerLimitType : powerLimitTypes) {
-            String powerLimitProfileManualInput = energyOptimisationAsset.getPowerLimitMaximumProfileManualInput().orElse("");
-            String powerLimitProfileManualAttributeName = EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName();
-            String powerLimitProfileTotalAttributeName = EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName();
+            String powerLimitProfileManualInput;
+            String powerLimitProfileManualAttributeName;
 
-            if (powerLimitType.equals("minimum")) {
+            if (powerLimitType.equals("maximum")) {
+                powerLimitProfileManualInput = energyOptimisationAsset.getPowerLimitMaximumProfileManualInput().orElse("");
+                powerLimitProfileManualAttributeName = EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName();
+            } else {
                 powerLimitProfileManualInput = energyOptimisationAsset.getPowerLimitMinimumProfileManualInput().orElse("");
                 powerLimitProfileManualAttributeName = EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL.getName();
-                powerLimitProfileTotalAttributeName = EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName();
             }
 
             if (powerLimitProfileManualInput.isBlank()) {
@@ -519,13 +512,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             // Convert parsed CSV to database insertable data-points
             List<ValueDatapoint<?>> powerLimitProfileManual = csvToValueDatapoints(parsedCSV, logPrefix);
 
-            List<ValueDatapoint<?>> powerLimitProfileManualFiltered = powerLimitProfileManual
-                    .stream()
-                    .filter(dp -> dp.getTimestamp() >= startTimeMillis && dp.getTimestamp() <= endTimeMillis)
-                    .toList();
-
-            services.getAssetPredictedDatapointService().updateValues(energyOptimisationAssetId, powerLimitProfileManualAttributeName, powerLimitProfileManualFiltered);
-            services.getAssetPredictedDatapointService().updateValues(energyOptimisationAssetId, powerLimitProfileTotalAttributeName, powerLimitProfileManualFiltered);
+            // Update manual forecast
+            services.getAssetPredictedDatapointService().updateValues(energyOptimisationAsset.getId(), powerLimitProfileManualAttributeName, powerLimitProfileManual);
         }
     }
 
@@ -568,22 +556,31 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         AssetDatapointAllQuery assetDatapointQuery = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
 
         // Get power limit profiles
-        List<ValueDatapoint<?>> powerLimitMaximumProfileDayAhead = services.getAssetPredictedDatapointService().queryDatapoints(gopacsAsset.getId(), EmsGOPACSAsset.POWER_LIMIT_MAXIMUM_PROFILE_FLEX_ORDER.getName(), assetDatapointQuery);
         List<ValueDatapoint<?>> powerLimitMaximumProfileManual = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName(), assetDatapointQuery);
-        List<ValueDatapoint<?>> powerLimitMinimumProfileDayAhead = services.getAssetPredictedDatapointService().queryDatapoints(gopacsAsset.getId(), EmsGOPACSAsset.POWER_LIMIT_MINIMUM_PROFILE_FLEX_ORDER.getName(), assetDatapointQuery);
         List<ValueDatapoint<?>> powerLimitMinimumProfileManual = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL.getName(), assetDatapointQuery);
 
-        // Calculate power limit profile totals
-        List<List<ValueDatapoint<?>>> powerLimitMaximumProfiles = new ArrayList<>();
-        powerLimitMaximumProfiles.add(powerLimitMaximumProfileDayAhead);
-        powerLimitMaximumProfiles.add(powerLimitMaximumProfileManual);
+        List<ValueDatapoint<?>> powerLimitMaximumProfileTotal;
+        List<ValueDatapoint<?>> powerLimitMinimumProfileTotal;
 
-        List<List<ValueDatapoint<?>>> powerLimitMinimumProfiles = new ArrayList<>();
-        powerLimitMinimumProfiles.add(powerLimitMinimumProfileDayAhead);
-        powerLimitMinimumProfiles.add(powerLimitMinimumProfileManual);
+        if (gopacsAsset != null) {
+            List<ValueDatapoint<?>> powerLimitMaximumProfileDayAhead = services.getAssetPredictedDatapointService().queryDatapoints(gopacsAsset.getId(), EmsGOPACSAsset.POWER_LIMIT_MAXIMUM_PROFILE_FLEX_ORDER.getName(), assetDatapointQuery);
+            List<ValueDatapoint<?>> powerLimitMinimumProfileDayAhead = services.getAssetPredictedDatapointService().queryDatapoints(gopacsAsset.getId(), EmsGOPACSAsset.POWER_LIMIT_MINIMUM_PROFILE_FLEX_ORDER.getName(), assetDatapointQuery);
 
-        List<ValueDatapoint<?>> powerLimitMaximumProfileTotal = calculatePowerLimitProfileTotal(powerLimitMaximumProfiles, "floor");
-        List<ValueDatapoint<?>> powerLimitMinimumProfileTotal = calculatePowerLimitProfileTotal(powerLimitMinimumProfiles, "ceil");
+            // Calculate power limit profile totals
+            List<List<ValueDatapoint<?>>> powerLimitMaximumProfiles = new ArrayList<>();
+            powerLimitMaximumProfiles.add(powerLimitMaximumProfileDayAhead);
+            powerLimitMaximumProfiles.add(powerLimitMaximumProfileManual);
+
+            List<List<ValueDatapoint<?>>> powerLimitMinimumProfiles = new ArrayList<>();
+            powerLimitMinimumProfiles.add(powerLimitMinimumProfileDayAhead);
+            powerLimitMinimumProfiles.add(powerLimitMinimumProfileManual);
+
+            powerLimitMaximumProfileTotal = calculatePowerLimitProfileTotal(powerLimitMaximumProfiles, "floor");
+            powerLimitMinimumProfileTotal = calculatePowerLimitProfileTotal(powerLimitMinimumProfiles, "ceil");
+        } else {
+            powerLimitMaximumProfileTotal = powerLimitMaximumProfileManual;
+            powerLimitMinimumProfileTotal = powerLimitMinimumProfileManual;
+        }
 
         // Update power limit profile totals
         services.getAssetPredictedDatapointService().updateValues(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName(), powerLimitMaximumProfileTotal);
