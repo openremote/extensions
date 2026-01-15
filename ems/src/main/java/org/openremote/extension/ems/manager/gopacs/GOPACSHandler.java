@@ -22,6 +22,7 @@ package org.openremote.extension.ems.manager.gopacs;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
@@ -29,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.lfenergy.shapeshifter.api.*;
 import org.lfenergy.shapeshifter.api.model.UftpParticipantInformation;
+import org.lfenergy.shapeshifter.core.common.exception.UftpConnectorException;
 import org.lfenergy.shapeshifter.core.common.xml.XmlSerializer;
 import org.lfenergy.shapeshifter.core.common.xsd.XsdFactory;
 import org.lfenergy.shapeshifter.core.common.xsd.XsdSchemaFactoryPool;
@@ -484,30 +486,47 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     }
 
     protected void processRawMessage(String transportXml) {
-        SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
-        String payloadXml = cryptoService.verifySignedMessage(signedMessage);
-        PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
-        var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
-        notifyNewIncomingMessage(incomingUftpMessage);
+        try {
+            SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
+            String payloadXml = cryptoService.verifySignedMessage(signedMessage);
+            PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
+            var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
+            notifyNewIncomingMessage(incomingUftpMessage);
 
-        // Send response delayed to ensure HTTP response is sent first
-        scheduledExecutorService.schedule(() -> {
-            uftpReceivedMessageService.process(incomingUftpMessage);
-        }, this.responseDelaySeconds, TimeUnit.SECONDS); // 10s delay to ensure HTTP response is sent
-
-        // Check if the message is a FlexRequest and schedule sendFlexOffer with delay
-        if (payloadMessage instanceof FlexRequest) {
-            UftpParticipant participant = new UftpParticipant(signedMessage);
-            FlexRequest flexRequest = (FlexRequest) payloadMessage;
-
-            // Schedule FlexOffer to be sent after a short delay to ensure HTTP response is sent first
+            // Send response delayed to ensure HTTP response is sent first
             scheduledExecutorService.schedule(() -> {
-                try {
-                    sendFlexOffer(participant, flexRequest);
-                } catch (Exception e) {
-                    LOG.log(Level.SEVERE, "Error sending delayed FlexOffer", e);
-                }
-            }, this.flexOfferDelaySeconds, TimeUnit.SECONDS); // 30s delay to ensure FlexRequestResponse is sent and processed by the other party
+                uftpReceivedMessageService.process(incomingUftpMessage);
+            }, this.responseDelaySeconds, TimeUnit.SECONDS); // 10s delay to ensure HTTP response is sent
+
+            // Check if the message is a FlexRequest and schedule sendFlexOffer with delay
+            if (payloadMessage instanceof FlexRequest flexRequest) {
+                UftpParticipant participant = new UftpParticipant(signedMessage);
+
+                // Schedule FlexOffer to be sent after a short delay to ensure HTTP response is sent first
+                scheduledExecutorService.schedule(() -> {
+                    try {
+                        sendFlexOffer(participant, flexRequest);
+                    } catch (Exception e) {
+                        LOG.log(Level.SEVERE, "Error sending delayed FlexOffer", e);
+                    }
+                }, this.flexOfferDelaySeconds, TimeUnit.SECONDS); // 30s delay to ensure FlexRequestResponse is sent and processed by the other party
+            }
+        } catch (UftpConnectorException e) {
+            LOG.log(Level.SEVERE, "Error processing raw message", e);
+            Throwable rootCause = e;
+            while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+                rootCause = rootCause.getCause();
+            }
+            String errorMessage = rootCause.getMessage();
+            if (errorMessage == null) {
+                errorMessage = "Invalid message format";
+            }
+            throw new WebApplicationException(errorMessage, Response.Status.BAD_REQUEST);
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, "Error processing raw message", e);
+            // Do not expose internal exception details to the client
+            String errorMessage = "Internal server error occurred";
+            throw new WebApplicationException(errorMessage, Response.Status.INTERNAL_SERVER_ERROR);
         }
     }
 
