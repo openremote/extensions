@@ -4,11 +4,11 @@
 
 [GOPACS](https://www.gopacs.eu/) (Grid Operators Platform for Congestion Solutions) is a platform operated by Dutch grid operators (DSOs and TSO) to resolve grid congestion through flexibility trading. When the electricity grid is at risk of overloading, GOPACS sends flexibility requests to market participants (aggregators) who can adjust their energy consumption or production to relieve congestion.
 
-The communication between GOPACS and market participants uses the **UFTP** (Universal Flexibility Trading Protocol), part of the [USEF](https://www.usef.energy/) framework, implemented via the [Shapeshifter](https://github.com/shapeshifter) library.
+The communication between GOPACS and market participants uses the **UFTP** (Universal Flexibility Trading Protocol), part of the [USEF](https://www.usef.energy/) framework, implemented via the [Shapeshifter](https://github.com/shapeshifter/shapeshifter-library-java) library.
 
-For detailed documentation, see: [GOPACS documenten en handleidingen](https://www.gopacs.eu/documenten-en-handleidingen/)
+For detailed documentation, see: [GOPACS documents and manuals](https://www.gopacs.eu/en/documents-and-manuals/)
 
-## Getting Started as a User
+## Getting Started
 
 To participate in GOPACS flex trading through OpenRemote, you need:
 
@@ -68,7 +68,7 @@ DSO (Grid Operator)                         OpenRemote (AGR)
      |                                            |
      |<─── 2. FlexRequestResponse ────────────────|  Auto-response after configurable delay
      |                                            |
-     |<─── 3. FlexOffer ─────────────────────────-|  Sent after flex offer delay
+     |<─── 3. FlexOffer ──────────────────────────|  Sent after flex offer delay
      |                                            |  (mirrors request, price EUR 0.00)
      |                                            |
      |──── 4. FlexOfferResponse ─────────────────>|  DSO accepts or rejects the offer
