@@ -33,7 +33,9 @@ The following environment variables must be set on the OpenRemote manager:
 
 ### Asset Setup
 
-In OpenRemote, create an **EMS GOPACS Asset** as a child of an **EMS Energy Optimisation Asset** and set the `contractedEAN` attribute to your grid connection's EAN. This can also be done by enabling the "Include GOPACS" attribute on the **EMS Energy Optimisation Asset**.
+In OpenRemote, create an **EMS GOPACS Asset** as a child of an **EMS Energy Optimisation Asset** and set the `contractedEAN` attribute to your grid connection's EAN.
+
+Alternatively, when creating a new **EMS Energy Optimisation Asset**, you can enable the "Include GOPACS" attribute to have the GOPACS child asset created automatically. Note that this only works during initial asset creation — if the **EMS Energy Optimisation Asset** already exists, you need to manually create the **EMS GOPACS Asset** as a child.
 
 ## Developer Guide
 
