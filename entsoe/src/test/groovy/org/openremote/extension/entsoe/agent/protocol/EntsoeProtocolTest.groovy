@@ -227,6 +227,31 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
   </Reason>
 </Acknowledgement_MarketDocument>
 '''
+                } else if (zone == "10YXXE---------X") {
+                    content = '''<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE Publication_MarketDocument [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  <period.timeInterval>
+    <start>2026-02-16T23:00Z</start>
+    <end>2026-02-17T23:00Z</end>
+  </period.timeInterval>
+  <TimeSeries>
+    <Period>
+      <timeInterval>
+        <start>2026-02-16T23:00Z</start>
+        <end>2026-02-17T23:00Z</end>
+      </timeInterval>
+      <resolution>PT15M</resolution>
+      <Point>
+        <position>1</position>
+        <price.amount>&xxe;</price.amount>
+      </Point>
+    </Period>
+  </TimeSeries>
+</Publication_MarketDocument>
+'''
                 } else if (zone == "10YGAP---------G") {
                     content = '''<?xml version="1.0" encoding="utf-8"?>
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
@@ -819,6 +844,79 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         }
     }
 
+    def "ENTSO-E integration test rejects XML with DTD and external entity declarations"() {
+        given: "the container environment is started"
+        requestCountByZone.clear()
+        def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+
+        EntsoeProtocol.initClient()
+
+        if (!EntsoeProtocol.client.get().configuration.isRegistered(mockServer)) {
+            EntsoeProtocol.client.get().register(mockServer, Integer.MAX_VALUE)
+        }
+
+        def container = startContainer(defaultConfig(), defaultServices())
+        setPseudoClock(BEFORE_DATASET_START)
+        def assetStorageService = container.getService(AssetStorageService.class)
+        def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
+        def agentService = container.getService(AgentService.class)
+        EntsoeAgent agent = null
+        ThingAsset asset = null
+
+        when: "an ENTSO-E agent is created"
+        agent = new EntsoeAgent("ENTSO-E Agent")
+                .setRealm(MASTER_REALM)
+                .setSecurityToken("test-token")
+        agent = assetStorageService.merge(agent)
+
+        then: "the protocol instance for the agent should be created and connected"
+        conditions.eventually {
+            assert agentService.getProtocolInstance(agent.id) != null
+            assert ((EntsoeProtocol) agentService.getProtocolInstance(agent.id)) != null
+            assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
+        }
+
+        when: "an attribute is linked to a zone that returns XML with a DTD and external entity"
+        def unsafeXmlLink = new EntsoeAgentLink(agent.id)
+        unsafeXmlLink.setZone("10YXXE---------X")
+
+        asset = new ThingAsset("Unsafe XML Zone Asset")
+                .setRealm(MASTER_REALM)
+                .addOrReplaceAttributes(
+                        new Attribute<>("energyPrice", NUMBER)
+                                .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, unsafeXmlLink))
+                )
+        asset = assetStorageService.merge(asset)
+
+        def attributeRef = new AttributeRef(asset.id, "energyPrice")
+        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+
+        and: "the attribute is linked by protocol"
+        conditions.eventually {
+            assert protocol.getLinkedAttributes().containsKey(attributeRef)
+        }
+
+        and: "a polling update is triggered"
+        protocol.updateAllLinkedAttributes()
+
+        then: "the unsafe XML is rejected and no predicted datapoints are written"
+        conditions.eventually {
+            List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef)
+            assert datapoints.isEmpty()
+        }
+
+        cleanup: "remove created assets and mock client"
+        if (asset?.id) {
+            assetStorageService.delete([asset.id])
+        }
+        if (agent?.id) {
+            assetStorageService.delete([agent.id])
+        }
+        if (EntsoeProtocol.client.get() != null) {
+            EntsoeProtocol.client.set(null)
+        }
+    }
+
     def "ENTSO-E integration test keeps position timing when intermediate point is missing"() {
         given: "the container environment is started"
         requestCountByZone.clear()
@@ -999,6 +1097,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         "10YBE_____-----2"   || false
         "10YNDATA-------A"   || true
         "10YMULTI-------A"   || true
+        "10YXXE---------X"   || true
     }
 
     def "ENTSO-E integration test updates requested period range when clock advances by one day"() {

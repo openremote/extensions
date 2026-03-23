@@ -72,7 +72,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
     private static final AtomicReference<ResteasyClient> client = new AtomicReference<>();
     private static final JAXBContext PUBLICATION_MARKET_DOCUMENT_CONTEXT = createPublicationMarketDocumentContext();
     private static final ThreadLocal<Unmarshaller> PUBLICATION_UNMARSHALLER = ThreadLocal.withInitial(EntsoeProtocol::createPublicationUnmarshaller);
-    private static final ThreadLocal<XMLInputFactory> XML_INPUT_FACTORY = ThreadLocal.withInitial(XMLInputFactory::newFactory);
+    private static final ThreadLocal<XMLInputFactory> XML_INPUT_FACTORY = ThreadLocal.withInitial(EntsoeProtocol::createSecureXmlInputFactory);
 
     // Initial delay to allow system to populate agent links
     private static final int INITIAL_POLLING_DELAY_MILLIS = 3000; // 3 seconds
@@ -271,7 +271,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
                 EntsoeXmlMeta xmlMeta = parseEntsoeXmlMeta(responseXml);
 
                 if ("Publication_MarketDocument".equals(xmlMeta.rootElement)) {
-                    return (PublicationMarketDocument) PUBLICATION_UNMARSHALLER.get().unmarshal(new StringReader(responseXml));
+                    return unmarshalPublicationMarketDocument(responseXml);
                 }
 
                 if ("Acknowledgement_MarketDocument".equals(xmlMeta.rootElement)) {
@@ -295,6 +295,18 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
         }
     }
 
+    protected static XMLInputFactory createSecureXmlInputFactory() {
+        try {
+            XMLInputFactory factory = XMLInputFactory.newFactory();
+            factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+            factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+            factory.setXMLResolver((publicId, systemId, baseUri, namespace) -> null);
+            return factory;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to initialise secure XMLInputFactory", e);
+        }
+    }
+
     protected static JAXBContext createPublicationMarketDocumentContext() {
         try {
             return JAXBContext.newInstance(PublicationMarketDocument.class);
@@ -308,6 +320,15 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
             return PUBLICATION_MARKET_DOCUMENT_CONTEXT.createUnmarshaller();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialise PublicationMarketDocument unmarshaller", e);
+        }
+    }
+
+    protected PublicationMarketDocument unmarshalPublicationMarketDocument(String xml) throws Exception {
+        XMLStreamReader reader = XML_INPUT_FACTORY.get().createXMLStreamReader(new StringReader(xml));
+        try {
+            return (PublicationMarketDocument) PUBLICATION_UNMARSHALLER.get().unmarshal(reader);
+        } finally {
+            reader.close();
         }
     }
 
