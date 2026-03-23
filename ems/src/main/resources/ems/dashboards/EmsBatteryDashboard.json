@@ -1,21 +1,21 @@
 {
-  "createdOn": 1711029229921,
-  "realm": "master",
-  "ownerId": "e5ca8a39-5193-478d-ba86-57e7095679cf",
+  "createdOn": 0,
+  "realm": "",
+  "ownerId": "",
   "access": "1",
-  "displayName": "New Dashboard",
+  "displayName": "",
   "template": {
-    "id": "k674dhoxyc",
+    "id": "setTemplateId1",
     "columns": 12,
     "widgets": [
       {
-        "id": "cqtsw15lro",
+        "id": "setWidgetId1",
         "gridItem": {
           "h": 3,
           "w": 12,
           "x": 0,
           "y": 6,
-          "id": "cqtsw15lro",
+          "id": "setWidgetId1",
           "minH": 2,
           "minW": 2,
           "locked": false,
@@ -39,7 +39,7 @@
           },
           "attributeRefs": [
             {
-              "id": "setId1",
+              "id": "setAssetId1",
               "name": "energyLevelPercentage"
             }
           ],
@@ -51,7 +51,7 @@
           "attributeColors": [
             [
               {
-                "id": "setId1",
+                "id": "setAssetId1",
                 "name": "energyLevelPercentage"
               },
               "#8e44ad"
@@ -63,13 +63,13 @@
         "widgetTypeId": "linechart"
       },
       {
-        "id": "us8fv5jysv",
+        "id": "setWidgetId2",
         "gridItem": {
           "h": 3,
           "w": 12,
           "x": 0,
           "y": 0,
-          "id": "us8fv5jysv",
+          "id": "setWidgetId2",
           "minH": 2,
           "minW": 2,
           "locked": false,
@@ -93,7 +93,7 @@
           },
           "attributeRefs": [
             {
-              "id": "setId1",
+              "id": "setAssetId1",
               "name": "powerSetpoint"
             }
           ],
@@ -105,7 +105,7 @@
           "attributeColors": [
             [
               {
-                "id": "setId1",
+                "id": "setAssetId1",
                 "name": "powerSetpoint"
               },
               "#8e44ad"
@@ -114,7 +114,7 @@
           "attributeConfig": {
             "steppedAttributes": [
               {
-                "id": "setId1",
+                "id": "setAssetId1",
                 "name": "powerSetpoint"
               }
             ]
@@ -125,13 +125,13 @@
         "widgetTypeId": "linechart"
       },
       {
-        "id": "gpu0lthopd",
+        "id": "setWidgetId3",
         "gridItem": {
           "h": 3,
           "w": 12,
           "x": 0,
           "y": 3,
-          "id": "gpu0lthopd",
+          "id": "setWidgetId3",
           "minH": 2,
           "minW": 2,
           "locked": false,
@@ -155,7 +155,7 @@
           },
           "attributeRefs": [
             {
-              "id": "setId1",
+              "id": "setAssetId1",
               "name": "powerSetpoint"
             }
           ],
@@ -167,7 +167,7 @@
           "attributeColors": [
             [
               {
-                "id": "setId1",
+                "id": "setAssetId1",
                 "name": "powerSetpoint"
               },
               "#8e44ad"
@@ -177,7 +177,7 @@
           "attributeSettings": {
             "methodAvgAttributes": [
               {
-                "id": "setId1",
+                "id": "setAssetId1",
                 "name": "powerSetpoint"
               }
             ]

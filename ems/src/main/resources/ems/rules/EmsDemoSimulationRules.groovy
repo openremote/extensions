@@ -102,7 +102,7 @@ SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 long rulesStartTimeMillis = System.currentTimeMillis()
 long previousTimeMillisRule1 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000)
 long previousTimeMillisRule3 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000)
-long previousTimeMillisRule4 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000 + 15 * 60)
+long previousTimeMillisRule4 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000 + 15 * 1000)
 long timestampMillisPrevious = rulesStartTimeMillis
 
 // Date triggers for rules
@@ -219,8 +219,8 @@ rules.add()
             double powerNoise = 0.0
 
             if (powerFluctuation > 0) {
-                double powerFluctuationHalf = Math.round(powerFluctuation / 2 * 1000.0) / 1000.0
-                powerNoise = ThreadLocalRandom.current().nextDouble(-powerFluctuationHalf, powerFluctuationHalf)
+                double powerFluctuationHalf = powerFluctuation / 2
+                powerNoise = Math.round(ThreadLocalRandom.current().nextDouble(-powerFluctuationHalf, powerFluctuationHalf) * 1000.0) / 1000.0
             }
 
             powerConsumption = powerConsumption + powerNoise
@@ -323,7 +323,7 @@ rules.add()
 
             // Forecast period
             long startTimeMillis = currentTimeMillis - currentTimeMillis % (forecastIntervalMinutes * 60 * 1000)
-            long endTimeMillis = currentTimeMillis + forecastPeriodDays * 24 * 60 * 60 * 1000
+            long endTimeMillis = startTimeMillis - startTimeMillis % (24 * 60 * 60000) + ((forecastPeriodDays + 1) * 24 * 60 * 60000)
 
             // Convert time in milliseconds to a string timestamp
             String startDateTimeStr = sdf.format(new Date(startTimeMillis))
@@ -376,11 +376,9 @@ rules.add()
             // Interpolation interval in milliseconds
             long intervalMillis = forecastIntervalMinutes * 60 * 1000
 
-            // Forecast period in milliseconds
-            long periodMillis = forecastPeriodDays * 24 * 60 * 60 * 1000
-
+            // Forecast period
             long startTimeMillis = currentTimeMillis - intervalMillis
-            long endTimeMillis = currentTimeMillis + intervalMillis + periodMillis
+            long endTimeMillis = startTimeMillis - startTimeMillis % (24 * 60 * 60000) + ((forecastPeriodDays + 1) * 24 * 60 * 60000)
 
             boolean updateOnlyFutureDatapoints = false
 

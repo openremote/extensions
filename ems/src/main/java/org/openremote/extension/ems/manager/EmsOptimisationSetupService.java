@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.io.IOUtils;
 import org.openremote.container.persistence.PersistenceService;
+import org.openremote.container.timer.TimerService;
 import org.openremote.extension.ems.agent.*;
 import org.openremote.manager.app.ConfigurationService;
 import org.openremote.manager.asset.AssetProcessingService;
@@ -50,10 +51,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -71,7 +69,7 @@ public class EmsOptimisationSetupService implements ContainerService {
     protected DashboardStorageService dashboardStorageService;
     protected PersistenceService persistenceService;
     protected ScheduledExecutorService scheduledExecutorService;
-
+    protected TimerService timerService;
 
     @Override
     public void init(Container container) throws Exception {
@@ -82,6 +80,7 @@ public class EmsOptimisationSetupService implements ContainerService {
         dashboardStorageService = container.getService(DashboardStorageService.class);
         persistenceService = container.getService(PersistenceService.class);
         scheduledExecutorService = container.getScheduledExecutor();
+        timerService = container.getService(TimerService.class);
     }
 
     @Override
@@ -328,6 +327,7 @@ public class EmsOptimisationSetupService implements ContainerService {
             LOG.warning(String.format("assetName='%s', assetId='%s'; Rules were not created for energy management system '%s'; Exception: %s", setupAsset.getName(), setupAsset.getId(), energyOptimisationAssetName, e));
         }
 
+        Date currentDate = Date.from(timerService.getNow());
 
         // Create main dashboard
         try (InputStream inputStream = EmsOptimisationService.class.getResourceAsStream("/ems/dashboards/EmsOverviewDashboard.json")) {
@@ -337,11 +337,17 @@ public class EmsOptimisationSetupService implements ContainerService {
                 String dashboardStr = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
 
                 dashboardStr = dashboardStr
-                        .replace("setId1", energyOptimisationAssetId)
+                        .replace("setAssetId1", energyOptimisationAssetId)
+                        .replace("setTemplateId1", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId1", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId2", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId3", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId4", UniqueIdentifierGenerator.generateId())
                 ;
 
                 Dashboard dashboard = ValueUtil.JSON.readValue(dashboardStr, Dashboard.class);
 
+                dashboard.setCreatedOn(currentDate);
                 dashboard.setRealm(realmName);
                 dashboard.setDisplayName(dashboardName);
 
@@ -359,10 +365,16 @@ public class EmsOptimisationSetupService implements ContainerService {
                 String dashboardStr = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
 
                 dashboardStr = dashboardStr
-                        .replace("setId1", electricityBatteryAssetId);
+                        .replace("setAssetId1", electricityBatteryAssetId)
+                        .replace("setTemplateId1", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId1", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId2", UniqueIdentifierGenerator.generateId())
+                        .replace("setWidgetId3", UniqueIdentifierGenerator.generateId())
+                ;
 
                 Dashboard dashboard = ValueUtil.JSON.readValue(dashboardStr, Dashboard.class);
 
+                dashboard.setCreatedOn(currentDate);
                 dashboard.setRealm(realmName);
                 dashboard.setDisplayName(dashboardName);
 
