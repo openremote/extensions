@@ -237,7 +237,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
      */
     protected boolean healthCheck() {
         String apiUrl = buildApiUrl("10YBE----------2");
-        try (Response response = client.get().target(apiUrl).request(javax.ws.rs.core.MediaType.APPLICATION_XML).get()) {
+        try (Response response = client.get().target(apiUrl).request(jakarta.ws.rs.core.MediaType.APPLICATION_XML).get()) {
             if (response.getStatus() != 200) {
                 LOG.warning("Health check failed with status: " + response.getStatus());
                 return false;
