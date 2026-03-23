@@ -420,9 +420,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test filters out points in the past when clock is mid-period"() {
@@ -495,9 +493,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test writes predicted datapoints for 2 linked attributes with different zones"() {
@@ -587,9 +583,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test fetches a shared zone only once per polling cycle"() {
@@ -676,9 +670,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test keeps existing predicted datapoints when subsequent poll fetch fails"() {
@@ -766,9 +758,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test handles no-data acknowledgement response cleanly"() {
@@ -839,9 +829,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test rejects XML with DTD and external entity declarations"() {
@@ -912,9 +900,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test keeps position timing when intermediate point is missing"() {
@@ -991,9 +977,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E integration test supports multiple periods in a single timeseries"() {
@@ -1072,9 +1056,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E agent link validates zone against EIC regex pattern"() {
@@ -1190,9 +1172,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     def "ENTSO-E scheduled polling continues after RuntimeException in updateAllLinkedAttributes"() {
@@ -1242,9 +1222,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         if (agent?.id) {
             assetStorageService.delete([agent.id])
         }
-        if (EntsoeProtocol.client.get() != null) {
-            EntsoeProtocol.client.set(null)
-        }
+        closeClient()
     }
 
     static class ThrowingEntsoeProtocol extends EntsoeProtocol {
@@ -1268,6 +1246,15 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         protected void updateAllLinkedAttributes() {
             invocationCount.incrementAndGet()
             throw new RuntimeException("Synthetic scheduled polling failure")
+        }
+    }
+
+    protected static void closeClient() {
+        synchronized (EntsoeProtocol.client) {
+            def existingClient = EntsoeProtocol.client.getAndSet(null)
+            if (existingClient != null) {
+                existingClient.close()
+            }
         }
     }
 }
