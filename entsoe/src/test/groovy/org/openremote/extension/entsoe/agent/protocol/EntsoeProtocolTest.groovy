@@ -41,6 +41,7 @@ import spock.util.concurrent.PollingConditions
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.TimeUnit
 
 import static org.openremote.model.Constants.MASTER_REALM
@@ -1092,6 +1093,82 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         }
         if (EntsoeProtocol.client.get() != null) {
             EntsoeProtocol.client.set(null)
+        }
+    }
+
+    def "ENTSO-E scheduled polling continues after RuntimeException in updateAllLinkedAttributes"() {
+        given: "the container environment is started with a pseudo clock"
+        requestCountByZone.clear()
+        def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+
+        def container = startContainer(defaultConfig(), defaultServices())
+        setPseudoClock(BEFORE_DATASET_START)
+        def assetStorageService = container.getService(AssetStorageService.class)
+        EntsoeAgent agent = null
+        ThrowingEntsoeProtocol protocol = null
+
+        when: "a protocol schedules polling and the scheduled task throws a RuntimeException"
+        agent = new EntsoeAgent("ENTSO-E Agent")
+                .setRealm(MASTER_REALM)
+                .setSecurityToken("test-token")
+        agent.getAttributes().getOrCreate(org.openremote.model.asset.agent.Agent.POLLING_MILLIS).setValue(1000)
+        agent = assetStorageService.merge(agent)
+
+        protocol = new ThrowingEntsoeProtocol(agent)
+        protocol.start(container)
+
+        and: "the clock advances beyond the initial delay and several polling intervals"
+        advancePseudoClock(10, TimeUnit.SECONDS, container)
+
+        then: "the scheduled task keeps running on the defined schedule despite failures"
+        conditions.eventually {
+            assert protocol.invocationCount.get() >= 3
+            assert protocol.pollingFuture != null
+            assert !protocol.pollingFuture.isDone()
+        }
+
+        when: "the clock advances further"
+        advancePseudoClock(10, TimeUnit.SECONDS, container)
+
+        then: "more scheduled executions continue to happen"
+        conditions.eventually {
+            assert protocol.invocationCount.get() >= 6
+            assert !protocol.pollingFuture.isDone()
+        }
+
+        cleanup: "cancel the scheduled task and remove created assets"
+        if (protocol?.pollingFuture != null) {
+            protocol.pollingFuture.cancel(true)
+        }
+        if (agent?.id) {
+            assetStorageService.delete([agent.id])
+        }
+        if (EntsoeProtocol.client.get() != null) {
+            EntsoeProtocol.client.set(null)
+        }
+    }
+
+    static class ThrowingEntsoeProtocol extends EntsoeProtocol {
+        final AtomicInteger invocationCount = new AtomicInteger()
+
+        ThrowingEntsoeProtocol(EntsoeAgent agent) {
+            super(agent)
+        }
+
+        @Override
+        protected boolean healthCheck() {
+            return true
+        }
+
+        @Override
+        protected void doStart(org.openremote.model.Container container) throws Exception {
+            restartPollingWithInitialDelay()
+        }
+
+        @Override
+        protected void updateAllLinkedAttributes() {
+            invocationCount.incrementAndGet()
+            throw new RuntimeException("Synthetic scheduled polling failure")
         }
     }
 }

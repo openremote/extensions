@@ -138,11 +138,19 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
 
         int pollingMillis = agent.getPollingMillis().orElse(DEFAULT_POLLING_MILLIS);
         pollingFuture = scheduledExecutorService.scheduleAtFixedRate(
-                this::updateAllLinkedAttributes,
+                this::runScheduledUpdate,
                 INITIAL_POLLING_DELAY_MILLIS,
                 pollingMillis,
                 TimeUnit.MILLISECONDS
         );
+    }
+
+    protected void runScheduledUpdate() {
+        try {
+            updateAllLinkedAttributes();
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, e, () -> "Scheduled ENTSO-E polling failed; keeping schedule active");
+        }
     }
 
     @Override
