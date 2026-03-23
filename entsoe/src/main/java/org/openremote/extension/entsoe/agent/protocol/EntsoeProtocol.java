@@ -335,7 +335,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
     protected EntsoeXmlMeta parseEntsoeXmlMeta(String xml) throws Exception {
         XMLStreamReader reader = XML_INPUT_FACTORY.get().createXMLStreamReader(new StringReader(xml));
         String rootElement = null;
-        String reasonText = null;
+        StringBuilder reasonTextBuilder = new StringBuilder();
         boolean inReason = false;
         boolean inReasonText = false;
 
@@ -355,8 +355,8 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
                     }
                 } else if (event == XMLStreamConstants.CHARACTERS && inReasonText) {
                     String text = reader.getText();
-                    if (text != null && !text.isBlank()) {
-                        reasonText = reasonText == null ? text.trim() : reasonText + text.trim();
+                    if (text != null) {
+                        reasonTextBuilder.append(text);
                     }
                 } else if (event == XMLStreamConstants.END_ELEMENT) {
                     String localName = reader.getLocalName();
@@ -369,6 +369,11 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
             }
         } finally {
             reader.close();
+        }
+
+        String reasonText = reasonTextBuilder.toString().replaceAll("\\s+", " ").trim();
+        if (reasonText.isEmpty()) {
+            reasonText = null;
         }
 
         return new EntsoeXmlMeta(rootElement, reasonText);
