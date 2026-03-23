@@ -47,7 +47,9 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -168,28 +170,46 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
             return;
         }
 
-        getLinkedAttributes().forEach(this::updatePricingInformation);
+        Map<String, List<Map.Entry<AttributeRef, Attribute>>> attributesByZone = collectLinkedAttributesByZone();
+
+        attributesByZone.forEach((zone, linkedAttributesForZone) -> {
+            PublicationMarketDocument document = fetchPricingInformation(buildApiUrl(zone));
+            applyPricingInformation(zone, document, linkedAttributesForZone);
+        });
     }
 
-    protected void updatePricingInformation(AttributeRef attributeRefs, Attribute attribute) {
-        LOG.fine("Updating pricing information data for attribute " + attribute.getName());
+    protected Map<String, List<Map.Entry<AttributeRef, Attribute>>> collectLinkedAttributesByZone() {
+        Map<String, List<Map.Entry<AttributeRef, Attribute>>> attributesByZone = new LinkedHashMap<>();
 
-        EntsoeAgentLink agentLink = agent.getAgentLink(attribute);
+        getLinkedAttributes().forEach((attributeRef, attribute) -> {
+            EntsoeAgentLink agentLink = agent.getAgentLink(attribute);
+            attributesByZone.computeIfAbsent(agentLink.getZone(), ignored -> new ArrayList<>())
+                    .add(Map.entry(attributeRef, attribute));
+        });
 
-        PublicationMarketDocument doc = fetchPricingInformation(buildApiUrl(agentLink.getZone()));
-        if (doc == null) {
-            LOG.warning(() -> "No ENTSO-E publication document returned for attribute: " + attributeRefs);
+        return attributesByZone;
+    }
+
+    protected void applyPricingInformation(String zone, PublicationMarketDocument document, List<Map.Entry<AttributeRef, Attribute>> linkedAttributesForZone) {
+        if (document == null) {
+            linkedAttributesForZone.forEach(entry ->
+                    LOG.warning(() -> "No ENTSO-E publication document returned for attribute: " + entry.getKey() + " in zone: " + zone));
             return;
         }
 
-        List<ValueDatapoint<?>> predictedDatapoints = buildPredictedDatapoints(doc);
+        List<ValueDatapoint<?>> predictedDatapoints = buildPredictedDatapoints(document);
         if (predictedDatapoints.isEmpty()) {
-            LOG.warning(() -> "No datapoints built from ENTSO-E publication document for attribute: " + attributeRefs);
+            linkedAttributesForZone.forEach(entry ->
+                    LOG.warning(() -> "No datapoints built from ENTSO-E publication document for attribute: " + entry.getKey() + " in zone: " + zone));
             return;
         }
 
-        predictedDatapointService.updateValues(attributeRefs.getId(), attributeRefs.getName(), predictedDatapoints);
-
+        linkedAttributesForZone.forEach(entry -> {
+            AttributeRef attributeRef = entry.getKey();
+            Attribute attribute = entry.getValue();
+            LOG.fine("Updating pricing information data for attribute " + attribute.getName());
+            predictedDatapointService.updateValues(attributeRef.getId(), attributeRef.getName(), predictedDatapoints);
+        });
     }
 
     protected String buildApiUrl(String zone) {

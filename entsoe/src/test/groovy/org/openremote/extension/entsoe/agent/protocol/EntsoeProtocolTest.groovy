@@ -566,6 +566,95 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         }
     }
 
+    def "ENTSO-E integration test fetches a shared zone only once per polling cycle"() {
+        given: "the container environment is started"
+        requestCountByZone.clear()
+        requestLog.clear()
+        def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+
+        EntsoeProtocol.initClient()
+
+        if (!EntsoeProtocol.client.get().configuration.isRegistered(mockServer)) {
+            EntsoeProtocol.client.get().register(mockServer, Integer.MAX_VALUE)
+        }
+
+        def container = startContainer(defaultConfig(), defaultServices())
+        setPseudoClock(BEFORE_DATASET_START)
+        def assetStorageService = container.getService(AssetStorageService.class)
+        def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
+        def agentService = container.getService(AgentService.class)
+        EntsoeAgent agent = null
+        ThingAsset asset = null
+
+        when: "an ENTSO-E agent is created"
+        agent = new EntsoeAgent("ENTSO-E Agent")
+                .setRealm(MASTER_REALM)
+                .setSecurityToken("test-token")
+        agent = assetStorageService.merge(agent)
+
+        then: "the protocol instance for the agent should be created and connected"
+        conditions.eventually {
+            assert agentService.getProtocolInstance(agent.id) != null
+            assert ((EntsoeProtocol) agentService.getProtocolInstance(agent.id)) != null
+            assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
+        }
+
+        when: "2 attributes are linked to the same agent with the same zone"
+        def link1 = new EntsoeAgentLink(agent.id)
+        link1.setZone("10YBE----------2")
+        def link2 = new EntsoeAgentLink(agent.id)
+        link2.setZone("10YBE----------2")
+
+        asset = new ThingAsset("Shared Zone Energy Price Asset")
+                .setRealm(MASTER_REALM)
+                .addOrReplaceAttributes(
+                        new Attribute<>("energyPriceOne", NUMBER)
+                                .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, link1)),
+                        new Attribute<>("energyPriceTwo", NUMBER)
+                                .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, link2))
+                )
+        asset = assetStorageService.merge(asset)
+
+        def refOne = new AttributeRef(asset.id, "energyPriceOne")
+        def refTwo = new AttributeRef(asset.id, "energyPriceTwo")
+        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+
+        and: "both attributes are linked by protocol"
+        conditions.eventually {
+            assert protocol.getLinkedAttributes().containsKey(refOne)
+            assert protocol.getLinkedAttributes().containsKey(refTwo)
+        }
+
+        and: "the request log is cleared before the explicit polling update"
+        requestLog.clear()
+
+        and: "a polling update is triggered"
+        protocol.updateAllLinkedAttributes()
+
+        then: "both attributes receive datapoints and the shared zone is requested only once"
+        conditions.eventually {
+            List<ValueDatapoint> datapointsOne = assetPredictedDatapointService.getDatapoints(refOne).sort { it.timestamp }
+            List<ValueDatapoint> datapointsTwo = assetPredictedDatapointService.getDatapoints(refTwo).sort { it.timestamp }
+
+            assert datapointsOne.size() == 4
+            assert datapointsTwo.size() == 4
+            assert datapointsOne.collect { [it.timestamp, it.value] } == datapointsTwo.collect { [it.timestamp, it.value] }
+
+            assert requestLog.count { it.zone == "10YBE----------2" } == 1
+        }
+
+        cleanup: "remove created assets and mock client"
+        if (asset?.id) {
+            assetStorageService.delete([asset.id])
+        }
+        if (agent?.id) {
+            assetStorageService.delete([agent.id])
+        }
+        if (EntsoeProtocol.client.get() != null) {
+            EntsoeProtocol.client.set(null)
+        }
+    }
+
     def "ENTSO-E integration test keeps existing predicted datapoints when subsequent poll fetch fails"() {
         given: "the container environment is started"
         requestCountByZone.clear()
