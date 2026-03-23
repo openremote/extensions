@@ -49,6 +49,7 @@ import org.openremote.model.value.ValueType;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -327,7 +328,7 @@ public class EmsOptimisationSetupService implements ContainerService {
             LOG.warning(String.format("assetName='%s', assetId='%s'; Rules were not created for energy management system '%s'; Exception: %s", setupAsset.getName(), setupAsset.getId(), energyOptimisationAssetName, e));
         }
 
-        Date currentDate = Date.from(timerService.getNow());
+        Instant currentDate = timerService.getNow();
 
         // Create main dashboard
         try (InputStream inputStream = EmsOptimisationService.class.getResourceAsStream("/ems/dashboards/EmsOverviewDashboard.json")) {
