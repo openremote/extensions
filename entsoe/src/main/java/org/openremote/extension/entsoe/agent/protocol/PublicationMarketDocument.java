@@ -37,9 +37,9 @@ public class PublicationMarketDocument {
     public static class TimeSeries {
 
         @XmlElement(name = "Period", namespace = NS)
-        private Period period;
+        private List<Period> periods;
 
-        public Period getPeriod() { return period; }
+        public List<Period> getPeriods() { return periods; }
     }
 
     @XmlAccessorType(XmlAccessType.FIELD)

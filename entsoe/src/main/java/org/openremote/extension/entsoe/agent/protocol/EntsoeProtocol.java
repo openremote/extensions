@@ -324,39 +324,44 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
         }
 
         for (PublicationMarketDocument.TimeSeries timeSeries : document.getTimeSeries()) {
-            PublicationMarketDocument.Period period = timeSeries.getPeriod();
-            if (period == null || period.getPoints() == null || period.getPoints().isEmpty()) {
+            if (timeSeries.getPeriods() == null || timeSeries.getPeriods().isEmpty()) {
                 continue;
             }
 
-            PublicationMarketDocument.PeriodTimeInterval timeInterval = period.getTimeInterval() != null
-                    ? period.getTimeInterval()
-                    : document.getPeriodTimeInterval();
-            if (timeInterval == null || timeInterval.getStart() == null || period.getResolution() == null) {
-                continue;
-            }
+            for (PublicationMarketDocument.Period period : timeSeries.getPeriods()) {
+                if (period == null || period.getPoints() == null || period.getPoints().isEmpty()) {
+                    continue;
+                }
 
-            final Instant start;
-            final Duration resolution;
-            try {
-                start = parseEntsoeInstant(timeInterval.getStart());
-                resolution = Duration.parse(period.getResolution());
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E timeseries time data");
-                continue;
-            }
+                PublicationMarketDocument.PeriodTimeInterval timeInterval = period.getTimeInterval() != null
+                        ? period.getTimeInterval()
+                        : document.getPeriodTimeInterval();
+                if (timeInterval == null || timeInterval.getStart() == null || period.getResolution() == null) {
+                    continue;
+                }
 
-            period.getPoints().stream()
-                    .filter(point -> point.getPosition() != null && point.getPosition() > 0 && point.getPriceAmount() != null)
-                    .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
-                    .forEach(point -> {
-                        long timestamp = start
-                                .plus(resolution.multipliedBy(point.getPosition() - 1L))
-                                .toEpochMilli();
-                        if (timestamp >= nowMillis) {
-                            values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
-                        }
-                    });
+                final Instant start;
+                final Duration resolution;
+                try {
+                    start = parseEntsoeInstant(timeInterval.getStart());
+                    resolution = Duration.parse(period.getResolution());
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E timeseries time data");
+                    continue;
+                }
+
+                period.getPoints().stream()
+                        .filter(point -> point.getPosition() != null && point.getPosition() > 0 && point.getPriceAmount() != null)
+                        .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
+                        .forEach(point -> {
+                            long timestamp = start
+                                    .plus(resolution.multipliedBy(point.getPosition() - 1L))
+                                    .toEpochMilli();
+                            if (timestamp >= nowMillis) {
+                                values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
+                            }
+                        });
+            }
         }
 
         values.sort(Comparator.comparingLong(ValueDatapoint::getTimestamp));

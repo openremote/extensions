@@ -256,6 +256,49 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
   </TimeSeries>
 </Publication_MarketDocument>
 '''
+                } else if (zone == "10YMULTI-------A") {
+                    content = '''<?xml version="1.0" encoding="utf-8"?>
+<Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  <period.timeInterval>
+    <start>2026-02-16T23:00Z</start>
+    <end>2026-02-17T01:00Z</end>
+  </period.timeInterval>
+  <TimeSeries>
+    <mRID>1</mRID>
+    <curveType>A03</curveType>
+    <Period>
+      <timeInterval>
+        <start>2026-02-16T23:00Z</start>
+        <end>2026-02-17T00:00Z</end>
+      </timeInterval>
+      <resolution>PT15M</resolution>
+      <Point>
+        <position>1</position>
+        <price.amount>51.11</price.amount>
+      </Point>
+      <Point>
+        <position>2</position>
+        <price.amount>52.22</price.amount>
+      </Point>
+    </Period>
+    <Period>
+      <timeInterval>
+        <start>2026-02-17T00:00Z</start>
+        <end>2026-02-17T01:00Z</end>
+      </timeInterval>
+      <resolution>PT15M</resolution>
+      <Point>
+        <position>1</position>
+        <price.amount>53.33</price.amount>
+      </Point>
+      <Point>
+        <position>2</position>
+        <price.amount>54.44</price.amount>
+      </Point>
+    </Period>
+  </TimeSeries>
+</Publication_MarketDocument>
+'''
                 } else {
                     requestContext.abortWith(Response.serverError().build())
                     return
@@ -765,6 +808,87 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         }
     }
 
+    def "ENTSO-E integration test supports multiple periods in a single timeseries"() {
+        given: "the container environment is started"
+        requestCountByZone.clear()
+        def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+
+        EntsoeProtocol.initClient()
+
+        if (!EntsoeProtocol.client.get().configuration.isRegistered(mockServer)) {
+            EntsoeProtocol.client.get().register(mockServer, Integer.MAX_VALUE)
+        }
+
+        def container = startContainer(defaultConfig(), defaultServices())
+        setPseudoClock(BEFORE_DATASET_START)
+        def assetStorageService = container.getService(AssetStorageService.class)
+        def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
+        def agentService = container.getService(AgentService.class)
+        EntsoeAgent agent = null
+        ThingAsset asset = null
+
+        when: "an ENTSO-E agent and linked attribute are created for a zone with multiple periods in one timeseries"
+        agent = new EntsoeAgent("ENTSO-E Agent")
+                .setRealm(MASTER_REALM)
+                .setSecurityToken("test-token")
+        agent = assetStorageService.merge(agent)
+
+        def multiPeriodLink = new EntsoeAgentLink(agent.id)
+        multiPeriodLink.setZone("10YMULTI-------A")
+
+        asset = new ThingAsset("Multi Period Asset")
+                .setRealm(MASTER_REALM)
+                .addOrReplaceAttributes(
+                        new Attribute<>("energyPrice", NUMBER)
+                                .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, multiPeriodLink))
+                )
+        asset = assetStorageService.merge(asset)
+
+        def attributeRef = new AttributeRef(asset.id, "energyPrice")
+        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+
+        then: "the protocol is connected and attribute linked"
+        conditions.eventually {
+            assert protocol != null
+            assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
+            assert protocol.getLinkedAttributes().containsKey(attributeRef)
+        }
+
+        when: "a polling update is triggered"
+        protocol.updateAllLinkedAttributes()
+
+        then: "datapoints are produced from all periods in order"
+        conditions.eventually {
+            List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort { it.timestamp }
+            assert datapoints.size() == 4
+
+            def firstPeriodStart = Instant.parse(DATASET_START).toEpochMilli()
+            def secondPeriodStart = Instant.parse("2026-02-17T00:00:00.000Z").toEpochMilli()
+            def step = 15 * 60 * 1000L
+
+            assert datapoints[0].timestamp == firstPeriodStart
+            assert datapoints[1].timestamp == firstPeriodStart + step
+            assert datapoints[2].timestamp == secondPeriodStart
+            assert datapoints[3].timestamp == secondPeriodStart + step
+
+            assert (datapoints[0].value as BigDecimal).compareTo(51.11G) == 0
+            assert (datapoints[1].value as BigDecimal).compareTo(52.22G) == 0
+            assert (datapoints[2].value as BigDecimal).compareTo(53.33G) == 0
+            assert (datapoints[3].value as BigDecimal).compareTo(54.44G) == 0
+        }
+
+        cleanup: "remove created assets and mock client"
+        if (asset?.id) {
+            assetStorageService.delete([asset.id])
+        }
+        if (agent?.id) {
+            assetStorageService.delete([agent.id])
+        }
+        if (EntsoeProtocol.client.get() != null) {
+            EntsoeProtocol.client.set(null)
+        }
+    }
+
     def "ENTSO-E agent link validates zone against EIC regex pattern"() {
         given: "an ENTSO-E agent link"
         def link = new EntsoeAgentLink("agent-id")
@@ -784,6 +908,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         "10YBE----------22"  || false
         "10YBE_____-----2"   || false
         "10YNDATA-------A"   || true
+        "10YMULTI-------A"   || true
     }
 
     def "ENTSO-E integration test updates requested period range when clock advances by one day"() {
