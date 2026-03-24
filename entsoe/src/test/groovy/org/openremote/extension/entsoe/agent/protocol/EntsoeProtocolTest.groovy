@@ -34,6 +34,8 @@ import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.attribute.MetaItem
 import org.openremote.model.datapoint.ValueDatapoint
 import org.openremote.test.ManagerContainerTrait
+import spock.lang.IgnoreIf
+import spock.lang.Issue
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
@@ -48,6 +50,8 @@ import static org.openremote.model.Constants.MASTER_REALM
 import static org.openremote.model.value.MetaItemType.AGENT_LINK
 import static org.openremote.model.value.ValueType.NUMBER
 
+@IgnoreIf({ System.getenv("GITHUB_ACTIONS") == "true" })
+@Issue("https://github.com/openremote/openremote/issues/2599")
 class EntsoeProtocolTest extends Specification implements ManagerContainerTrait {
     private static final String DATASET_START = "2026-02-16T23:00:00.000Z"
     private static final String BEFORE_DATASET_START = "2026-02-16T22:00:00.000Z"
