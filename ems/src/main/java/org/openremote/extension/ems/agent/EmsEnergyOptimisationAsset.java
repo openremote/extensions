@@ -29,12 +29,16 @@ import org.openremote.model.value.*;
 import java.util.Optional;
 
 import static org.openremote.model.Constants.*;
-import static org.openremote.model.value.ValueType.BOOLEAN;
 
 @Entity
 public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset> {
 
-    public static final AttributeDescriptor<Boolean> ENABLE_DETAILED_LOGGING = new AttributeDescriptor<>("enableDetailedLogging", BOOLEAN);
+    public static final AttributeDescriptor<String> ADVANCED_SETTINGS_ATTRIBUTES = new AttributeDescriptor<>("advancedSettingsAttributes", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.MULTILINE),
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Boolean> ENABLE_DETAILED_LOGGING = new AttributeDescriptor<>("enableDetailedLogging", ValueType.BOOLEAN);
 
     public static final AttributeDescriptor<Double> ENERGY_EXPORT_TOTAL = new AttributeDescriptor<>("energyExportTotal", ValueType.NUMBER,
             new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
@@ -48,11 +52,11 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
-    public static final AttributeDescriptor<Boolean> GENERATE_POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT = new AttributeDescriptor<>("generatePowerLimitMaximumProfileManualInput", BOOLEAN);
+    public static final AttributeDescriptor<Boolean> GENERATE_POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT = new AttributeDescriptor<>("generatePowerLimitMaximumProfileManualInput", ValueType.BOOLEAN);
 
-    public static final AttributeDescriptor<Boolean> GENERATE_POWER_LIMIT_MINIMUM_PROFILE_MANUAL_INPUT = new AttributeDescriptor<>("generatePowerLimitMinimumProfileManualInput", BOOLEAN);
+    public static final AttributeDescriptor<Boolean> GENERATE_POWER_LIMIT_MINIMUM_PROFILE_MANUAL_INPUT = new AttributeDescriptor<>("generatePowerLimitMinimumProfileManualInput", ValueType.BOOLEAN);
 
-    public static final AttributeDescriptor<Boolean> OPTIMISATION_DISABLED = new AttributeDescriptor<>("optimisationDisabled", BOOLEAN);
+    public static final AttributeDescriptor<Boolean> OPTIMISATION_DISABLED = new AttributeDescriptor<>("optimisationDisabled", ValueType.BOOLEAN);
 
     public enum OptimisationMethodValueType {
         None,
@@ -163,6 +167,10 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
 
     public EmsEnergyOptimisationAsset(String name) {
         super(name);
+    }
+
+    public Optional<String> getAdvancedSettingsAttributes() {
+        return getAttribute(ADVANCED_SETTINGS_ATTRIBUTES).flatMap(AbstractNameValueHolder::getValue);
     }
 
     public Optional<Boolean> getEnableDetailedLogging() {
