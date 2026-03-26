@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026, OpenRemote Inc.
+ *
+ * See the CONTRIBUTORS.txt file in the distribution for a
+ * full listing of individual contributors.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 package org.openremote.extension.ems.manager.gopacs;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
@@ -251,7 +270,9 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                     message.payloadMessage() instanceof FlexOffer ||
                     message.payloadMessage() instanceof FlexOrderResponse) {
 
-                LOG.fine("Content to send: " + serializer.toXml(message.payloadMessage()));
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine("Content to send: " + serializer.toXml(message.payloadMessage()));
+                }
 
                 String recipientDomain = message.payloadMessage().getRecipientDomain();
                 uftpSendMessageService.attemptToSendMessage(
@@ -476,7 +497,9 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         try {
             SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
             String payloadXml = cryptoService.verifySignedMessage(signedMessage);
-            LOG.fine("Received message:" + payloadXml);
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine("Received message:" + payloadXml);
+            }
             PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
             var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
             notifyNewIncomingMessage(incomingUftpMessage);
