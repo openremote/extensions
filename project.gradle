@@ -143,6 +143,11 @@ plugins.withType(JavaPlugin).whenPluginAdded {
 
     test {
         workingDir = findProject(":openremote") != null ? project(":openremote").projectDir : rootProject.projectDir
+        if (findProject(":openremote") == null) {
+            // Extension-only repos don't ship the manager UI tree expected by ManagerWebService.
+            // Point tests at a minimal placeholder docroot so container startup still succeeds.
+            environment "OR_APP_DOCROOT", rootProject.file("test-support/manager-app").absolutePath
+        }
         useJUnitPlatform()
         testLogging {
             // set options for log level LIFECYCLE
