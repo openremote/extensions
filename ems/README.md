@@ -1,6 +1,8 @@
-# GOPACS Integration
+# Energy Management System (EMS)
 
-## What is GOPACS?
+## GOPACS Integration
+
+### What is GOPACS?
 
 [GOPACS](https://www.gopacs.eu/) (Grid Operators Platform for Congestion Solutions) is a platform operated by Dutch grid operators (DSOs and TSO) to resolve grid congestion through flexibility trading. When the electricity grid is at risk of overloading, GOPACS sends flexibility requests to market participants (aggregators) who can adjust their energy consumption or production to relieve congestion.
 
@@ -8,7 +10,7 @@ The communication between GOPACS and market participants uses the **UFTP** (Univ
 
 For detailed documentation, see: [GOPACS documents and manuals](https://www.gopacs.eu/en/documents-and-manuals/)
 
-## Getting Started
+### Getting Started
 
 To participate in GOPACS flex trading through OpenRemote, you need:
 
@@ -17,7 +19,7 @@ To participate in GOPACS flex trading through OpenRemote, you need:
 3. **A signing key pair** — An Ed25519 private key file for signing UFTP messages. The corresponding public key must be registered with GOPACS
 4. **A contracted EAN** — The EAN (European Article Number) identifying your grid connection point, as agreed with your DSO
 
-### Configuration
+#### Configuration
 
 The following environment variables must be set on the OpenRemote manager:
 
@@ -31,15 +33,15 @@ The following environment variables must be set on the OpenRemote manager:
 | `GOPACS_RESPONSE_DELAY_SECONDS` | No | Delay before auto-responding to messages (default: `10`) |
 | `GOPACS_FLEX_OFFER_DELAY_SECONDS` | No | Delay before sending a flex offer (default: `30`) |
 
-### Asset Setup
+#### Asset Setup
 
 In OpenRemote, create an **EMS GOPACS Asset** as a child of an **EMS Energy Optimisation Asset** and set the `contractedEAN` attribute to your grid connection's EAN.
 
 Alternatively, when creating a new **EMS Energy Optimisation Asset**, you can enable the "Include GOPACS" attribute to have the GOPACS child asset created automatically. Note that this only works during initial asset creation — if the **EMS Energy Optimisation Asset** already exists, you need to manually create the **EMS GOPACS Asset** as a child.
 
-## Developer Guide
+### Developer Guide
 
-### Components
+#### Components
 
 ```
 gopacs/
@@ -58,28 +60,32 @@ Related files outside this package:
 - `manager/EmsOptimisationService.java` — Manages `GOPACSHandler` lifecycle (creates/destroys handlers when assets are added/removed)
 - `manager/EmsOptimisationSetupService.java` — Setup class that optionally creates GOPACS assets
 
-### Data Flow
+#### Data Flow
 
 OpenRemote acts as an **AGR (Aggregator)** in the UFTP protocol. The message exchange with the DSO (Distribution System Operator) follows this flow:
 
-```
-DSO (Grid Operator)                         OpenRemote (AGR)
-     |                                            |
-     |──── 1. FlexRequest ───────────────────────>|  DSO requests flexibility for a congestion point
-     |                                            |  (contains ISPs with max/min power limits)
-     |                                            |
-     |<─── 2. FlexRequestResponse ────────────────|  Auto-response after configurable delay
-     |                                            |
-     |<─── 3. FlexOffer ──────────────────────────|  Sent after flex offer delay
-     |                                            |  (mirrors request, price EUR 0.00)
-     |                                            |
-     |──── 4. FlexOfferResponse ─────────────────>|  DSO accepts or rejects the offer
-     |                                            |
-     |──── 5. FlexOrder ─────────────────────────>|  DSO orders the accepted flexibility
-     |                                            |  (updates predicted data points on asset)
-     |                                            |
-     |<─── 6. FlexOrderResponse ──────────────────|  Auto-response confirming the order
-     |                                            |
+```mermaid
+sequenceDiagram
+    participant DSO as DSO (Grid Operator)
+    participant OR as OpenRemote (AGR)
+
+    DSO->>OR: 1. FlexRequest
+    Note right of OR: DSO requests flexibility for a congestion point<br/>(contains ISPs with max/min power limits)
+
+    OR-->>DSO: 2. FlexRequestResponse
+    Note left of DSO: Auto-response after configurable delay
+
+    OR-->>DSO: 3. FlexOffer
+    Note left of DSO: Sent after flex offer delay<br/>(mirrors request, price EUR 0.00)
+
+    DSO->>OR: 4. FlexOfferResponse
+    Note right of OR: DSO accepts or rejects the offer
+
+    DSO->>OR: 5. FlexOrder
+    Note right of OR: DSO orders the accepted flexibility<br/>(updates predicted data points on asset)
+
+    OR-->>DSO: 6. FlexOrderResponse
+    Note left of DSO: Auto-response confirming the order
 ```
 
 **How flex orders feed into optimisation:**
@@ -88,7 +94,7 @@ DSO (Grid Operator)                         OpenRemote (AGR)
 2. `EmsOptimisationService.updatePowerLimitProfileTotalForecasts()` merges these GOPACS constraints with manual power limits from the parent `EmsEnergyOptimisationAsset`
 3. The combined limits are used by the optimisation methods to constrain energy scheduling
 
-### Inbound Endpoint
+#### Inbound Endpoint
 
 The handler deploys a JAX-RS web application at `/gopacs`. Incoming signed UFTP XML messages are posted to:
 
@@ -104,21 +110,21 @@ Processing steps:
 4. Process business logic (update asset attributes, schedule data points)
 5. After a delay, send the auto-response (ensures the HTTP response is returned first)
 
-### Authentication
+#### Authentication
 
 - **Inbound messages**: Verified using the DSO's public key, fetched from the GOPACS address book (`GET /v2/participants/DSO?contractedEan=<EAN>`) and cached in memory
 - **Outbound messages**: Signed with the private key from `GOPACS_PRIVATE_KEY_FILE`, delivered with an OAuth2 Bearer token obtained via client credentials flow from the GOPACS Keycloak instance
 
-### ISP Handling
+#### ISP Handling
 
 ISPs (Imbalance Settlement Periods) are 15-minute intervals. `FlexRequestISPTypeHelper` converts ISP numbers to timestamps and includes special handling for European DST transitions (CET/CEST) on the last Sundays of March and October.
 
-## Testing
+### Testing
 
 GOPACS provides a dedicated testing environment. See [Testing UFTP API Flex Messages](https://www.gopacs.eu/wp-content/uploads/2025/12/GOPACS-Testing-receiving-and-sending-flex-messages-by-UFTP-testing-functionality-04-12-2025.pdf) for their guide on sending and receiving flex messages via the UFTP testing functionality.
 
 For additional context on the protocol and contract types, see [Flex Trading with CSC and ATR (UFTP Messages)](https://www.gopacs.eu/wp-content/uploads/2026/02/GOPACS-Flex-trading-with-Capacity-Limiting-Contracts-using-UFTP-messages-11-02-2026.pdf).
 
-### Company Setup for Testing
+#### Company Setup for Testing
 
 To configure your Trading Company for testing Capacity Steering Contracts, follow: [Company Settings for CSC Participation](https://www.gopacs.eu/wp-content/uploads/2025/06/GOPACS-Company-settings-for-participating-in-CSC-Capacity-Steering-Contracts.pdf)
