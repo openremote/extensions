@@ -32,7 +32,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
  * RESTEasy client proxy for the GOPACS EAN solving effectivity endpoint.
  * Requires an API key header for authentication.
  */
-@Path("publicapi")
+@Path("public-api/1.0")
 @Produces(APPLICATION_JSON)
 public interface GOPACSEanEffectivityResource {
 
@@ -40,6 +40,6 @@ public interface GOPACSEanEffectivityResource {
     @Path("announcements/{id}/eansolvingeffectivity")
     Response fetchEanSolvingEffectivity(
             @PathParam("id") String announcementId,
-            @HeaderParam("api-key") String apiKey
+            @HeaderParam("API_KEY") String apiKey
     );
 }

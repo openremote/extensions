@@ -298,18 +298,20 @@ public class GOPACSRedispatchHandler {
             if (response.getStatus() == 200) {
                 String body = response.readEntity(String.class);
                 LOG.fine("Fetched EAN solving effectivity: " + body);
-                EanSolvingEffectivityDto effectivity = objectMapper.readValue(body, EanSolvingEffectivityDto.class);
+                List<EanSolvingEffectivityDto> effectivities = objectMapper.readValue(body, new TypeReference<>() {});
 
-                if (effectivity.getEansByCategory() != null) {
-                    LOG.fine("Effectivity categories: " + effectivity.getEansByCategory().keySet());
-                    for (Map.Entry<String, Set<String>> entry : effectivity.getEansByCategory().entrySet()) {
-                        if (entry.getValue() != null && entry.getValue().contains(contractedEAN)) {
-                            LOG.fine("EAN " + contractedEAN + " found in category '" + entry.getKey() + "'");
-                            return entry.getKey();
+                for (EanSolvingEffectivityDto effectivity : effectivities) {
+                    if (effectivity.getEansByCategory() != null) {
+                        LOG.fine("Effectivity categories: " + effectivity.getEansByCategory().keySet());
+                        for (Map.Entry<String, Set<String>> entry : effectivity.getEansByCategory().entrySet()) {
+                            if (entry.getValue() != null && entry.getValue().contains(contractedEAN)) {
+                                LOG.fine("EAN " + contractedEAN + " found in category '" + entry.getKey() + "'");
+                                return entry.getKey();
+                            }
                         }
                     }
-                    LOG.fine("EAN " + contractedEAN + " not found in any effectivity category");
                 }
+                LOG.fine("EAN " + contractedEAN + " not found in any effectivity category");
             } else {
                 LOG.warning("Failed to fetch EAN effectivity for announcement " + announcementId + ": HTTP " + response.getStatus());
             }
