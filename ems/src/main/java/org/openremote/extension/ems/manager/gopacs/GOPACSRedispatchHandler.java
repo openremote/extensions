@@ -151,10 +151,13 @@ public class GOPACSRedispatchHandler {
             pollingFuture.cancel(false);
             pollingFuture = null;
         }
+        client.close();
         LOG.info("Stopped redispatch polling for EAN: " + contractedEAN);
     }
 
     protected void pollAndProcess() {
+        LOG.fine("Redispatch poll started for EAN: " + contractedEAN);
+
         // Get postal code from asset
         EmsGOPACSAsset gopacsAsset = (EmsGOPACSAsset) assetStorageService.find(assetId);
         if (gopacsAsset == null) {
@@ -163,14 +166,18 @@ public class GOPACSRedispatchHandler {
         }
 
         String postalCode = gopacsAsset.getPostalCode().orElse(null);
+        LOG.fine("Fetching announcements for EAN: " + contractedEAN + " with postalCode: " + postalCode);
 
         // Fetch announcements
         List<AnnouncementDto> announcements = fetchAnnouncements(postalCode);
         if (announcements == null || announcements.isEmpty()) {
+            LOG.fine("No announcements found for EAN: " + contractedEAN);
             updateLastPoll();
             clearAnnouncementAttributes();
             return;
         }
+
+        LOG.fine("Fetched " + announcements.size() + " announcements for EAN: " + contractedEAN);
 
         // Filter for CONGESTIONMANAGEMENT and OPEN
         List<AnnouncementDto> relevant = announcements.stream()
@@ -179,10 +186,13 @@ public class GOPACSRedispatchHandler {
                 .toList();
 
         if (relevant.isEmpty()) {
+            LOG.fine("No open CONGESTIONMANAGEMENT announcements for EAN: " + contractedEAN);
             updateLastPoll();
             clearAnnouncementAttributes();
             return;
         }
+
+        LOG.fine("Found " + relevant.size() + " relevant open announcements for EAN: " + contractedEAN);
 
         // If no postal code filter, check EAN effectivity to find relevant ones
         AnnouncementDto selected = null;
@@ -190,9 +200,11 @@ public class GOPACSRedispatchHandler {
 
         if (postalCode == null || postalCode.isBlank()) {
             // No postal code → check effectivity for all, find ones where our EAN is listed
+            LOG.fine("No postalCode set, checking EAN effectivity for " + relevant.size() + " announcements");
             for (AnnouncementDto announcement : relevant) {
                 String category = checkEanEffectivity(announcement.getId());
                 if (category != null) {
+                    LOG.fine("EAN " + contractedEAN + " found in category '" + category + "' for announcement " + announcement.getId());
                     // Prefer MANDATORY over VOLUNTARY
                     if (selected == null || "MANDATORY".equals(announcement.getComplianceType())) {
                         selected = announcement;
@@ -208,10 +220,12 @@ public class GOPACSRedispatchHandler {
                     .findFirst()
                     .orElse(relevant.getFirst());
 
+            LOG.fine("Selected announcement " + selected.getId() + " (" + selected.getComplianceType() + ") from " + selected.getOrganisationName());
             effectivityCategory = checkEanEffectivity(selected.getId());
         }
 
         if (selected == null) {
+            LOG.fine("No relevant announcement found for EAN: " + contractedEAN + " after effectivity check");
             updateLastPoll();
             clearAnnouncementAttributes();
             return;
@@ -220,6 +234,15 @@ public class GOPACSRedispatchHandler {
         // Check if this is a new announcement
         boolean isNew = !selected.getId().equals(lastProcessedAnnouncementId);
         lastProcessedAnnouncementId = selected.getId();
+
+        if (isNew) {
+            LOG.info("New redispatch announcement for EAN " + contractedEAN + ": id=" + selected.getId()
+                    + ", compliance=" + selected.getComplianceType()
+                    + ", org=" + selected.getOrganisationName()
+                    + ", effectivity=" + effectivityCategory);
+        } else {
+            LOG.fine("Announcement " + selected.getId() + " unchanged for EAN: " + contractedEAN);
+        }
 
         // Update asset attributes with announcement info
         updateAnnouncementAttributes(selected, effectivityCategory);
@@ -239,6 +262,7 @@ public class GOPACSRedispatchHandler {
         }
 
         updateLastPoll();
+        LOG.fine("Redispatch poll completed for EAN: " + contractedEAN);
     }
 
     protected List<AnnouncementDto> fetchAnnouncements(String postalCode) {
@@ -251,6 +275,7 @@ public class GOPACSRedispatchHandler {
         )) {
             if (response.getStatus() == 200) {
                 String body = response.readEntity(String.class);
+                LOG.fine("GOPACS announcements found: " + body);
                 return objectMapper.readValue(body, new TypeReference<>() {});
             } else {
                 LOG.warning("Failed to fetch announcements: HTTP " + response.getStatus());
@@ -264,20 +289,26 @@ public class GOPACSRedispatchHandler {
 
     protected String checkEanEffectivity(String announcementId) {
         if (apiKey == null || apiKey.isBlank()) {
+            LOG.fine("Skipping EAN effectivity check (no API key) for announcement " + announcementId);
             return null;
         }
 
+        LOG.fine("Checking EAN effectivity for announcement " + announcementId + " and EAN " + contractedEAN);
         try (Response response = eanEffectivityResource.fetchEanSolvingEffectivity(announcementId, apiKey)) {
             if (response.getStatus() == 200) {
                 String body = response.readEntity(String.class);
+                LOG.fine("Fetched EAN solving effectivity: " + body);
                 EanSolvingEffectivityDto effectivity = objectMapper.readValue(body, EanSolvingEffectivityDto.class);
 
                 if (effectivity.getEansByCategory() != null) {
+                    LOG.fine("Effectivity categories: " + effectivity.getEansByCategory().keySet());
                     for (Map.Entry<String, Set<String>> entry : effectivity.getEansByCategory().entrySet()) {
                         if (entry.getValue() != null && entry.getValue().contains(contractedEAN)) {
+                            LOG.fine("EAN " + contractedEAN + " found in category '" + entry.getKey() + "'");
                             return entry.getKey();
                         }
                     }
+                    LOG.fine("EAN " + contractedEAN + " not found in any effectivity category");
                 }
             } else {
                 LOG.warning("Failed to fetch EAN effectivity for announcement " + announcementId + ": HTTP " + response.getStatus());
@@ -289,6 +320,7 @@ public class GOPACSRedispatchHandler {
     }
 
     protected void updateAnnouncementAttributes(AnnouncementDto announcement, String effectivityCategory) {
+        LOG.fine("Updating announcement attributes for announcement " + announcement.getId() + ", effectivity=" + effectivityCategory);
         sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_ID.getName(), announcement.getId());
         sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_COMPLIANCE_TYPE.getName(), announcement.getComplianceType());
         sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_MESSAGE.getName(), announcement.getMessage());
@@ -312,6 +344,7 @@ public class GOPACSRedispatchHandler {
     protected void clearAnnouncementAttributes() {
         // Only clear if there was a previous announcement
         if (lastProcessedAnnouncementId != null) {
+            LOG.fine("Clearing announcement attributes (previous: " + lastProcessedAnnouncementId + ") for EAN: " + contractedEAN);
             sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_ID.getName(), null);
             sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_COMPLIANCE_TYPE.getName(), null);
             sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_MESSAGE.getName(), null);
@@ -328,6 +361,7 @@ public class GOPACSRedispatchHandler {
 
     protected void storeRequestedPowerProfile(AnnouncementDto announcement) {
         if (announcement.getRemainingProblemProfileInMW() == null || announcement.getProblemPeriod() == null) {
+            LOG.fine("No power profile or problem period in announcement " + announcement.getId());
             return;
         }
 
@@ -346,6 +380,8 @@ public class GOPACSRedispatchHandler {
             datapoints.add(new ValueDatapoint<>(timestamp, powerKW));
         }
 
+        LOG.fine("Storing " + datapoints.size() + " power profile data points for announcement " + announcement.getId()
+                + " (profile MW: " + announcement.getRemainingProblemProfileInMW() + ")");
         assetPredictedDatapointService.updateValues(assetId, EmsGOPACSAsset.REDISPATCH_REQUESTED_POWER.getName(), datapoints);
     }
 
@@ -376,14 +412,15 @@ public class GOPACSRedispatchHandler {
     }
 
     public void handleConfirmation() {
+        LOG.fine("Processing bid confirmation for EAN: " + contractedEAN);
         EmsGOPACSAsset gopacsAsset = (EmsGOPACSAsset) assetStorageService.find(assetId);
         if (gopacsAsset == null) {
+            LOG.warning("Cannot confirm bid: GOPACS asset not found: " + assetId);
             return;
         }
 
         String announcementId = gopacsAsset.getRedispatchAnnouncementId().orElse(null);
         Double bidPrice = gopacsAsset.getRedispatchBidPrice().orElse(null);
-        String currentStatus = gopacsAsset.getRedispatchBidStatus().orElse("NONE");
 
         if (announcementId == null) {
             LOG.warning("Cannot confirm bid: no active announcement for EAN " + contractedEAN);
