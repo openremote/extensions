@@ -1,5 +1,5 @@
 /*
- * Copyright 2025, OpenRemote Inc.
+ * Copyright 2026, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -22,11 +22,11 @@ package org.openremote.extension.ems.manager.gopacs;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Application;
 import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.lfenergy.shapeshifter.api.*;
 import org.lfenergy.shapeshifter.api.model.UftpParticipantInformation;
@@ -48,11 +48,11 @@ import org.lfenergy.shapeshifter.core.service.receiving.UftpReceivedMessageServi
 import org.lfenergy.shapeshifter.core.service.sending.UftpSendMessageService;
 import org.lfenergy.shapeshifter.core.service.serialization.UftpSerializer;
 import org.lfenergy.shapeshifter.core.service.validation.UftpValidationService;
-import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.CORSConfig;
 import org.openremote.container.web.WebApplication;
 import org.openremote.container.web.WebService;
+import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.datapoint.AssetPredictedDatapointService;
 import org.openremote.model.Container;
@@ -77,7 +77,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
-import static org.openremote.container.web.WebService.*;
+import static org.openremote.container.web.WebService.getStandardProviders;
 import static org.openremote.container.web.WebTargetBuilder.createClient;
 import static org.openremote.model.syslog.SyslogCategory.API;
 
@@ -238,35 +238,41 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     @Override
     public void notifyNewIncomingMessage(IncomingUftpMessage<? extends PayloadMessageType> message) {
-        LOG.fine("Received message: " + message);
+        LOG.info("Received message with conversation ID: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
         var messageType = message.payloadMessage().getClass();
 
         if (FlexRequest.class.isAssignableFrom(messageType)) {
             var flexRequest = (FlexRequest) message.payloadMessage();
-            LOG.fine("Processing FlexRequest: " + flexRequest);
+            LOG.fine("Processing FlexRequest: " + flexRequest.getConversationID());
             handleFlexRequestMessage(message.sender(), flexRequest);
-            LOG.fine("Finished processing FlexRequest: " + flexRequest);
+            LOG.fine("Finished processing FlexRequest: " + flexRequest.getConversationID());
         } else if (FlexOfferResponse.class.isAssignableFrom(messageType)) {
             var flexOfferResponse = (FlexOfferResponse) message.payloadMessage();
-            LOG.fine("Processing FlexOfferResponse: " + flexOfferResponse);
+            LOG.fine("Processing FlexOfferResponse: " + flexOfferResponse.getConversationID());
             handleFlexOfferResponseMessage(message.sender(), flexOfferResponse);
-            LOG.fine("Finished processing FlexOfferResponse: " + flexOfferResponse);
+            LOG.fine("Finished processing FlexOfferResponse: " + flexOfferResponse.getConversationID());
         } else if (FlexOrder.class.isAssignableFrom(messageType)) {
             var flexOrder = (FlexOrder) message.payloadMessage();
-            LOG.fine("Processing FlexOrder: " + flexOrder);
+            LOG.fine("Processing FlexOrder: " + flexOrder.getConversationID());
             handleFlexOrderMessage(message.sender(), flexOrder);
-            LOG.fine("Finished processing FlexOrder: " + flexOrder);
+            LOG.fine("Finished processing FlexOrder: " + flexOrder.getConversationID());
+        } else {
+            LOG.warning("Received unknown message type: " + messageType.getSimpleName());
         }
+        LOG.info("Finished processing message with conversation ID: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
     }
 
     @Override
     public void notifyNewOutgoingMessage(OutgoingUftpMessage<? extends PayloadMessageType> message) {
-        LOG.fine("Notifying message: " + message);
+        LOG.info("Sending message: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
         try {
-            LOG.fine("Sending message: " + message);
             if (message.payloadMessage() instanceof FlexRequestResponse ||
                     message.payloadMessage() instanceof FlexOffer ||
                     message.payloadMessage() instanceof FlexOrderResponse) {
+
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine("Content to send: " + serializer.toXml(message.payloadMessage()));
+                }
 
                 String recipientDomain = message.payloadMessage().getRecipientDomain();
                 uftpSendMessageService.attemptToSendMessage(
@@ -278,7 +284,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                         )
                 );
             }
-            LOG.fine("Finished sending message: " + message);
+            LOG.fine("Finished sending message: " + message.payloadMessage().getConversationID());
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to send message", e);
         }
@@ -312,7 +318,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     }
 
     protected void handleFlexRequestMessage(UftpParticipant participant, FlexRequest flexRequest) {
-        LOG.fine("Received Flex Request: " + flexRequest);
+        LOG.fine("Received Flex Request: " + flexRequest.getConversationID());
         int year = flexRequest.getPeriod().getYear();
         int month = flexRequest.getPeriod().getMonthValue();
         int day = flexRequest.getPeriod().getDayOfMonth();
@@ -324,6 +330,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             LocalTime start = FlexRequestISPTypeHelper.getISPStart(flexRequestISPType.getStart(), year, month, day, flexRequest.getTimeZone());
             double importMax = flexRequestISPType.getMaxPower() == 0L ? 0 : (double) flexRequestISPType.getMaxPower() / 1000.0F;
             double exportMax = flexRequestISPType.getMinPower() == 0L ? 0 : (double) Math.abs(flexRequestISPType.getMinPower()) / 1000.0F;
+            LOG.fine("importMax:" + importMax + " exportMax:" + exportMax);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.POWER_MAXIMUM_FLEX_REQUEST.getName(), exportMax);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.POWER_MINIMUM_FLEX_REQUEST.getName(), exportMax);
 
@@ -343,14 +350,14 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected void handleFlexOfferResponseMessage(UftpParticipant participant, FlexOfferResponse flexOfferResponse) {
         // Handle the response to our FlexOffer
         if (flexOfferResponse.getResult() == AcceptedRejectedType.ACCEPTED) {
-            LOG.info("FlexOffer accepted: " + flexOfferResponse.getFlexOfferMessageID());
+            LOG.info("FlexOffer accepted: " + flexOfferResponse.getConversationID());
         } else {
-            LOG.warning("FlexOffer rejected: " + flexOfferResponse.getFlexOfferMessageID());
+            LOG.warning("FlexOffer rejected: " + flexOfferResponse.getConversationID());
         }
     }
 
     protected void handleFlexOrderMessage(UftpParticipant participant, FlexOrder flexOrder) {
-        LOG.info("Received FlexOrder for FlexOffer: " + flexOrder.getFlexOfferMessageID());
+        LOG.fine("Received FlexOrder for FlexOffer: " + flexOrder.getConversationID());
 
         int year = flexOrder.getPeriod().getYear();
         int month = flexOrder.getPeriod().getMonthValue();
@@ -363,6 +370,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             FlexOrderISPType flexOrderISPType = flexOrder.getISPS().get(i);
             LocalTime start = FlexRequestISPTypeHelper.getISPStart(flexOrderISPType.getStart(), year, month, day, flexOrder.getTimeZone());
             double power = flexOrderISPType.getPower() / 1000.0F;
+            LOG.fine("power:" + power);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.CURRENT_POWER_FLEX_REQUEST.getName(), power);
 
             // Correct usage of ZoneId.of instead of ZoneOffset.of
@@ -489,6 +497,9 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         try {
             SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
             String payloadXml = cryptoService.verifySignedMessage(signedMessage);
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine("Received message:" + payloadXml);
+            }
             PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
             var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
             notifyNewIncomingMessage(incomingUftpMessage);

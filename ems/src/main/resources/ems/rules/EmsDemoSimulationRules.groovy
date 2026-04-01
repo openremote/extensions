@@ -1,7 +1,7 @@
 package ems.rules
 
-import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset
 import org.openremote.container.persistence.PersistenceService
+import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset
 import org.openremote.manager.rules.RulesBuilder
 import org.openremote.model.query.AssetQuery
 import org.openremote.model.rules.Assets
@@ -12,6 +12,7 @@ import java.sql.*
 import java.text.SimpleDateFormat
 import java.time.*
 import java.util.Date
+import java.util.concurrent.ThreadLocalRandom
 import java.util.logging.Logger
 
 import static java.lang.Math.PI
@@ -30,6 +31,8 @@ String energyOptimisationAssetId = "setId1"
 // Set values:
 String powerConsumptionConstantStr = "setValue1"
 String powerConsumptionProfileNumber = "setValue2"
+String powerFluctuationsStr = "setValue3"
+
 boolean variableTariffs = false
 
 // Set tariff prices:
@@ -41,6 +44,31 @@ List<Double> tariffPricesImport = [
         89.25, 105.37, 117.00, 118.03, 114.30, 118.03, 124.67, 127.00, 121.07, 125.27, 127.28, 133.14, 132.27, 136.92, 158.07, 158.07,
         158.07, 133.16, 127.00, 124.96, 129.89, 126.20, 118.28, 115.00, 118.03, 116.65, 115.20, 109.62, 114.01, 112.65, 104.37, 102.97
 ]
+
+//List<Double> tariffPricesImport = [100.0, 100.0, 100.0, 100.0, // 0
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0, // 4
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0, // 8
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0, // 12
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0, // 16
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0, // 20
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0,
+//                                   100.0, 100.0, 100.0, 100.0]
 
 // Set the link forecast ["inputAssetId", "inputAttributeName", "outputAssetId", "outputAttributeName", "+/-"] here:
 def attributes = [
@@ -57,8 +85,8 @@ def inputAttributes = [
 // Set the sum forecasts ["outputAssetName", "outputAttributeName" , "outputAssetId"] here:
 def outputAttribute = ["sumOutputAssetName", "sumOutputAttributeName", "sumOutputAssetId"]
 
-// Set forecast period in minutes here:
-long forecastPeriodMinutes = 7 * 24 * 60
+// Set forecast period in days here:
+long forecastPeriodDays = 7
 
 // Set desired forecast interval here:
 long forecastIntervalMinutes = 15
@@ -67,14 +95,14 @@ long forecastIntervalMinutes = 15
 
 
 Double powerConsumptionConstant = powerConsumptionConstantStr.toDouble()
+double powerFluctuation = powerFluctuationsStr.toDouble()
 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
 // Time triggers for rules
 long rulesStartTimeMillis = System.currentTimeMillis()
 long previousTimeMillisRule1 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000)
-// TODO: change to trigger on forecast update when forecast update timestamp attribute is added
-long previousTimeMillisRule3 = rulesStartTimeMillis - rulesStartTimeMillis % (5 * 60 * 1000) + (6 * 60 * 1000)
-long previousTimeMillisRule4 = rulesStartTimeMillis - rulesStartTimeMillis % (5 * 60 * 1000) + (6 * 60 * 1000 + 15 * 1000)
+long previousTimeMillisRule3 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000)
+long previousTimeMillisRule4 = rulesStartTimeMillis - rulesStartTimeMillis % (1 * 60 * 1000) + (1 * 60 * 1000 + 15 * 1000)
 long timestampMillisPrevious = rulesStartTimeMillis
 
 // Date triggers for rules
@@ -88,16 +116,15 @@ rules.add()
         .priority(1)
         .name("Simulate power data-points rule")
         .when({ facts ->
-            boolean triggerRule = false
-            long currentMillis = facts.clock.currentTimeMillis
+            long currentTimeMillis = facts.clock.currentTimeMillis
 
-            // Trigger rule every 1 minute = 60000 ms
-            if (currentMillis > previousTimeMillisRule1) {
-                previousTimeMillisRule1 += 60000
-                triggerRule = true
+            // Trigger rule every 1 minutes
+            if (currentTimeMillis > previousTimeMillisRule1) {
+                previousTimeMillisRule1 += (1 * 60 * 1000)
+                return true
             }
 
-            return triggerRule
+            return false
         })
         .then({ facts ->
             // Get power set-point for each battery
@@ -141,7 +168,7 @@ rules.add()
                         energyLevelNew = (Math.round(energyLevelPercentage * energyCapacity * 10)) / 1000
                     } else {
                         def timeIntervalMillis = timestampMillisCurrent - timestampMillisPrevious
-                        double energyChange = powerSetpoint * (timeIntervalMillis / 3600000)
+                        double energyChange = powerSetpoint * (timeIntervalMillis / 3600000.0)
                         energyLevelNew = (Math.round((energyLevel + energyChange) * 1000.0)) / 1000
                     }
 
@@ -188,7 +215,17 @@ rules.add()
                     powerConsumption = powerConsumptionConstant
             }
 
-            def powerFlexible = (powerSetpointBatteries.collect { it.value.orElse(0.0) }.sum() ?: 0.0) as Double
+            // Add random fluctuations to power consumption
+            double powerNoise = 0.0
+
+            if (powerFluctuation > 0) {
+                double powerFluctuationHalf = powerFluctuation / 2
+                powerNoise = Math.round(ThreadLocalRandom.current().nextDouble(-powerFluctuationHalf, powerFluctuationHalf) * 1000.0) / 1000.0
+            }
+
+            powerConsumption = powerConsumption + powerNoise
+
+            def powerFlexible = (powerSetpointBatteries.collect { it.value.orElse(0.0) }.sum() ?: 0.0) as double
             def powerNet = powerConsumption + powerFlexible
 
             // Update power attributes
@@ -198,9 +235,9 @@ rules.add()
                 }
             }
 
-            assets.dispatch(energyOptimisationAssetId, "powerConsumption", powerConsumption)
-            assets.dispatch(energyOptimisationAssetId, "powerFlexible", powerFlexible)
-            assets.dispatch(energyOptimisationAssetId, "powerNet", powerNet)
+            assets.dispatch(energyOptimisationAssetId, "powerConsumption", Math.round((double) (powerConsumption * 1000.0)) / 1000.0)
+            assets.dispatch(energyOptimisationAssetId, "powerFlexible", Math.round((double) (powerFlexible * 1000.0)) / 1000.0)
+            assets.dispatch(energyOptimisationAssetId, "powerNet", Math.round((double) (powerNet * 1000.0)) / 1000.0)
         })
 
 rules.add()
@@ -233,11 +270,11 @@ rules.add()
 
             TreeMap<String, Double> datePowerConsumptionMapForecast = new TreeMap<>()
 
-            // Create forecast data-points for yesterday, today and 2 days into the future
-            for (int i = -1; i <= 2; i++) {
+            // Create forecast data-points
+            for (int i = -1; i <= forecastPeriodDays; i++) {
                 for (int j = 0; j < tariffPricesImport.size(); j++) {
                     def startOfDay = dateCurrent.atStartOfDay(zoneId).plusDays(i) as ZonedDateTime
-                    long timeMillis = startOfDay.toInstant().toEpochMilli() + j * intervalMillis - 10 * intervalMillis
+                    long timeMillis = startOfDay.toInstant().toEpochMilli() + j * intervalMillis //- 10 * intervalMillis
                     def key = sdf.format(new Date(timeMillis)) as String
 
                     double factor = 1.0
@@ -273,9 +310,9 @@ rules.add()
         .when({ facts ->
             long currentTimeMillis = facts.clock.currentTimeMillis
 
-            // Trigger rule every 5 minutes
+            // Trigger rule every 1 minutes
             if (currentTimeMillis > previousTimeMillisRule3) {
-                previousTimeMillisRule3 += (5 * 60 * 1000)
+                previousTimeMillisRule3 += (1 * 60 * 1000)
                 return true
             }
 
@@ -285,8 +322,8 @@ rules.add()
             long currentTimeMillis = facts.clock.currentTimeMillis
 
             // Forecast period
-            long startTimeMillis = currentTimeMillis
-            long endTimeMillis = currentTimeMillis + forecastPeriodMinutes * 60 * 1000
+            long startTimeMillis = currentTimeMillis - currentTimeMillis % (forecastIntervalMinutes * 60 * 1000)
+            long endTimeMillis = startTimeMillis - startTimeMillis % (24 * 60 * 60000) + ((forecastPeriodDays + 1) * 24 * 60 * 60000)
 
             // Convert time in milliseconds to a string timestamp
             String startDateTimeStr = sdf.format(new Date(startTimeMillis))
@@ -325,9 +362,9 @@ rules.add()
         .when({ facts ->
             long currentTimeMillis = facts.clock.currentTimeMillis
 
-            // Trigger rule every 5 minutes
+            // Trigger rule every 1 minutes
             if (currentTimeMillis > previousTimeMillisRule4) {
-                previousTimeMillisRule4 += (5 * 60 * 1000)
+                previousTimeMillisRule4 += (1 * 60 * 1000)
                 return true
             }
 
@@ -339,16 +376,16 @@ rules.add()
             // Interpolation interval in milliseconds
             long intervalMillis = forecastIntervalMinutes * 60 * 1000
 
-            // Forecast period in milliseconds
-            long periodMillis = forecastPeriodMinutes * 60 * 1000
-
+            // Forecast period
             long startTimeMillis = currentTimeMillis - intervalMillis
-            long endTimeMillis = currentTimeMillis + intervalMillis + periodMillis
+            long endTimeMillis = startTimeMillis - startTimeMillis % (24 * 60 * 60000) + ((forecastPeriodDays + 1) * 24 * 60 * 60000)
 
-            sumForecasts(inputAttributes, outputAttribute, currentTimeMillis, intervalMillis, startTimeMillis, endTimeMillis)
+            boolean updateOnlyFutureDatapoints = false
+
+            sumForecasts(inputAttributes, outputAttribute, currentTimeMillis, intervalMillis, startTimeMillis, endTimeMillis, updateOnlyFutureDatapoints)
         })
 
-private void sumForecasts(List<List<String>> inputAttributes, List<String> outputAttribute, long currentTimeMillis, long intervalMillis, long startTimeMillis, long endTimeMillis) {
+private void sumForecasts(List<List<String>> inputAttributes, List<String> outputAttribute, long currentTimeMillis, long intervalMillis, long startTimeMillis, long endTimeMillis, boolean updateOnlyFutureDatapoints) {
     // Map with all the input forecasts for summation
     Map<String, TreeMap<String, Double>> interpolatedForecastsMap = new HashMap()
 
@@ -430,8 +467,7 @@ private void sumForecasts(List<List<String>> inputAttributes, List<String> outpu
     for (String dateTime : dateTimeListGeneral) {
         long timeMillis = sdf.parse(dateTime).getTime()
 
-        // Update only future data points
-        if (timeMillis > currentTimeMillis) {
+        if (!updateOnlyFutureDatapoints || (updateOnlyFutureDatapoints && timeMillis > currentTimeMillis)) {
             List<Double> forecastValueList = new ArrayList()
 
             // Find all values per date-time
