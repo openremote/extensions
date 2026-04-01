@@ -99,15 +99,15 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
-    public static final AttributeDescriptor<Long> REDISPATCH_START_TIME = new AttributeDescriptor<>("redispatchStartTime", ValueType.LONG,
+    public static final AttributeDescriptor<Long> REDISPATCH_START_TIME = new AttributeDescriptor<>("redispatchStartTime", ValueType.TIMESTAMP,
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
-    public static final AttributeDescriptor<Long> REDISPATCH_END_TIME = new AttributeDescriptor<>("redispatchEndTime", ValueType.LONG,
+    public static final AttributeDescriptor<Long> REDISPATCH_END_TIME = new AttributeDescriptor<>("redispatchEndTime", ValueType.TIMESTAMP,
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
-    public static final AttributeDescriptor<Long> REDISPATCH_BID_VALIDITY_END = new AttributeDescriptor<>("redispatchBidValidityEnd", ValueType.LONG,
+    public static final AttributeDescriptor<Long> REDISPATCH_BID_VALIDITY_END = new AttributeDescriptor<>("redispatchBidValidityEnd", ValueType.TIMESTAMP,
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
@@ -130,7 +130,7 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
-    public static final AttributeDescriptor<Long> REDISPATCH_LAST_POLL = new AttributeDescriptor<>("redispatchLastPoll", ValueType.LONG,
+    public static final AttributeDescriptor<Long> REDISPATCH_LAST_POLL = new AttributeDescriptor<>("redispatchLastPoll", ValueType.TIMESTAMP,
             new MetaItem<>(MetaItemType.READ_ONLY)
     );
 
