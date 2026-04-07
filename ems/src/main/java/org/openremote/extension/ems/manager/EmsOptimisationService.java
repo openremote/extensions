@@ -460,9 +460,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         // Run selected optimisation method
         if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_METHOD.getName())) {
             if (energyOptimisationAssetsMap.containsKey(assetId)) {
+                // Reset advanced settings attributes field
+                services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES, null), getClass().getSimpleName());
+
                 String optimisationMethodName = attributeEvent.getValue().orElse(EmsEnergyOptimisationAsset.OptimisationMethodValueType.None).toString();
                 OptimisationMethodsLoader optimisationMethodsLoader = new OptimisationMethodsLoader();
-                optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services);
+                services.getScheduledExecutorService().schedule(() -> optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services), 1, TimeUnit.SECONDS);
             }
         }
     }
