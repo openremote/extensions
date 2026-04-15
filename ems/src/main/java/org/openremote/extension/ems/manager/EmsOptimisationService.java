@@ -552,6 +552,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                     GOPACSRedispatchHandler handler = gopacsRedispatchHandlerMap.get(contractedEan);
                     if (handler != null) {
                         handler.handleConfirmation();
+                    } else {
+                        LOG.warning("No redispatch handler running for EAN '" + contractedEan
+                                + "' while processing bid confirmation for asset '" + gopacsAsset.getId() + "'");
+                        services.getAssetProcessingService().sendAttributeEvent(
+                                new AttributeEvent(gopacsAsset.getId(), EmsGOPACSAsset.REDISPATCH_CONFIRM_BID.getName(), false),
+                                getClass().getSimpleName());
                     }
                 });
             }

@@ -145,7 +145,6 @@
         "attributes": {
           "include": [
             "contractedEAN",
-            "postalCode",
             "redispatchEnabled"
           ]
         }

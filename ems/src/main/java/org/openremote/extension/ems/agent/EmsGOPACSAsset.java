@@ -78,9 +78,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
 
     // --- Redispatch configuration attributes ---
 
-    public static final AttributeDescriptor<String> POSTAL_CODE = new AttributeDescriptor<>("postalCode", ValueType.TEXT
-    );
-
     public static final AttributeDescriptor<Boolean> REDISPATCH_ENABLED = new AttributeDescriptor<>("redispatchEnabled", ValueType.BOOLEAN
     );
 
@@ -190,10 +187,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
 
     // --- Redispatch getters ---
 
-    public Optional<String> getPostalCode() {
-        return getAttributes().getValue(POSTAL_CODE);
-    }
-
     public Optional<Boolean> getRedispatchEnabled() {
         return getAttributes().getValue(REDISPATCH_ENABLED);
     }
@@ -215,11 +208,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
     }
 
     // --- Redispatch setters ---
-
-    public EmsGOPACSAsset setPostalCode(String postalCode) {
-        getAttributes().getOrCreate(POSTAL_CODE).setValue(postalCode);
-        return this;
-    }
 
     public EmsGOPACSAsset setRedispatchEnabled(Boolean enabled) {
         getAttributes().getOrCreate(REDISPATCH_ENABLED).setValue(enabled);

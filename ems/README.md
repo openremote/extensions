@@ -146,7 +146,6 @@ The Redispatch flow is different from the UFTP flow:
 
 On the **EMS GOPACS Asset**, configure:
 
-- **`postalCode`** — Postal code to filter announcements for your area (optional; if empty, all announcements are fetched and filtered by EAN effectivity)
 - **`redispatchEnabled`** — Set to `true` to start polling for announcements
 
 ### Operator Workflow (Pilot Phase)

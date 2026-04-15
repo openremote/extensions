@@ -1,7 +1,4 @@
 -- Add redispatch configuration attributes to existing EmsGOPACSAsset instances
-SELECT a.id, ADD_ATTRIBUTE(a, 'postalCode', 'text', null, now(), '{}'::jsonb)
-FROM asset a WHERE a.type = 'EmsGOPACSAsset';
-
 SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchEnabled', 'boolean', null, now(), '{}'::jsonb)
 FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 

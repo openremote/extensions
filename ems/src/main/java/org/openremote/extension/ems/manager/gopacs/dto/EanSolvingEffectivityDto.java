@@ -26,7 +26,7 @@ import java.util.Set;
 
 /**
  * DTO for the GOPACS EAN solving effectivity response from
- * /publicapi/announcements/{id}/eansolvingeffectivity.
+ * /public-api/1.0/announcements/{id}/eansolvingeffectivity.
  * <p>
  * The {@code eansByCategory} maps effectivity category names to sets of EANs
  * that fall into that category for the given announcement.
