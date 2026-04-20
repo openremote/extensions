@@ -382,10 +382,10 @@ rules.add()
 
             boolean updateOnlyFutureDatapoints = false
 
-            sumForecasts(inputAttributes, outputAttribute, currentTimeMillis, intervalMillis, startTimeMillis, endTimeMillis, updateOnlyFutureDatapoints)
+            sumForecasts(inputAttributes, outputAttribute, currentTimeMillis, intervalMillis, startTimeMillis, endTimeMillis, 3, updateOnlyFutureDatapoints)
         })
 
-private void sumForecasts(List<List<String>> inputAttributes, List<String> outputAttribute, long currentTimeMillis, long intervalMillis, long startTimeMillis, long endTimeMillis, boolean updateOnlyFutureDatapoints) {
+private void sumForecasts(List<List<String>> inputAttributes, List<String> outputAttribute, long currentTimeMillis, long intervalMillis, long startTimeMillis, long endTimeMillis, int decimals, boolean updateOnlyFutureDatapoints) {
     // Map with all the input forecasts for summation
     Map<String, TreeMap<String, Double>> interpolatedForecastsMap = new HashMap()
 
@@ -483,7 +483,9 @@ private void sumForecasts(List<List<String>> inputAttributes, List<String> outpu
             // Sum the values per date-time
             if (!forecastValueList.isEmpty()) {
                 def forecastValueSum = forecastValueList.sum() as double
-                outputForecast.put(dateTime, forecastValueSum)
+                def factor = Math.pow(10, decimals)
+                def forecastValueSumRounded = Math.round(forecastValueSum * factor) / factor
+                outputForecast.put(dateTime, forecastValueSumRounded)
             }
         }
     }
