@@ -463,6 +463,7 @@ private void sumForecasts(List<List<String>> inputAttributes, List<String> outpu
 
     // Calculate output forecast
     TreeMap<String, Double> outputForecast = new TreeMap<>()
+    def factor = Math.pow(10, decimals)
 
     for (String dateTime : dateTimeListGeneral) {
         long timeMillis = sdf.parse(dateTime).getTime()
@@ -483,7 +484,6 @@ private void sumForecasts(List<List<String>> inputAttributes, List<String> outpu
             // Sum the values per date-time
             if (!forecastValueList.isEmpty()) {
                 def forecastValueSum = forecastValueList.sum() as double
-                def factor = Math.pow(10, decimals)
                 def forecastValueSumRounded = Math.round(forecastValueSum * factor) / factor
                 outputForecast.put(dateTime, forecastValueSumRounded)
             }
