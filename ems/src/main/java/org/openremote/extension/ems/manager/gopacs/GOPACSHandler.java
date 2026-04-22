@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Application;
-import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.lfenergy.shapeshifter.api.*;
@@ -89,7 +88,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     private static final Logger LOG = SyslogCategory.getLogger(API, GOPACSHandler.class);
     public static final String GOPACS_PRIVATE_KEY_FILE = "GOPACS_PRIVATE_KEY_FILE";
     public static final String GOPACS_PARTICIPANT_URL = "GOPACS_PARTICIPANT_URL";
-    public static final String DEFAULT_GOPACS_PARTICIPANT_URL = "https://clc-message-broker.gopacs-services.eu";
+    public static final String DEFAULT_GOPACS_PARTICIPANT_URL = "https://api.gopacs-services.eu";
     public static final String GOPACS_OAUTH2_URL = "GOPACS_OAUTH2_URL";
     public static final String DEFAULT_GOPACS_OAUTH2_URL = "https://auth.gopacs-services.eu/realms/gopacs/protocol/openid-connect/token";
     public static final String GOPACS_CLIENT_ID = "GOPACS_CLIENT_ID";
@@ -293,8 +292,11 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     @Override
     public String getAuthorizationHeader(UftpParticipant uftpParticipant) {
         LOG.fine("Getting authorization header for: " + uftpParticipant);
+        return fetchBearerToken();
+    }
+
+    protected String fetchBearerToken() {
         try {
-            // Perform OAuth2 client credentials flow
             try (Response response = gopacsAuthResource.getAccessToken(
                     "client_credentials",
                     this.clientId,
@@ -303,13 +305,10 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                 if (response.getStatus() == 200) {
                     String responseBody = response.readEntity(String.class);
                     OAuth2TokenResponse tokenResponse = objectMapper.readValue(responseBody, OAuth2TokenResponse.class);
-
-                    // Return Bearer token header
                     return "Bearer " + tokenResponse.getAccessToken();
-                } else {
-                    LOG.warning("OAuth2 token request failed with status: " + response.getStatus());
-                    return "";
                 }
+                LOG.warning("OAuth2 token request failed with status: " + response.getStatus());
+                return "";
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to obtain OAuth2 access token", e);
@@ -545,23 +544,25 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public Optional<UftpParticipantInformation> getParticipantInformation(USEFRoleType role, String domain) {
         if (participants.containsKey(domain)) {
             return Optional.of(participants.get(domain));
-        } else {
-            try (Response response = gopacsAddressBookResource.fetchParticipants(contractedEAN)) {
-                if (response != null && response.getStatus() == 200) {
-                    List<UftpParticipantInformation> participants = response.readEntity(new GenericType<>() {
-                    });
-                    for (UftpParticipantInformation participant : participants) {
-                        this.participants.put(participant.domain(), new UftpParticipantInformation(participant.domain(), participant.publicKey(), participant.endpoint(), true));
-                    }
-                    return participants.stream().filter(p -> p.domain().equals(domain)).findFirst();
-                }
-            } catch (Exception e) {
-                if (e.getCause() != null && e.getCause() instanceof IOException) {
-                    LOG.log(Level.SEVERE, "Exception when requesting participant information", e.getCause());
-                } else {
-                    LOG.log(Level.SEVERE, "Exception when requesting participant information", e);
-                }
+        }
+
+        String authorization = fetchBearerToken();
+        try (Response response = gopacsAddressBookResource.fetchParticipantByDomain(authorization, domain)) {
+            int status = response != null ? response.getStatus() : -1;
+            if (status == 200) {
+                ParticipantView view = response.readEntity(ParticipantView.class);
+                UftpParticipantInformation info = new UftpParticipantInformation(view.domain(), view.publicKey(), null, true);
+                participants.put(view.domain(), info);
+                return Optional.of(info);
             }
+            if (status == 404) {
+                LOG.fine("Participant not found in GOPACS address book: " + domain);
+            } else {
+                LOG.severe("Unexpected status " + status + " when requesting participant information for " + domain);
+            }
+        } catch (Exception e) {
+            Throwable cause = e.getCause() instanceof IOException ? e.getCause() : e;
+            LOG.log(Level.SEVERE, "Exception when requesting participant information for " + domain, cause);
         }
         return Optional.empty();
     }
