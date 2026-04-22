@@ -37,7 +37,7 @@ Swagger documentation:
 Out of scope (follow-up if needed):
 - Per-ContractID / per-role handler registration using `GET /participants/contracts/{contractId}/roles/{uftpRole}`.
 - WireMock tests for the V3 lookup — `GOPACSHandler` currently has no unit tests at all, and adding test infrastructure is a larger separate piece of work.
-- Upgrading `shapeshifter-core` from `3.2.2` to `3.3.0`. Shapeshifter is not involved in the V2/V3 migration (the participants API is a GOPACS-broker-specific REST API, not part of the UFTP protocol). A library bump can be a separate PR if desired.
+- Upgrading `shapeshifter-core` from `3.2.2` to `3.5.0`. Shapeshifter is not involved in the V2/V3 migration itself (the participants API is a GOPACS-broker-specific REST API, not part of the UFTP protocol). Verified against the 3.5.0 sources: `UftpParticipantInformation`, `ParticipantResolutionService`, and `UftpSendMessageService.doSend()` are unchanged vs. 3.2.2 — so the version bump would not fix the outbound-send defect described below either. A library bump can be a separate PR if desired.
 
 ## Deployment note
 
@@ -54,9 +54,38 @@ Any deployment that overrides `GOPACS_PARTICIPANT_URL` (for example, pinning acc
 - [ ] 404 from the V3 endpoint for an unknown domain produces a FINE-level log, not an error.
 - [ ] Works in both acceptance (`api.acc.gopacs-services.eu`) and production (`api.gopacs-services.eu`) via the `GOPACS_PARTICIPANT_URL` override.
 
-## Open risk to validate during smoke test
+## Known follow-up: outbound messaging needs a broker-URL fallback
 
-V3's `ParticipantView` no longer carries an `endpoint` field, so the cached `UftpParticipantInformation` stores `endpoint=null`. Shapeshifter's `UftpSendMessageService` reads the endpoint when sending outbound messages. Needs confirmation during the acceptance smoke test that outgoing `FlexOffer` / `FlexOrderResponse` messaging still works with `endpoint=null`; if not, we'll need a follow-up to either introduce a configured broker URL fallback or route outbound messages differently.
+V3's `ParticipantView` no longer carries an `endpoint` field, so the cached `UftpParticipantInformation` stores `endpoint=null`. Reading `shapeshifter-core` 3.2.2 (and confirmed identical in 3.5.0), the outbound send path is:
+
+1. `GOPACSHandler.notifyNewOutgoingMessage` → `UftpSendMessageService.attemptToSendMessage`
+2. `UftpSendMessageService.doSend` (line 124–133 in 3.2.2, 135–144 in 3.5.0):
+   ```java
+   UftpParticipantInformation participantInformation = participantService.getParticipantInformation(details.recipient());
+   String url = participantInformation.endpoint();     // null after this migration
+   ...
+   send(signedXml, url, additionalHeaders, MAX_FOLLOW_REDIRECTS);
+   ```
+3. `UftpSendMessageService.send(...)`:
+   ```java
+   var requestBuilder = HttpRequest.newBuilder().uri(new URI(url)) ...   // new URI(null) → NullPointerException
+   ```
+
+The surrounding `try/catch` in `send` catches `URISyntaxException | IllegalArgumentException | IOException | InterruptedException`. It does not catch `NullPointerException`, so the NPE escapes `attemptToSendMessage` and is swallowed only by `GOPACSHandler.notifyNewOutgoingMessage`'s generic `catch (Exception e)` as a SEVERE log.
+
+**Practical impact:** every outbound `FlexOffer`, `FlexRequestResponse`, and `FlexOrderResponse` will fail on the first send attempt after this PR is deployed. Inbound messaging (signature verification, asset updates) is unaffected.
+
+**Why V2 worked:** V2 returned a per-participant `endpoint` URL in the address-book response. In a broker model all of those almost certainly pointed at the GOPACS broker itself (the broker forwards to the real DSO backend); the V3 spec removing the field is consistent with "stop pretending per-participant endpoints exist, just POST to the broker".
+
+**Proposed follow-up fix** (a separate small PR):
+1. Add a new config `GOPACS_BROKER_URL` to `GOPACSHandler`, with a sensible default (the broker URL used for message submission — to be confirmed from the GOPACS testing documentation or by asking `servicedesk@gopacs.eu`).
+2. Pass this value as the `endpoint` argument when constructing `UftpParticipantInformation` in `getParticipantInformation`.
+3. Verify against acceptance by sending a `FlexOffer` in response to a test `FlexRequest`.
+
+Options to determine the correct broker URL before writing that PR:
+- Check the GOPACS testing doc linked from `ems/README.md` (`GOPACS-Testing-receiving-and-sending-flex-messages-by-UFTP-testing-functionality-04-12-2025.pdf`) — it likely names the submit endpoint.
+- Email `servicedesk@gopacs.eu`: "V3 ParticipantView drops the `endpoint` field; which URL should outbound UFTP messages be POSTed to?"
+- While V2 is still live, hit the current V2 endpoint and inspect the `endpoint` field returned per DSO; if all DSOs share a URL, that is the broker URL.
 
 ## Timeline
 
