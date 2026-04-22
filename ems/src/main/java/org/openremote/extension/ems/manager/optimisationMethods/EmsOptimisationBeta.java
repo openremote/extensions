@@ -63,7 +63,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     private final String POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME = "powerLimitMaximumFluctuationMargin";
     private final String POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME = "powerLimitMinimumFluctuationMargin";
 
-    String[][] advancedSettingsAttributesInfo = {
+    private final String[][] advancedSettingsAttributesInfo = {
             {POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()},
             {POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()}
     };
@@ -695,7 +695,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     useDayAheadTariffs = dayAheadAsset.getUseTariffDayAheadForecasts().orElse(false);
                 }
 
-                // Get the tariff forecasts from energy optimisation asset for 1 week (Note: timestamps in tariff list go from oldest to newest)
+                // Get the tariff forecasts from energy optimisation asset for 1 week, timestamps are ordered from newest to oldest (descending order)
                 List<ValueDatapoint<?>> tariffExportDatapoints = getTariffDatapoints(energyOptimisationAsset, EmsEnergyOptimisationAsset.TARIFF_EXPORT.getName(), services);
                 List<ValueDatapoint<?>> tariffImportDatapoints = getTariffDatapoints(energyOptimisationAsset, EmsEnergyOptimisationAsset.TARIFF_IMPORT.getName(), services);
 
@@ -976,7 +976,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     }
 
     private Map<String, ChargeDischarge> batteryCalculatePowerFlexibleAvailable(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
-        HashMap<String, ChargeDischarge> powerFlexibleAvailable = new HashMap<>();
+        Map<String, ChargeDischarge> powerFlexibleAvailable = new HashMap<>();
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
             boolean allowCharging = electricityBatteryAsset.getAllowCharging().orElse(false);
@@ -1068,9 +1068,9 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         double powerLimitMinimumFluctuation = calculatePowerFluctuationMargin(energyOptimisationAsset, powerLimitMinimumProfileTotal, "min");
 
         if (powerLimitMaximumVirtual != null && (powerNetVirtualNew + powerLimitMaximumFluctuation) > powerLimitMaximumVirtual) {
-            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMaximumVirtual, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
+            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMaximumVirtual, electricityBatteryAssets, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
         } else if (powerLimitMinimumVirtual != null && (powerNetVirtualNew - powerLimitMinimumFluctuation) < powerLimitMinimumVirtual) {
-            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMinimumVirtual, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
+            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMinimumVirtual, electricityBatteryAssets, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
         } else {
             powerSetpointsNew = powerSetpointsNewWithoutLimits;
         }
@@ -1090,26 +1090,25 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         return powerSetpointsNew;
     }
 
-    private Map<String, Double> batteryCalculatePowerSetpointsOnLimitBreach(double power, double powerLimitVirtual, Map<String, ChargeDischarge> powerFlexibleAvailable, Map<String, Double> powerSetpointsNewWithoutLimits) {
+    private Map<String, Double> batteryCalculatePowerSetpointsOnLimitBreach(double power, double powerLimitVirtual, List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, ChargeDischarge> powerFlexibleAvailable, Map<String, Double> powerSetpointsNewWithoutLimits) {
         Map<String, Double> powerSetpointsNew = new HashMap<>();
-
         double powerChangeNeeded = round(power - powerLimitVirtual, 3);
 
-        for (Map.Entry<String, ChargeDischarge> entry : powerFlexibleAvailable.entrySet()) {
-            String electricityBatteryAssetId = entry.getKey();
+        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
+            String electricityBatteryAssetId = electricityBatteryAsset.getId();
 
-            double dischargeAvailableLimit = entry.getValue().discharge;
-            double chargeAvailableLimit = entry.getValue().charge;
+            double chargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).charge;
+            double dischargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).discharge;
             double powerSetpointNewWithoutLimits = powerSetpointsNewWithoutLimits.getOrDefault(electricityBatteryAssetId, 0.0);
-            double dischargeAvailableTotal = dischargeAvailableLimit - powerSetpointNewWithoutLimits;
-            double chargeAvailableTotal = chargeAvailableLimit - powerSetpointNewWithoutLimits;
+            double chargePowerAvailableTotal = chargePowerAvailable - powerSetpointNewWithoutLimits;
+            double dischargePowerAvailableTotal = dischargePowerAvailable - powerSetpointNewWithoutLimits;
 
             double powerSetpointChange = 0.0;
 
             if (powerChangeNeeded > 0) {
-                powerSetpointChange = Math.max(-powerChangeNeeded, dischargeAvailableTotal);
+                powerSetpointChange = Math.max(-powerChangeNeeded, dischargePowerAvailableTotal);
             } else if (powerChangeNeeded < 0) {
-                powerSetpointChange = Math.min(-powerChangeNeeded, chargeAvailableTotal);
+                powerSetpointChange = Math.min(-powerChangeNeeded, chargePowerAvailableTotal);
             }
 
             powerChangeNeeded = round(powerChangeNeeded + powerSetpointChange, 3);
@@ -1125,8 +1124,9 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         // Find battery power set-points for a system without power limits
         Map<String, Double> powerSetpointsNew = new HashMap<>();
 
+        long intervalMillis = 15 * 60000;
         long endTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long startTimeMillis = endTimeMillis - endTimeMillis % 15 * 60000;
+        long startTimeMillis = endTimeMillis - endTimeMillis % intervalMillis;
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
             String electricityBatteryAssetId = electricityBatteryAsset.getId();
@@ -1353,8 +1353,9 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     private Map<String, Integer> batteryGetEnergyLevelPercentageTargetsCurrent(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Services services) {
         Map<String, Integer> batteryEnergyLevelPercentageTargetsCurrent = new HashMap<>();
 
+        long intervalMillis = 15 * 60000;
         long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long endTimeMillis = currentTimeMillis - currentTimeMillis % (15 * 60000) + (15 * 60000);
+        long endTimeMillis = currentTimeMillis - currentTimeMillis % intervalMillis + intervalMillis;
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
             String batteryAssetId = electricityBatteryAsset.getId();
@@ -1553,7 +1554,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         List<ValueDatapoint<?>> tariffHistoric = services.getAssetDatapointService().queryDatapoints(energyOptimisationAsset.getId(), attributeName, assetDatapointQueryHistoric);
         List<ValueDatapoint<?>> tariffPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), attributeName, assetDatapointQueryPredicted);
 
-        // Combine historic and predicted data-points into one list
+        // Combine historic and predicted data-points, timestamps are ordered from newest to oldest (descending order)
         List<ValueDatapoint<?>> tariffCombined = new ArrayList<>(tariffPredicted);
         tariffCombined.addAll(tariffHistoric);
 
