@@ -157,9 +157,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     private void startOptimisation(String assetId) {
         final Runnable command = () -> {
             try {
-                if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
-                    runOptimisation(assetId);
-                }
+                runOptimisation(assetId);
             } catch (Exception e) {
                 LOG.severe(String.format("assetType='%s', assetId='%s'; Failed to run energy optimisation; Exception: %s", EmsEnergyOptimisationAsset.class.getSimpleName(), assetId, e));
             }
@@ -317,15 +315,16 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
             if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
-                startOptimisation(assetId);
-                LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
+                    LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                    startOptimisation(assetId);
+                }
             } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
                 stopOptimisation(assetId);
                 LOG.info(String.format("%s; Disabled energy optimisation", logPrefix));
             }
             return;
         }
-
 
         // Generate power maximum profile manual input
         if (attributeName.equals(EmsEnergyOptimisationAsset.GENERATE_POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT.getName())) {
