@@ -51,6 +51,7 @@ import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -67,7 +68,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     protected GOPACSHandler.Factory gopacsHandlerFactory;
 
-    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new HashMap<>();
+    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new ConcurrentHashMap<>();
     private final Map<String, Long> energyOptimisationTimersMap = new HashMap<>();
     private final Map<String, GOPACSHandler> gopacsHandlerMap = new HashMap<>();
 
@@ -115,6 +116,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         if (!energyOptimisationAssets.isEmpty()) {
             List<String> enabledEnergyOptimisationAssetIds = energyOptimisationAssets
                     .stream()
+                    .filter(energyOptimisationAsset -> services.getGatewayService().getLocallyRegisteredGatewayId(energyOptimisationAsset.getId(), null) == null)
                     .filter(energyOptimisationAsset -> !energyOptimisationAsset.getOptimisationDisabled().orElse(false))
                     .map(Asset::getId)
                     .toList();
@@ -155,7 +157,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     private void startOptimisation(String assetId) {
         final Runnable command = () -> {
             try {
-                runOptimisation(assetId);
+                if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
+                    runOptimisation(assetId);
+                }
             } catch (Exception e) {
                 LOG.severe(String.format("assetType='%s', assetId='%s'; Failed to run energy optimisation; Exception: %s", EmsEnergyOptimisationAsset.class.getSimpleName(), assetId, e));
             }
