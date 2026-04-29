@@ -94,9 +94,18 @@ public class GOPACSRedispatchHandler {
     protected final String apiKey;
     protected final int pollIntervalMinutes;
 
+    private static final int MAX_RECORDED_ANNOUNCEMENT_IDS = 10_000;
+
     private ScheduledFuture<?> pollingFuture;
     private String lastProcessedAnnouncementId;
-    private final Set<String> recordedAnnouncementIds = new HashSet<>();
+    // Bounded LRU set so a long-running handler does not accumulate every announcement ID it has ever seen.
+    private final Set<String> recordedAnnouncementIds = Collections.newSetFromMap(
+            new LinkedHashMap<>(16, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > MAX_RECORDED_ANNOUNCEMENT_IDS;
+                }
+            });
 
     public static class Factory {
         protected Container container;
@@ -192,7 +201,13 @@ public class GOPACSRedispatchHandler {
 
         // Fetch announcements
         List<AnnouncementDto> announcements = fetchAnnouncements();
-        if (announcements == null || announcements.isEmpty()) {
+        if (announcements == null) {
+            // Fetch failed (HTTP error / exception). Skip this poll and keep existing
+            // announcement state so a transient connectivity issue does not flap the UI.
+            LOG.fine("Skipping announcement processing due to fetch failure for EAN: " + contractedEAN);
+            return;
+        }
+        if (announcements.isEmpty()) {
             LOG.fine("No announcements found for EAN: " + contractedEAN);
             updateLastPoll();
             clearAnnouncementAttributes();
@@ -201,14 +216,15 @@ public class GOPACSRedispatchHandler {
 
         LOG.fine("Fetched " + announcements.size() + " announcements for EAN: " + contractedEAN);
 
-        // Record all announcements in history (including non-relevant ones)
+        // Record every newly-seen announcement so we keep an audit trail of what GOPACS returned.
         for (AnnouncementDto announcement : announcements) {
             if (recordedAnnouncementIds.add(announcement.getId())) {
                 recordAnnouncementHistory(announcement, null, null);
             }
         }
 
-        // Filter for CONGESTIONMANAGEMENT and OPEN
+        // The API call already filters by type/state, but re-check defensively in case
+        // GOPACS ever returns extras so downstream logic can rely on the invariant.
         List<AnnouncementDto> relevant = announcements.stream()
                 .filter(a -> ANNOUNCEMENT_TYPE_CONGESTIONMANAGEMENT.equals(a.getType()))
                 .filter(a -> ANNOUNCEMENT_STATE_OPEN.equals(a.getAnnouncementState()))
@@ -289,6 +305,11 @@ public class GOPACSRedispatchHandler {
         LOG.fine("Redispatch poll completed for EAN: " + contractedEAN);
     }
 
+    /**
+     * Returns the fetched announcements, an empty list if the API confirms there are
+     * none, or {@code null} if the fetch itself failed (HTTP error / exception). The
+     * caller uses the null sentinel to skip processing without wiping current state.
+     */
     protected List<AnnouncementDto> fetchAnnouncements() {
         try (Response response = announcementResource.fetchAnnouncements(
                 null,
@@ -302,13 +323,12 @@ public class GOPACSRedispatchHandler {
                 LOG.fine("GOPACS announcements found: " + body);
                 return objectMapper.readValue(body, new TypeReference<>() {
                 });
-            } else {
-                LOG.warning("Failed to fetch announcements: HTTP " + response.getStatus());
-                return Collections.emptyList();
             }
+            LOG.warning("Failed to fetch announcements: HTTP " + response.getStatus());
+            return null;
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Error fetching announcements for EAN: " + contractedEAN, e);
-            return Collections.emptyList();
+            return null;
         }
     }
 
@@ -436,7 +456,7 @@ public class GOPACSRedispatchHandler {
                 historyEntry.put("endTime", announcement.getProblemPeriod().getEndTime());
             }
             if (announcement.getRemainingProblemProfileInMW() != null) {
-                historyEntry.put("requestedPowerMW", announcement.getRemainingProblemProfileInMW().stream()
+                historyEntry.put("maxRequestedPowerMW", announcement.getRemainingProblemProfileInMW().stream()
                         .mapToDouble(Double::doubleValue).max().orElse(0));
             }
             if (effectivityCategory != null) {
