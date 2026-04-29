@@ -274,6 +274,10 @@ public class GOPACSRedispatchHandler {
             // Store remaining problem profile as predicted data points (MW → kW)
             storeRequestedPowerProfile(selected);
 
+            // TODO: populate redispatchSuggestedPower / redispatchSuggestedVolume from
+            // the linked EnergyOptimisation flex profile + Pierre's bid pricing strategy.
+            // Tracked separately; attributes intentionally left empty in this PR.
+
             // Set status to PENDING_CONFIRMATION for new announcements
             sendAttributeEvent(EmsGOPACSAsset.REDISPATCH_BID_STATUS.getName(), BID_STATUS_PENDING_CONFIRMATION);
 
