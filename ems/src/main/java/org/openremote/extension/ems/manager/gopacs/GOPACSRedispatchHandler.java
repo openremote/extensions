@@ -123,8 +123,17 @@ public class GOPACSRedispatchHandler {
 
         this.apiKey = container.getConfig().get(GOPACS_REDISPATCH_API_KEY);
         // GOPACS recommends to poll 5 or more minutes apart
-        this.pollIntervalMinutes = Math.max(5, Integer.parseInt(
-                container.getConfig().getOrDefault(GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES, DEFAULT_GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES)));
+        String pollIntervalConfig = container.getConfig().getOrDefault(
+                GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES, DEFAULT_GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES);
+        int parsedPollInterval;
+        try {
+            parsedPollInterval = Integer.parseInt(pollIntervalConfig);
+        } catch (NumberFormatException e) {
+            parsedPollInterval = Integer.parseInt(DEFAULT_GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES);
+            LOG.warning("Invalid " + GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES + " value '" + pollIntervalConfig
+                    + "', falling back to default " + parsedPollInterval + " minutes");
+        }
+        this.pollIntervalMinutes = Math.max(5, parsedPollInterval);
 
         String redispatchUrl = container.getConfig().getOrDefault(GOPACS_REDISPATCH_URL, DEFAULT_GOPACS_REDISPATCH_URL);
 
@@ -162,7 +171,8 @@ public class GOPACSRedispatchHandler {
 
     public void stopPolling() {
         if (pollingFuture != null) {
-            pollingFuture.cancel(false);
+            // Interrupt to abort any in-flight HTTP call before closing the client
+            pollingFuture.cancel(true);
             pollingFuture = null;
         }
         client.close();
