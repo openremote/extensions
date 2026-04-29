@@ -119,6 +119,65 @@ Processing steps:
 
 ISPs (Imbalance Settlement Periods) are 15-minute intervals. `FlexRequestISPTypeHelper` converts ISP numbers to timestamps and includes special handling for European DST transitions (CET/CEST) on the last Sundays of March and October.
 
+## Redispatch (Intraday Congestion Management)
+
+### Overview
+
+In addition to the UFTP day-ahead flex trading described above, GOPACS provides a **Redispatch** mechanism for intraday congestion management. When a congestion situation is expected today, grid operators publish announcements requesting flexibility from market participants.
+
+The Redispatch flow is different from the UFTP flow:
+
+1. **Announcements** — GOPACS publishes congestion announcements via a REST API
+2. **EAN effectivity** — CSPs check which of their EANs can help solve the congestion
+3. **Bidding** — CSPs place buy/sell orders on connected trading platforms (ETPA, EPEX SPOT, NordPool)
+4. **Matching** — The GOPACS algorithm matches orders across platforms
+5. **Activation** — The trading platform notifies the CSP when an order is filled
+6. **Delivery** — The CSP adjusts power as agreed
+
+### Configuration
+
+| Variable | Required | Description |
+|---|---|---|
+| `GOPACS_REDISPATCH_API_KEY` | Yes | API key from GOPACS UI (User Menu > Settings > Generate API-key); required to resolve EAN effectivity per announcement. Polling will not start without it. |
+| `GOPACS_REDISPATCH_URL` | No | Base URL for the Redispatch API (default: `https://idcons.gopacs-services.eu`) |
+| `GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES` | No | Polling interval in minutes (default: `5`, minimum: `5`) |
+
+### Asset Setup
+
+On the **EMS GOPACS Asset**, configure:
+
+- **`redispatchEnabled`** — Set to `true` to start polling for announcements
+
+### Operator Workflow (Pilot Phase)
+
+1. When a relevant congestion announcement is detected, the asset attributes are updated with the announcement details
+2. The `redispatchBidStatus` is set to `PENDING_CONFIRMATION`
+3. The operator reviews the announcement info and suggested bid values
+4. The operator sets `redispatchBidPrice` (EUR/MWh) and toggles `redispatchConfirmBid` to `true`
+5. The bid is confirmed and logged (trading platform integration is pending)
+
+### Components
+
+```
+gopacs/
+  GOPACSRedispatchHandler.java      Polls announcements, checks EAN effectivity, manages bid workflow
+  GOPACSAnnouncementResource.java   RESTEasy client proxy for /machineannouncements (public, no auth)
+  GOPACSEanEffectivityResource.java RESTEasy client proxy for EAN effectivity (API key auth)
+  dto/AnnouncementDto.java          DTO for announcement JSON responses
+  dto/TimeSpanDto.java              DTO for time span objects
+  dto/EanSolvingEffectivityDto.java DTO for EAN effectivity responses
+```
+
+### History
+
+Announcement and bid history are stored as time-series data points on `redispatchAnnouncementHistory` and `redispatchBidHistory` attributes, retained for 90 days. These are viewable in the OpenRemote history panel.
+
+### Future
+
+- **Trading platform integration** — When a platform is chosen (ETPA, EPEX SPOT, or NordPool), automated bid placement will be added
+- **Automatic bidding** — After the pilot phase, the confirmation step will be optional
+- **Bid pricing engine** — Dynamic bid pricing incorporating BRP imbalance costs, rebound costs, and opportunity costs
+
 ### Testing
 
 GOPACS provides a dedicated testing environment. See [Testing UFTP API Flex Messages](https://www.gopacs.eu/wp-content/uploads/2025/12/GOPACS-Testing-receiving-and-sending-flex-messages-by-UFTP-testing-functionality-04-12-2025.pdf) for their guide on sending and receiving flex messages via the UFTP testing functionality.
