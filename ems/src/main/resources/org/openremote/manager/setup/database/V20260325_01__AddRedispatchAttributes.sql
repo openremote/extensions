@@ -21,7 +21,7 @@ FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchBidValidityEnd', 'timestamp', null, now(), jsonb_build_object('readOnly', true))
 FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 
-SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchRequestedPower', 'number', null, now(), jsonb_build_object('readOnly', true, 'hasPredictedDatapoints', true, 'storeDataPoints', true, 'dataPointsMaxAgeDays', 7))
+SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchRequestedPower', 'number', null, now(), jsonb_build_object('readOnly', true, 'hasPredictedDataPoints', true, 'storeDataPoints', true, 'dataPointsMaxAgeDays', 7))
 FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 
 SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchEanEffectivity', 'text', null, now(), jsonb_build_object('readOnly', true))
@@ -37,7 +37,7 @@ SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchLastPoll', 'timestamp', null, now(), js
 FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 
 -- Add redispatch bid attributes
-SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchSuggestedPower', 'number', null, now(), jsonb_build_object('readOnly', true, 'hasPredictedDatapoints', true, 'storeDataPoints', true, 'dataPointsMaxAgeDays', 7))
+SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchSuggestedPower', 'number', null, now(), jsonb_build_object('readOnly', true, 'hasPredictedDataPoints', true, 'storeDataPoints', true, 'dataPointsMaxAgeDays', 7))
 FROM asset a WHERE a.type = 'EmsGOPACSAsset';
 
 SELECT a.id, ADD_ATTRIBUTE(a, 'redispatchSuggestedVolume', 'number', null, now(), jsonb_build_object('readOnly', true))

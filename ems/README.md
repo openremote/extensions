@@ -138,7 +138,7 @@ The Redispatch flow is different from the UFTP flow:
 
 | Variable | Required | Description |
 |---|---|---|
-| `GOPACS_REDISPATCH_API_KEY` | No (limits functionality) | API key from GOPACS UI (User Menu > Settings > Generate API-key) |
+| `GOPACS_REDISPATCH_API_KEY` | Yes | API key from GOPACS UI (User Menu > Settings > Generate API-key); required to resolve EAN effectivity per announcement. Polling will not start without it. |
 | `GOPACS_REDISPATCH_URL` | No | Base URL for the Redispatch API (default: `https://idcons.gopacs-services.eu`) |
 | `GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES` | No | Polling interval in minutes (default: `5`, minimum: `5`) |
 

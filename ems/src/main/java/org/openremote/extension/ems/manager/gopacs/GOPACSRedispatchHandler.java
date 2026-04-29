@@ -154,14 +154,15 @@ public class GOPACSRedispatchHandler {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
-        if (apiKey == null || apiKey.isBlank()) {
-            LOG.warning("GOPACS_REDISPATCH_API_KEY not configured; EAN effectivity checks will be skipped for EAN: " + contractedEAN);
-        }
-
         LOG.info("Initialized GOPACSRedispatchHandler for EAN: " + contractedEAN + " (poll interval: " + pollIntervalMinutes + " min)");
     }
 
     public void startPolling() {
+        if (apiKey == null || apiKey.isBlank()) {
+            LOG.severe("GOPACS_REDISPATCH_API_KEY not configured; redispatch polling will not start for EAN: "
+                    + contractedEAN + " (the API key is required to resolve EAN effectivity per announcement)");
+            return;
+        }
         if (pollingFuture != null && !pollingFuture.isCancelled()) {
             LOG.warning("Polling already active for EAN: " + contractedEAN);
             return;
@@ -333,11 +334,6 @@ public class GOPACSRedispatchHandler {
     }
 
     protected EanEffectivityResult checkEanEffectivity(String announcementId) {
-        if (apiKey == null || apiKey.isBlank()) {
-            LOG.fine("Skipping EAN effectivity check (no API key) for announcement " + announcementId);
-            return null;
-        }
-
         LOG.fine("Checking EAN effectivity for announcement " + announcementId + " and EAN " + contractedEAN);
         try (Response response = eanEffectivityResource.fetchEanSolvingEffectivity(announcementId, apiKey)) {
             if (response.getStatus() == 200) {
