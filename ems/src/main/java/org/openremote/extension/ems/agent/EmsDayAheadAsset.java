@@ -22,6 +22,7 @@ package org.openremote.extension.ems.agent;
 import jakarta.persistence.Entity;
 import org.openremote.model.asset.Asset;
 import org.openremote.model.asset.AssetDescriptor;
+import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.MetaItem;
 import org.openremote.model.value.AbstractNameValueHolder;
 import org.openremote.model.value.AttributeDescriptor;
@@ -74,6 +75,10 @@ public class EmsDayAheadAsset extends Asset<EmsDayAheadAsset> {
 
     public Optional<String> getLastUpdateForecasts() {
         return getAttribute(LAST_UPDATE_FORECASTS).flatMap(AbstractNameValueHolder::getValue);
+    }
+
+    public Optional<Long> getLastUpdateForecastsTimestamp() {
+        return getAttribute(LAST_UPDATE_FORECASTS).flatMap(Attribute::getTimestamp);
     }
 
     public Optional<Boolean> getUseTariffDayAheadForecasts() {
