@@ -52,6 +52,7 @@ import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -69,7 +70,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     protected GOPACSHandler.Factory gopacsHandlerFactory;
     protected GOPACSRedispatchHandler.Factory gopacsRedispatchHandlerFactory;
 
-    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new HashMap<>();
+    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new ConcurrentHashMap<>();
     private final Map<String, Long> energyOptimisationTimersMap = new HashMap<>();
     private final Map<String, GOPACSHandler> gopacsHandlerMap = new HashMap<>();
     private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap = new HashMap<>();
@@ -119,6 +120,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         if (!energyOptimisationAssets.isEmpty()) {
             List<String> enabledEnergyOptimisationAssetIds = energyOptimisationAssets
                     .stream()
+                    .filter(energyOptimisationAsset -> services.getGatewayService().getLocallyRegisteredGatewayId(energyOptimisationAsset.getId(), null) == null)
                     .filter(energyOptimisationAsset -> !energyOptimisationAsset.getOptimisationDisabled().orElse(false))
                     .map(Asset::getId)
                     .toList();
@@ -351,15 +353,16 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
             if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
-                startOptimisation(assetId);
-                LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
+                    LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                    startOptimisation(assetId);
+                }
             } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
                 stopOptimisation(assetId);
                 LOG.info(String.format("%s; Disabled energy optimisation", logPrefix));
             }
             return;
         }
-
 
         // Generate power maximum profile manual input
         if (attributeName.equals(EmsEnergyOptimisationAsset.GENERATE_POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT.getName())) {
@@ -498,9 +501,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         // Run selected optimisation method
         if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_METHOD.getName())) {
             if (energyOptimisationAssetsMap.containsKey(assetId)) {
+                // Reset advanced settings attributes field
+                services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES, null), getClass().getSimpleName());
+
                 String optimisationMethodName = attributeEvent.getValue().orElse(EmsEnergyOptimisationAsset.OptimisationMethodValueType.None).toString();
                 OptimisationMethodsLoader optimisationMethodsLoader = new OptimisationMethodsLoader();
-                optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services);
+                services.getScheduledExecutorService().schedule(() -> optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services), 1, TimeUnit.SECONDS);
             }
         }
     }
