@@ -87,6 +87,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     private static final Logger LOG = SyslogCategory.getLogger(API, GOPACSHandler.class);
     public static final String GOPACS_PRIVATE_KEY_FILE = "GOPACS_PRIVATE_KEY_FILE";
+    public static final String GOPACS_BROKER_URL = "GOPACS_BROKER_URL";
+    public static final String DEFAULT_GOPACS_BROKER_URL = "https://clc-message-broker.gopacs-services.eu";
     public static final String GOPACS_PARTICIPANT_URL = "GOPACS_PARTICIPANT_URL";
     public static final String DEFAULT_GOPACS_PARTICIPANT_URL = "https://api.gopacs-services.eu";
     public static final String GOPACS_OAUTH2_URL = "GOPACS_OAUTH2_URL";
@@ -106,6 +108,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected final String contractedEAN;
     protected final String electricitySupplierAssetId;
     protected final String realm;
+    protected final String gopacsBrokerUrl;
     protected final Map<String, UftpParticipantInformation> participants;
 
     protected final AssetProcessingService assetProcessingService;
@@ -159,6 +162,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         this.timerService = container.getService(TimerService.class);
         this.webService = container.getService(WebService.class);
 
+        this.gopacsBrokerUrl = container.getConfig().getOrDefault(GOPACS_BROKER_URL, DEFAULT_GOPACS_BROKER_URL);
         this.responseDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_RESPONSE_DELAY_SECONDS, DEFAULT_GOPACS_RESPONSE_DELAY_SECONDS));
         this.flexOfferDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_FLEX_OFFER_DELAY_SECONDS, DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS));
 
@@ -551,7 +555,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             int status = response != null ? response.getStatus() : -1;
             if (status == 200) {
                 ParticipantView view = response.readEntity(ParticipantView.class);
-                UftpParticipantInformation info = new UftpParticipantInformation(view.domain(), view.publicKey(), null, true);
+                UftpParticipantInformation info = new UftpParticipantInformation(view.domain(), view.publicKey(), this.gopacsBrokerUrl + "/shapeshifter/api/v3/message", true);
                 participants.put(view.domain(), info);
                 return Optional.of(info);
             }
