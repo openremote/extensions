@@ -143,14 +143,14 @@ sequenceDiagram
     participant API as GOPACS Redispatch API
     participant TP as Trading Platform (future)
 
-    loop every ≥ 5 min
+    loop every poll interval (≥ 5 min)
         OR->>API: GET /machineannouncements (CONGESTIONMANAGEMENT, OPEN)
         API-->>OR: announcements
-        Note right of OR: Record every polled announcement in history
+        Note right of OR: Record every newly-seen announcement in history
         OR->>API: GET .../eansolvingeffectivity per announcement
         API-->>OR: EAN categories per announcement
         Note right of OR: Keep announcements where the contracted EAN<br/>is listed; prefer MANDATORY over VOLUNTARY
-        OR->>OR: Update redispatch* asset attributes,<br/>set redispatchBidStatus = PENDING_CONFIRMATION
+        OR->>OR: On a new selection: update redispatch* attributes,<br/>record a second history entry with effectivity,<br/>set redispatchBidStatus = PENDING_CONFIRMATION
     end
 
     Op->>OR: Set redispatchBidPrice, toggle redispatchConfirmBid = true
@@ -188,16 +188,16 @@ Every redispatch attribute on `EmsGOPACSAsset`. All status, bid-suggestion and h
 | Status | `redispatchEndTime` | timestamp | ✓ | End of the problem period. |
 | Status | `redispatchBidValidityEnd` | timestamp | ✓ | Latest moment a bid can still be submitted for this announcement. |
 | Status | `redispatchRequestedPower` | number (kW) | ✓ | Remaining problem profile, written as predicted data points (15-min ISP grid, 7-day retention). |
-| Status | `redispatchEanEffectivity` | text | ✓ | Effectivity category in which the contracted EAN was matched. |
+| Status | `redispatchEanEffectivity` | text | ✓ | Effectivity category in which the contracted EAN was matched (e.g. `THREE_PHASE_NETWORK_REDUCE`). |
 | Status | `redispatchRequestAreaBuy` | text | ✓ | DSO-supplied area description for buy orders. |
 | Status | `redispatchRequestAreaSell` | text | ✓ | DSO-supplied area description for sell orders. |
-| Status | `redispatchLastPoll` | timestamp | ✓ | Timestamp of the last successful poll cycle. |
+| Status | `redispatchLastPoll` | timestamp | ✓ | Timestamp of the last completed poll cycle (only updated when the API responded). |
 | Bid | `redispatchSuggestedPower` | number (kW) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
 | Bid | `redispatchSuggestedVolume` | number (kWh) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
 | Bid | `redispatchBidPrice` | number (EUR/MWh) | | Operator-supplied bid price. |
 | Workflow | `redispatchConfirmBid` | boolean | | Operator toggles to `true` to confirm the active bid; handler resets it after processing. |
 | Workflow | `redispatchBidStatus` | text | ✓ | State machine — see below. |
-| History | `redispatchAnnouncementHistory` | JSON object | ✓ | One data point per polled announcement (90-day retention). |
+| History | `redispatchAnnouncementHistory` | JSON object | ✓ | One data point on first sight of each polled announcement, plus a richer entry (with effectivity details) when one is selected (90-day retention). |
 | History | `redispatchBidHistory` | JSON object | ✓ | One data point per confirmed bid (90-day retention). |
 
 `redispatchBidStatus` values:
@@ -218,6 +218,7 @@ Every redispatch attribute on `EmsGOPACSAsset`. All status, bid-suggestion and h
 
 - The polling interval is clamped to a minimum of 5 minutes because GOPACS recommends spacing requests at least that far apart.
 - HTTP errors and exceptions on the announcements endpoint **skip the poll and preserve current attributes**, so transient API hiccups do not flap the bid status. Only a confirmed-empty response (HTTP 200 with no announcements) clears the active announcement and resets `redispatchBidStatus` to `NONE`.
+- A *persistent* non-200 (e.g. an invalid API key returning 401, or a sustained outage) keeps the previously selected announcement on screen indefinitely. If `redispatchLastPoll` falls behind the configured interval, check the manager logs for `Failed to fetch announcements: HTTP …` (warning) or `Error fetching announcements` (severe).
 - The handler **refuses to start** (logs `SEVERE`) when `GOPACS_REDISPATCH_API_KEY` is unset — without it there is no way to resolve EAN effectivity per announcement.
 - Toggling `redispatchEnabled` off then on restarts the handler; the same applies when `contractedEAN` is changed. Useful when you need to force a clean state.
 
@@ -237,7 +238,7 @@ gopacs/
 
 Announcement and bid history are stored as time-series data points on `redispatchAnnouncementHistory` and `redispatchBidHistory`, retained for 90 days and viewable in the OpenRemote history panel.
 
-`redispatchAnnouncementHistory` records **every** polled announcement, including ones that the EAN-effectivity check rejected, so the audit trail captures everything GOPACS returned during the handler's lifetime — not just the announcements that became active. To keep memory bounded for long-running handlers, the running set of already-recorded announcement IDs is capped at 10 000 entries (LRU-evicted).
+`redispatchAnnouncementHistory` records **every** polled announcement on first sight (including ones that the EAN-effectivity check later rejects), so the audit trail captures everything GOPACS returned during the handler's lifetime — not just the announcements that became active. When an announcement is then *selected* on a poll, a second, richer history entry is recorded with the matched effectivity details, so an active announcement will appear twice in the timeline (once at first sight, once on selection). To keep memory bounded for long-running handlers, the running set of already-recorded announcement IDs is capped at 10 000 entries (LRU-evicted).
 
 ### Future
 
