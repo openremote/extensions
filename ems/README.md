@@ -125,6 +125,8 @@ ISPs (Imbalance Settlement Periods) are 15-minute intervals. `FlexRequestISPType
 
 In addition to the UFTP day-ahead flex trading described above, GOPACS provides a **Redispatch** mechanism for intraday congestion management. When a congestion situation is expected today, grid operators publish announcements requesting flexibility from market participants.
 
+> Prerequisites are the same as UFTP — see [Getting Started](#getting-started) for the GOPACS account and contracted EAN. Redispatch additionally requires an API key (see [Configuration](#configuration-1) below).
+
 The Redispatch flow is different from the UFTP flow:
 
 1. **Announcements** — GOPACS publishes congestion announcements via a REST API
@@ -133,6 +135,30 @@ The Redispatch flow is different from the UFTP flow:
 4. **Matching** — The GOPACS algorithm matches orders across platforms
 5. **Activation** — The trading platform notifies the CSP when an order is filled
 6. **Delivery** — The CSP adjusts power as agreed
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant OR as OpenRemote (CSP)
+    participant API as GOPACS Redispatch API
+    participant TP as Trading Platform (future)
+
+    loop every ≥ 5 min
+        OR->>API: GET /machineannouncements (CONGESTIONMANAGEMENT, OPEN)
+        API-->>OR: announcements
+        Note right of OR: Record every polled announcement in history
+        OR->>API: GET .../eansolvingeffectivity per announcement
+        API-->>OR: EAN categories per announcement
+        Note right of OR: Keep announcements where the contracted EAN<br/>is listed; prefer MANDATORY over VOLUNTARY
+        OR->>OR: Update redispatch* asset attributes,<br/>set redispatchBidStatus = PENDING_CONFIRMATION
+    end
+
+    Op->>OR: Set redispatchBidPrice, toggle redispatchConfirmBid = true
+    OR->>OR: Log bid, set redispatchBidStatus = CONFIRMED
+    OR-->>TP: Place order (not yet implemented)
+```
+
+**Selection rules:** per poll, the handler keeps only `CONGESTIONMANAGEMENT` / `ANNOUNCEMENT_OPEN` announcements where the contracted EAN appears in some EAN-effectivity category, then prefers `MANDATORY` over `VOLUNTARY` compliance type when more than one matches.
 
 ### Configuration
 
@@ -148,6 +174,38 @@ On the **EMS GOPACS Asset**, configure:
 
 - **`redispatchEnabled`** — Set to `true` to start polling for announcements
 
+### Asset attributes
+
+Every redispatch attribute on `EmsGOPACSAsset`. All status, bid-suggestion and history attributes are written by the handler and surfaced read-only in the UI; only `redispatchEnabled`, `redispatchBidPrice` and `redispatchConfirmBid` are operator-editable.
+
+| Group | Attribute | Type | RO | Purpose |
+|---|---|---|---|---|
+| Configuration | `redispatchEnabled` | boolean | | Master switch — toggle off/on to (re)start the polling handler. |
+| Status | `redispatchAnnouncementId` | text | ✓ | ID of the currently selected announcement, if any. |
+| Status | `redispatchComplianceType` | text | ✓ | `MANDATORY` or `VOLUNTARY`. |
+| Status | `redispatchAnnouncementMessage` | text (multiline) | ✓ | Free-text description from the DSO. |
+| Status | `redispatchStartTime` | timestamp | ✓ | Start of the problem period. |
+| Status | `redispatchEndTime` | timestamp | ✓ | End of the problem period. |
+| Status | `redispatchBidValidityEnd` | timestamp | ✓ | Latest moment a bid can still be submitted for this announcement. |
+| Status | `redispatchRequestedPower` | number (kW) | ✓ | Remaining problem profile, written as predicted data points (15-min ISP grid, 7-day retention). |
+| Status | `redispatchEanEffectivity` | text | ✓ | Effectivity category in which the contracted EAN was matched. |
+| Status | `redispatchRequestAreaBuy` | text | ✓ | DSO-supplied area description for buy orders. |
+| Status | `redispatchRequestAreaSell` | text | ✓ | DSO-supplied area description for sell orders. |
+| Status | `redispatchLastPoll` | timestamp | ✓ | Timestamp of the last successful poll cycle. |
+| Bid | `redispatchSuggestedPower` | number (kW) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
+| Bid | `redispatchSuggestedVolume` | number (kWh) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
+| Bid | `redispatchBidPrice` | number (EUR/MWh) | | Operator-supplied bid price. |
+| Workflow | `redispatchConfirmBid` | boolean | | Operator toggles to `true` to confirm the active bid; handler resets it after processing. |
+| Workflow | `redispatchBidStatus` | text | ✓ | State machine — see below. |
+| History | `redispatchAnnouncementHistory` | JSON object | ✓ | One data point per polled announcement (90-day retention). |
+| History | `redispatchBidHistory` | JSON object | ✓ | One data point per confirmed bid (90-day retention). |
+
+`redispatchBidStatus` values:
+
+- `NONE` — no active announcement
+- `PENDING_CONFIRMATION` — operator action required
+- `CONFIRMED` — bid logged (and, in future, sent to the trading platform)
+
 ### Operator Workflow (Pilot Phase)
 
 1. When a relevant congestion announcement is detected, the asset attributes are updated with the announcement details
@@ -155,6 +213,13 @@ On the **EMS GOPACS Asset**, configure:
 3. The operator reviews the announcement info and suggested bid values
 4. The operator sets `redispatchBidPrice` (EUR/MWh) and toggles `redispatchConfirmBid` to `true`
 5. The bid is confirmed and logged (trading platform integration is pending)
+
+### Resilience and polling
+
+- The polling interval is clamped to a minimum of 5 minutes because GOPACS recommends spacing requests at least that far apart.
+- HTTP errors and exceptions on the announcements endpoint **skip the poll and preserve current attributes**, so transient API hiccups do not flap the bid status. Only a confirmed-empty response (HTTP 200 with no announcements) clears the active announcement and resets `redispatchBidStatus` to `NONE`.
+- The handler **refuses to start** (logs `SEVERE`) when `GOPACS_REDISPATCH_API_KEY` is unset — without it there is no way to resolve EAN effectivity per announcement.
+- Toggling `redispatchEnabled` off then on restarts the handler; the same applies when `contractedEAN` is changed. Useful when you need to force a clean state.
 
 ### Components
 
@@ -170,7 +235,9 @@ gopacs/
 
 ### History
 
-Announcement and bid history are stored as time-series data points on `redispatchAnnouncementHistory` and `redispatchBidHistory` attributes, retained for 90 days. These are viewable in the OpenRemote history panel.
+Announcement and bid history are stored as time-series data points on `redispatchAnnouncementHistory` and `redispatchBidHistory`, retained for 90 days and viewable in the OpenRemote history panel.
+
+`redispatchAnnouncementHistory` records **every** polled announcement, including ones that the EAN-effectivity check rejected, so the audit trail captures everything GOPACS returned during the handler's lifetime — not just the announcements that became active. To keep memory bounded for long-running handlers, the running set of already-recorded announcement IDs is capped at 10 000 entries (LRU-evicted).
 
 ### Future
 
