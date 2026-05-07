@@ -50,8 +50,10 @@ import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitArtifactUploadCli
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitBasicAuth;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitDistributionSetsResource;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitDistributionSetTypesResource;
+import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitRolloutsResource;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitSoftwareModulesResource;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitSoftwareModuleTypesResource;
+import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetFiltersResource;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetsResource;
 import org.openremote.manager.web.ManagerWebService;
 import org.openremote.model.Container;
@@ -96,6 +98,8 @@ public class FirmwareService implements ContainerService {
     protected HawkbitDistributionSetTypesResource distributionSetTypesResource;
     protected HawkbitSoftwareModulesResource softwareModulesResource;
     protected HawkbitSoftwareModuleTypesResource softwareModuleTypesResource;
+    protected HawkbitRolloutsResource rolloutsResource;
+    protected HawkbitTargetFiltersResource targetFiltersResource;
     protected HawkbitArtifactUploadClient artifactUploadClient;
 
     static {
@@ -128,6 +132,10 @@ public class FirmwareService implements ContainerService {
                 new FirmwareSoftwareModuleResourceImpl(timerService, identityService, this));
         container.getService(ManagerWebService.class).addApiSingleton(
                 new FirmwareSoftwareModuleTypeResourceImpl(timerService, identityService, this));
+        container.getService(ManagerWebService.class).addApiSingleton(
+                new FirmwareRolloutResourceImpl(timerService, identityService, this));
+        container.getService(ManagerWebService.class).addApiSingleton(
+                new FirmwareTargetFilterResourceImpl(timerService, identityService, this));
     }
 
     @Override
@@ -171,6 +179,8 @@ public class FirmwareService implements ContainerService {
         distributionSetTypesResource = webTarget.proxy(HawkbitDistributionSetTypesResource.class);
         softwareModulesResource = webTarget.proxy(HawkbitSoftwareModulesResource.class);
         softwareModuleTypesResource = webTarget.proxy(HawkbitSoftwareModuleTypesResource.class);
+        rolloutsResource = webTarget.proxy(HawkbitRolloutsResource.class);
+        targetFiltersResource = webTarget.proxy(HawkbitTargetFiltersResource.class);
 
         // Artifact upload uses raw multipart forwarding because Hawkbit expects
         // multipart/form-data for this endpoint.
