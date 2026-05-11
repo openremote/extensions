@@ -43,7 +43,8 @@ public class EntsoeAgentLink extends AgentLink<EntsoeAgentLink> {
         return zone;
     }
 
-    public void setZone(String zone) {
+    public EntsoeAgentLink setZone(String zone) {
         this.zone = zone;
+        return this;
     }
 }
