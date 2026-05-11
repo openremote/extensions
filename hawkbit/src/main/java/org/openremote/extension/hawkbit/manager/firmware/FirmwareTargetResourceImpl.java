@@ -28,6 +28,7 @@ import org.openremote.model.http.RequestParams;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareAction;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareActions;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataList;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetResource;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargets;
@@ -43,9 +44,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareTargets getTargets(RequestParams requestParams, Integer offset, Integer limit) {
+    public FirmwareTargets getTargets(RequestParams requestParams, String query, Integer offset, Integer limit) {
         try {
-            return firmwareService.targetsResource.getTargets(offset, limit);
+            return firmwareService.targetsResource.getTargets(query, offset, limit);
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware targets", e, Response.Status.BAD_GATEWAY);
         }
@@ -57,6 +58,16 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
             return firmwareService.targetsResource.get(id);
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware target '" + id + "'", e,
+                    Response.Status.BAD_GATEWAY);
+        }
+    }
+
+    @Override
+    public FirmwareMetadataList getMetadata(RequestParams requestParams, String id) {
+        try {
+            return firmwareService.targetsResource.getMetadata(id);
+        } catch (Exception e) {
+            throw new WebApplicationException("Failed to retrieve metadata for firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
         }
     }

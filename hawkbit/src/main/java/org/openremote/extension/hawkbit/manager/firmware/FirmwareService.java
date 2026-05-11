@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.core.HttpHeaders;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
@@ -61,9 +62,12 @@ import org.openremote.model.ContainerService;
 import org.openremote.model.asset.Asset;
 import org.openremote.model.asset.AssetEvent;
 import org.openremote.model.asset.AssetTypeInfo;
+import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
+import org.openremote.model.attribute.MetaMap;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareArtifact;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareMetaItemType;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataUpdate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
 import org.openremote.model.syslog.SyslogCategory;
 import org.openremote.model.util.TextUtil;
@@ -186,11 +190,17 @@ public class FirmwareService implements ContainerService {
         // multipart/form-data for this endpoint.
         artifactUploadClient = new HawkbitArtifactUploadClient(uri, hawkbitUsername, hawkbitPassword);
 
-        // Subscribe for asset events
+        // Subscribe on asset events
         clientEventService.addSubscription(
                 AssetEvent.class,
                 null,
                 this::onAssetChange);
+
+        // Subscribe on attribute events
+        clientEventService.addSubscription(
+                AttributeEvent.class,
+                null,
+                this::onAttributeChange);
 
         LOG.log(Level.INFO,
                 "Firmware Service started, connected hawkBit instance: " + uri + ", for realm: " + hawkbitRealm);
@@ -209,7 +219,6 @@ public class FirmwareService implements ContainerService {
     }
 
     private void onAssetChange(AssetEvent assetEvent) {
-        // Ignore events if they are not for the configured hawkBit realm
         if (!Objects.equals(assetEvent.getRealm(), hawkbitRealm))
         {
             return;
@@ -217,6 +226,32 @@ public class FirmwareService implements ContainerService {
 
         // Submit the assetEvent to the executorService
         executorService.submit(() -> handleAssetChange(assetEvent));
+    }
+
+    private void onAttributeChange(AttributeEvent attributeEvent) {
+        if (!Objects.equals(attributeEvent.getRealm(), hawkbitRealm))
+        {
+            return;
+        }
+
+        // Submit the attributeEvent to the executorService
+        executorService.submit(() -> handleAttributeChange(attributeEvent));
+    }
+
+    private void handleAttributeChange(AttributeEvent attributeEvent) {
+        if (!hasFirmwareMetadata(attributeEvent.getAssetType(), attributeEvent.getName(), attributeEvent.getMeta())) {
+            return;
+        }
+
+        if (attributeEvent.isDeleted()) {
+            deleteFirmwareTargetMetadata(attributeEvent.getId(), attributeEvent.getName());
+            return;
+        }
+
+        attributeEvent.getValue().ifPresent(value -> syncFirmwareTargetMetadataValue(
+                attributeEvent.getId(),
+                attributeEvent.getName(),
+                value));
     }
 
     private void handleAssetChange(AssetEvent assetEvent) {
@@ -266,10 +301,87 @@ public class FirmwareService implements ContainerService {
 
         if (shouldUpdateFirmwareTargetInfo) {
             updateFirmwareTargetInfo(assetEvent);
+            updateFirmwareTargetMetadata(asset);
         }
     }
 
-    @SuppressWarnings({ "rawtypes" })
+    private void updateFirmwareTargetMetadata(Asset<?> asset) {
+        String controllerId = asset.getId();
+        for (Attribute<?> attribute : asset.getAttributes().values()) {
+            if (!hasFirmwareMetadata(asset.getType(), attribute.getName(), attribute.getMeta())) {
+                continue;
+            }
+
+            attribute.getValue().ifPresent(value ->
+                    syncFirmwareTargetMetadataValue(controllerId, attribute.getName(), value));
+        }
+    }
+
+    private boolean hasFirmwareMetadata(String assetType, String attributeName, MetaMap meta) {
+        if (hasFirmwareMetadata(meta)) {
+            return true;
+        }
+
+        if (assetType == null) {
+            return false;
+        }
+
+        Optional<AssetTypeInfo> assetTypeInfo = ValueUtil.getAssetInfo(assetType);
+        return assetTypeInfo
+                .map(typeInfo -> typeInfo.getAttributeDescriptors().values().stream()
+                        .filter(attributeDescriptor -> Objects.equals(attributeDescriptor.getName(), attributeName))
+                        .anyMatch(attributeDescriptor -> hasFirmwareMetadata(attributeDescriptor.getMeta())))
+                .orElse(false);
+    }
+
+    private boolean hasFirmwareMetadata(MetaMap meta) {
+        return meta != null
+                && meta.get(FirmwareMetaItemType.FIRMWARE_METADATA)
+                        .flatMap(metaItem -> metaItem.getValue(Boolean.class))
+                        .orElse(false);
+    }
+
+    private void syncFirmwareTargetMetadataValue(String controllerId, String key, Object value) {
+        if (value == null) {
+            return;
+        }
+
+        Optional<String> metadataValue = ValueUtil.getStringCoerced(value);
+        if (metadataValue.isEmpty()) {
+            LOG.warning("Cannot convert firmware metadata value to string for target id="
+                    + controllerId + ", key=" + key);
+            return;
+        }
+
+        updateFirmwareTargetMetadata(controllerId, key, metadataValue.get());
+    }
+
+    private void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
+        try {
+            targetsResource.updateMetadata(controllerId, key, new FirmwareMetadataUpdate(value));
+            LOG.fine("Updated hawkbit target metadata targetId=" + controllerId + ", key=" + key);
+        } catch (NotFoundException e) {
+            LOG.fine("hawkbit target not found for metadata sync targetId="
+                    + controllerId + ", key=" + key);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to update hawkbit target metadata targetId="
+                    + controllerId + ", key=" + key, e);
+        }
+    }
+
+    private void deleteFirmwareTargetMetadata(String controllerId, String key) {
+        try {
+            targetsResource.deleteMetadata(controllerId, key);
+            LOG.fine("Deleted hawkbit target metadata targetId=" + controllerId + ", key=" + key);
+        } catch (NotFoundException e) {
+            LOG.fine("hawkbit target metadata not found for delete targetId="
+                    + controllerId + ", key=" + key);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to delete hawkbit target metadata targetId="
+                    + controllerId + ", key=" + key, e);
+        }
+    }
+
     private Optional<AttributeDescriptor<?>> getFirmwareTargetInfoDescriptor(Asset<?> asset) {
         Optional<AssetTypeInfo> assetTypeInfo = ValueUtil.getAssetInfo(asset.getType());
         if (assetTypeInfo.isEmpty()) {
@@ -297,7 +409,7 @@ public class FirmwareService implements ContainerService {
             return Optional.empty();
         }
 
-        return Optional.of((AttributeDescriptor) matchingDescriptors.getFirst());
+        return Optional.of(matchingDescriptors.getFirst());
     }
 
     private FirmwareTarget buildFirmwareTarget(Asset<?> asset) {
@@ -318,14 +430,12 @@ public class FirmwareService implements ContainerService {
         }
     }
 
-    private boolean deleteFirmwareTarget(String controllerId) {
+    private void deleteFirmwareTarget(String controllerId) {
         try {
             targetsResource.delete(controllerId);
             LOG.info("Deleted hawkbit target id=" + controllerId);
-            return true;
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to delete hawkbit target id=" + controllerId, e);
-            return false;
         }
     }
 

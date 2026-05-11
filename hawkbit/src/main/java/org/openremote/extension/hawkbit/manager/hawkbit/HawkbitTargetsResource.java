@@ -23,6 +23,8 @@ import jakarta.ws.rs.*;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareAction;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareActions;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataList;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataUpdate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargets;
 
@@ -33,7 +35,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 public interface HawkbitTargetsResource {
     @GET
     @Produces(APPLICATION_JSON)
-    FirmwareTargets getTargets(@QueryParam("offset") Integer offset, @QueryParam("limit") Integer limit);
+    FirmwareTargets getTargets(@QueryParam("q") String query, @QueryParam("offset") Integer offset, @QueryParam("limit") Integer limit);
 
     @POST
     @Consumes(APPLICATION_JSON)
@@ -55,6 +57,22 @@ public interface HawkbitTargetsResource {
     @DELETE
     @Path("{id}")
     void delete(@PathParam("id") String id);
+
+    @GET
+    @Path("{id}/metadata")
+    @Produces(APPLICATION_JSON)
+    FirmwareMetadataList getMetadata(@PathParam("id") String id);
+
+    @PUT
+    @Path("{id}/metadata/{key}")
+    @Consumes(APPLICATION_JSON)
+    void updateMetadata(@PathParam("id") String id,
+                        @PathParam("key") String key,
+                        FirmwareMetadataUpdate metadata);
+
+    @DELETE
+    @Path("{id}/metadata/{key}")
+    void deleteMetadata(@PathParam("id") String id, @PathParam("key") String key);
 
     @GET
     @Path("{id}/assignedDS")

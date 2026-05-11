@@ -42,14 +42,21 @@ public interface FirmwareTargetResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     FirmwareTargets getTargets(@BeanParam RequestParams requestParams,
-                               @QueryParam("offset") Integer offset,
-                               @QueryParam("limit") Integer limit);
+                                @QueryParam("q") String query,
+                                @QueryParam("offset") Integer offset,
+                                @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     FirmwareTarget getTarget(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+
+    @GET
+    @Path("{id}/metadata")
+    @Produces(APPLICATION_JSON)
+    @RolesAllowed({Constants.READ_ADMIN_ROLE})
+    FirmwareMetadataList getMetadata(@BeanParam RequestParams requestParams, @PathParam("id") String id);
 
     @GET
     @Path("{id}/assignedDS")
