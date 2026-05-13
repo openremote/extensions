@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -31,6 +32,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.EntityPart;
+import jakarta.ws.rs.core.Response;
 
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
@@ -48,37 +50,37 @@ public interface FirmwareSoftwareModuleResource {
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareSoftwareModule createSoftwareModule(@BeanParam RequestParams requestParams,
-                                                FirmwareSoftwareModule softwareModule);
+    Response createSoftwareModule(@BeanParam RequestParams requestParams,
+                                  JsonNode softwareModule);
 
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareSoftwareModules getSoftwareModules(@BeanParam RequestParams requestParams,
-                                               @QueryParam("offset") Integer offset,
-                                               @QueryParam("limit") Integer limit);
+    Response getSoftwareModules(@BeanParam RequestParams requestParams,
+                                @QueryParam("offset") Integer offset,
+                                @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareSoftwareModule getSoftwareModule(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    Response getSoftwareModule(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
 
     @GET
     @Path("{id}/artifacts")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareArtifacts getSoftwareModuleArtifacts(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    Response getSoftwareModuleArtifacts(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
 
     @POST
     @Path("{id}/artifacts")
     @Consumes(MULTIPART_FORM_DATA)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareArtifact uploadSoftwareModuleArtifact(@BeanParam RequestParams requestParams,
-                                                  @PathParam("id") Long id,
-                                                  @QueryParam("filename") String filename,
-                                                  List<EntityPart> parts);
+    Response uploadSoftwareModuleArtifact(@BeanParam RequestParams requestParams,
+                                          @PathParam("id") Long id,
+                                          @QueryParam("filename") String filename,
+                                          List<EntityPart> parts);
 
     @DELETE
     @Path("{id}")

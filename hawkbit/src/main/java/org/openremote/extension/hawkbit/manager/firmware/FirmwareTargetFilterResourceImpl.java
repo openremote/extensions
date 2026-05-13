@@ -19,16 +19,12 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareAutoAssignRequest;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQueries;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQuery;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQueryRequest;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterResource;
 import org.openremote.model.http.RequestParams;
 
@@ -44,9 +40,9 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareTargetFilterQueries getTargetFilters(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getTargetFilters(RequestParams requestParams, Integer offset, Integer limit) {
         try {
-            return firmwareService.targetFiltersResource.getTargetFilters(offset, limit);
+            return HawkbitResponse.from(firmwareService.targetFiltersResource.getTargetFilters(offset, limit)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware target filters", e,
                     Response.Status.BAD_GATEWAY);
@@ -54,9 +50,9 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareTargetFilterQuery getTargetFilter(RequestParams requestParams, Long id) {
+    public Response getTargetFilter(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.targetFiltersResource.get(id);
+            return HawkbitResponse.from(firmwareService.targetFiltersResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware target filter '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -64,10 +60,10 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareTargetFilterQuery createTargetFilter(RequestParams requestParams,
-                                                         FirmwareTargetFilterQueryRequest filter) {
+    public Response createTargetFilter(RequestParams requestParams,
+                                       JsonNode filter) {
         try {
-            return firmwareService.targetFiltersResource.create(filter);
+            return HawkbitResponse.from(firmwareService.targetFiltersResource.create(filter)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to create firmware target filter", e,
                     Response.Status.BAD_GATEWAY);
@@ -85,9 +81,9 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSet getAutoAssignDS(RequestParams requestParams, Long id) {
+    public Response getAutoAssignDS(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.targetFiltersResource.getAutoAssignDS(id);
+            return HawkbitResponse.from(firmwareService.targetFiltersResource.getAutoAssignDS(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to retrieve auto assign distribution set for filter '" + id + "'", e,
@@ -96,10 +92,10 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareTargetFilterQuery setAutoAssignDS(RequestParams requestParams, Long id,
-                                                      FirmwareAutoAssignRequest request) {
+    public Response setAutoAssignDS(RequestParams requestParams, Long id,
+                                    JsonNode request) {
         try {
-            return firmwareService.targetFiltersResource.setAutoAssignDS(id, request);
+            return HawkbitResponse.from(firmwareService.targetFiltersResource.setAutoAssignDS(id, request)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to set auto assign distribution set for filter '" + id + "'", e,

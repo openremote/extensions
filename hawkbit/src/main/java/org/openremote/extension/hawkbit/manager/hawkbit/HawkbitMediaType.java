@@ -1,5 +1,5 @@
 /*
- * Copyright 2025, OpenRemote Inc.
+ * Copyright 2026, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -17,35 +17,12 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.openremote.extension.hawkbit.model.firmware;
+package org.openremote.extension.hawkbit.manager.hawkbit;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+public final class HawkbitMediaType {
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class FirmwareLink {
-    protected String href;
-    protected String name;
+    public static final String APPLICATION_HAL_JSON = "application/hal+json";
 
-    @JsonCreator
-    protected FirmwareLink() {
-    }
-
-    public String getHref() {
-        return href;
-    }
-
-    public FirmwareLink setHref(String href) {
-        this.href = href;
-        return this;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public FirmwareLink setName(String name) {
-        this.name = name;
-        return this;
+    private HawkbitMediaType() {
     }
 }

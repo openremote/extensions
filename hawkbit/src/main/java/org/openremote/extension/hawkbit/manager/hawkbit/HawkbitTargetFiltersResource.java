@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -27,33 +28,28 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareAutoAssignRequest;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQueries;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQuery;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterQueryRequest;
+import jakarta.ws.rs.core.Response;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 @Path("targetfilters")
 public interface HawkbitTargetFiltersResource {
 
-    String APPLICATION_HAL_JSON = "application/hal+json";
-
     @GET
     @Produces(APPLICATION_JSON)
-    FirmwareTargetFilterQueries getTargetFilters(@QueryParam("offset") Integer offset,
-                                                  @QueryParam("limit") Integer limit);
+    Response getTargetFilters(@QueryParam("offset") Integer offset,
+                              @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{filterId}")
     @Produces(APPLICATION_JSON)
-    FirmwareTargetFilterQuery get(@PathParam("filterId") Long filterId);
+    Response get(@PathParam("filterId") Long filterId);
 
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    FirmwareTargetFilterQuery create(FirmwareTargetFilterQueryRequest filter);
+    Response create(JsonNode filter);
 
     @DELETE
     @Path("{filterId}")
@@ -62,14 +58,14 @@ public interface HawkbitTargetFiltersResource {
     @GET
     @Path("{filterId}/autoAssignDS")
     @Produces(APPLICATION_JSON)
-    FirmwareDistributionSet getAutoAssignDS(@PathParam("filterId") Long filterId);
+    Response getAutoAssignDS(@PathParam("filterId") Long filterId);
 
     @POST
     @Path("{filterId}/autoAssignDS")
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    FirmwareTargetFilterQuery setAutoAssignDS(@PathParam("filterId") Long filterId,
-                                               FirmwareAutoAssignRequest request);
+    Response setAutoAssignDS(@PathParam("filterId") Long filterId,
+                             JsonNode request);
 
     @DELETE
     @Path("{filterId}/autoAssignDS")

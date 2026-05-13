@@ -19,9 +19,8 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
-import org.openremote.extension.hawkbit.model.firmware.FirmwareArtifact;
+import jakarta.ws.rs.core.Response;
 import org.openremote.model.util.TextUtil;
-import org.openremote.model.util.ValueUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -33,6 +32,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+
+import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 public class HawkbitArtifactUploadClient {
 
@@ -46,8 +47,8 @@ public class HawkbitArtifactUploadClient {
         this.hawkbitPassword = hawkbitPassword;
     }
 
-    public FirmwareArtifact uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
-                                                         String originalFilename, String filename)
+    public Response uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
+                                                 String originalFilename, String filename)
             throws IOException, InterruptedException {
         String effectiveFilename = TextUtil.isNullOrEmpty(filename) ? originalFilename : filename;
         String boundary = "----OpenRemoteBoundary" + UUID.randomUUID();
@@ -56,7 +57,7 @@ public class HawkbitArtifactUploadClient {
         HttpRequest request = HttpRequest.newBuilder(
                         buildArtifactUploadUri(softwareModuleId, effectiveFilename))
                 .header("Authorization", HawkbitBasicAuth.buildAuthorizationHeader(hawkbitUsername, hawkbitPassword))
-                .header("Accept", "application/hal+json")
+                .header("Accept", APPLICATION_HAL_JSON)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
                 .build();
@@ -64,11 +65,10 @@ public class HawkbitArtifactUploadClient {
         HttpResponse<String> response = HttpClient.newHttpClient()
                 .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Artifact upload failed with status " + response.statusCode() + ": " + response.body());
-        }
-
-        return ValueUtil.JSON.readValue(response.body(), FirmwareArtifact.class);
+        return Response.status(response.statusCode())
+                .type(response.headers().firstValue("content-type").orElse(APPLICATION_HAL_JSON))
+                .entity(response.body())
+                .build();
     }
 
     protected URI buildArtifactUploadUri(Long softwareModuleId, String filename) {

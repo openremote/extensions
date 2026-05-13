@@ -35,8 +35,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.client.jaxrs.internal.ResteasyClientBuilderImpl;
@@ -65,7 +67,6 @@ import org.openremote.model.asset.AssetTypeInfo;
 import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
 import org.openremote.model.attribute.MetaMap;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareArtifact;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareMetaItemType;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataUpdate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
@@ -211,11 +212,11 @@ public class FirmwareService implements ContainerService {
 
     }
 
-    public FirmwareArtifact uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
+    public Response uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
             String originalFilename, String filename)
             throws IOException, InterruptedException {
-        return artifactUploadClient.uploadSoftwareModuleArtifact(softwareModuleId, inputStream,
-                originalFilename, filename);
+        return HawkbitResponse.from(artifactUploadClient.uploadSoftwareModuleArtifact(softwareModuleId, inputStream,
+                originalFilename, filename)).asResource();
     }
 
     private void onAssetChange(AssetEvent assetEvent) {
@@ -276,7 +277,7 @@ public class FirmwareService implements ContainerService {
             case UPDATE:
                 LOG.info("Checking hawkbit target for update asset id=" + asset.getId());
                 try {
-                    FirmwareTarget existingTarget = targetsResource.get(controllerId);
+                    FirmwareTarget existingTarget = getFirmwareTarget(controllerId);
                     if (existingTarget != null) {
                         LOG.info("hawkbit target already exists so nothing to do id=" + controllerId);
                         shouldUpdateFirmwareTargetInfo = true;
@@ -420,12 +421,16 @@ public class FirmwareService implements ContainerService {
     }
 
     private boolean createFirmwareTarget(FirmwareTarget target) {
-        LOG.info("Creating hawkbit target id=" + target.getControllerId());
-        try {
-            targetsResource.create(new FirmwareTarget[] { target });
-            return true;
+        LOG.info("Creating hawkbit target id=" + target.controllerId());
+        try (Response response = targetsResource.create(new FirmwareTarget[] { target })) {
+            boolean created = response.getStatusInfo().getFamily() == Response.Status.Family.SUCCESSFUL;
+            if (!created) {
+                LOG.warning("Failed to create hawkbit target id=" + target.controllerId()
+                        + ", status=" + response.getStatus());
+            }
+            return created;
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Failed to create hawkbit target id=" + target.getControllerId(), e);
+            LOG.log(Level.WARNING, "Failed to create hawkbit target id=" + target.controllerId(), e);
             return false;
         }
     }
@@ -453,10 +458,13 @@ public class FirmwareService implements ContainerService {
             case CREATE:
             case UPDATE:
                 try {
-                    FirmwareTarget firmwareTarget = targetsResource.get(controllerId);
+                    FirmwareTarget firmwareTarget = getFirmwareTarget(controllerId);
+                    if (firmwareTarget == null) {
+                        return;
+                    }
                     Map<String, String> firmwareTargetInfo = new LinkedHashMap<>();
-                    firmwareTargetInfo.put("controllerId", firmwareTarget.getControllerId());
-                    firmwareTargetInfo.put("securityToken", firmwareTarget.getSecurityToken());
+                    firmwareTargetInfo.put("controllerId", firmwareTarget.controllerId());
+                    firmwareTargetInfo.put("securityToken", firmwareTarget.securityToken());
                     assetProcessingService.sendAttributeEvent(
                             new AttributeEvent(
                                     asset.getId(),
@@ -464,13 +472,26 @@ public class FirmwareService implements ContainerService {
                                     ValueUtil.asJSON(firmwareTargetInfo).orElse(null)),
                             getClass().getSimpleName());
                     LOG.info("Updated firmware target info attribute for asset id=" + asset.getId()
-                            + ", controllerId=" + firmwareTarget.getControllerId());
+                            + ", controllerId=" + firmwareTarget.controllerId());
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, "Failed to update firmware target info for asset id=" + asset.getId(), e);
                 }
                 break;
             default:
                 break;
+        }
+    }
+
+    private FirmwareTarget getFirmwareTarget(String controllerId) {
+        try (Response response = targetsResource.get(controllerId)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                return null;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                throw new WebApplicationException("hawkBit target request failed with status " + response.getStatus(),
+                        response.getStatus());
+            }
+            return response.readEntity(FirmwareTarget.class);
         }
     }
 

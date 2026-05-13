@@ -27,6 +27,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
 
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
@@ -41,51 +42,51 @@ public interface FirmwareTargetResource {
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareTargets getTargets(@BeanParam RequestParams requestParams,
-                                @QueryParam("q") String query,
-                                @QueryParam("offset") Integer offset,
-                                @QueryParam("limit") Integer limit);
+    Response getTargets(@BeanParam RequestParams requestParams,
+                        @QueryParam("q") String query,
+                        @QueryParam("offset") Integer offset,
+                        @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareTarget getTarget(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getTarget(@BeanParam RequestParams requestParams, @PathParam("id") String id);
 
     @GET
     @Path("{id}/metadata")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareMetadataList getMetadata(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getMetadata(@BeanParam RequestParams requestParams, @PathParam("id") String id);
 
     @GET
     @Path("{id}/assignedDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSet getAssignedDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getAssignedDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
 
     @GET
     @Path("{id}/installedDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSet getInstalledDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getInstalledDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
 
     @GET
     @Path("{id}/actions")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareActions getActions(@BeanParam RequestParams requestParams,
-                               @PathParam("id") String id,
-                               @QueryParam("offset") Integer offset,
-                               @QueryParam("limit") Integer limit);
+    Response getActions(@BeanParam RequestParams requestParams,
+                        @PathParam("id") String id,
+                        @QueryParam("offset") Integer offset,
+                        @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}/actions/{actionId}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareAction getAction(@BeanParam RequestParams requestParams,
-                             @PathParam("id") String id,
-                             @PathParam("actionId") Long actionId);
+    Response getAction(@BeanParam RequestParams requestParams,
+                       @PathParam("id") String id,
+                       @PathParam("actionId") Long actionId);
 
     @DELETE
     @Path("{id}/actions/{actionId}")

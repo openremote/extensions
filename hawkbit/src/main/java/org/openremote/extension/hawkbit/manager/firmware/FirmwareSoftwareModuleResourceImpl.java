@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.POST;
@@ -34,11 +35,7 @@ import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareArtifact;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareArtifacts;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModule;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModules;
 
 import java.io.InputStream;
 import java.util.List;
@@ -55,12 +52,10 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareSoftwareModule createSoftwareModule(RequestParams requestParams,
-                                                       FirmwareSoftwareModule softwareModule) {
+    public Response createSoftwareModule(RequestParams requestParams,
+                                         JsonNode softwareModule) {
         try {
-            FirmwareSoftwareModule[] created =
-                    firmwareService.softwareModulesResource.create(new FirmwareSoftwareModule[] { softwareModule });
-            return created != null && created.length > 0 ? created[0] : null;
+            return HawkbitResponse.from(firmwareService.softwareModulesResource.create(softwareModule)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to create firmware software module", e,
                     Response.Status.BAD_GATEWAY);
@@ -68,9 +63,9 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareSoftwareModules getSoftwareModules(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getSoftwareModules(RequestParams requestParams, Integer offset, Integer limit) {
         try {
-            return firmwareService.softwareModulesResource.getSoftwareModules(offset, limit);
+            return HawkbitResponse.from(firmwareService.softwareModulesResource.getSoftwareModules(offset, limit)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware software modules", e,
                     Response.Status.BAD_GATEWAY);
@@ -78,9 +73,9 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareSoftwareModule getSoftwareModule(RequestParams requestParams, Long id) {
+    public Response getSoftwareModule(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.softwareModulesResource.get(id);
+            return HawkbitResponse.from(firmwareService.softwareModulesResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware software module '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -88,9 +83,9 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareArtifacts getSoftwareModuleArtifacts(RequestParams requestParams, Long id) {
+    public Response getSoftwareModuleArtifacts(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.softwareModulesResource.getArtifacts(id);
+            return HawkbitResponse.from(firmwareService.softwareModulesResource.getArtifacts(id)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve artifacts for firmware software module '" + id + "'",
                     e, Response.Status.BAD_GATEWAY);
@@ -101,10 +96,10 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
     @Path("{id}/artifacts")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
-    public FirmwareArtifact uploadSoftwareModuleArtifact(RequestParams requestParams,
-                                                         @PathParam("id") Long id,
-                                                         @QueryParam("filename") String filename,
-                                                         List<EntityPart> parts) {
+    public Response uploadSoftwareModuleArtifact(RequestParams requestParams,
+                                                 @PathParam("id") Long id,
+                                                 @QueryParam("filename") String filename,
+                                                 List<EntityPart> parts) {
         try {
             EntityPart filePart = parts == null ? null : parts.stream()
                     .filter(part -> "file".equals(part.getName()))

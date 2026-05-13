@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
 
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
@@ -44,30 +46,31 @@ public interface FirmwareDistributionSetResource {
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareDistributionSet createDistributionSet(@BeanParam RequestParams requestParams,
-                                                  FirmwareDistributionSet distributionSet);
+    Response createDistributionSet(@BeanParam RequestParams requestParams,
+                                   JsonNode distributionSet);
 
     @POST
     @Path("{id}/assign")
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareDistributionSetAssignmentResult assignDistributionSet(@BeanParam RequestParams requestParams,
-                                                                  @PathParam("id") Long id,
-                                                                  FirmwareDistributionSetAssignment assignment);
+    Response assignDistributionSet(@BeanParam RequestParams requestParams,
+                                   @PathParam("id") Long id,
+                                   @QueryParam("offline") Boolean offline,
+                                   JsonNode targets);
 
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSets getDistributionSets(@BeanParam RequestParams requestParams,
-                                                 @QueryParam("offset") Integer offset,
-                                                 @QueryParam("limit") Integer limit);
+    Response getDistributionSets(@BeanParam RequestParams requestParams,
+                                 @QueryParam("offset") Integer offset,
+                                 @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSet getDistributionSet(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    Response getDistributionSet(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
 
     @DELETE
     @Path("{id}")

@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -27,15 +28,8 @@ import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetAssignment;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetAssignmentResult;
 import org.openremote.model.http.RequestParams;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSets;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetAssignment;
-
-import java.util.List;
 
 public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
         implements FirmwareDistributionSetResource {
@@ -49,12 +43,10 @@ public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSet createDistributionSet(RequestParams requestParams,
-                                                         FirmwareDistributionSet distributionSet) {
+    public Response createDistributionSet(RequestParams requestParams,
+                                          JsonNode distributionSet) {
         try {
-            FirmwareDistributionSet[] created =
-                    firmwareService.distributionSetsResource.create(new FirmwareDistributionSet[] { distributionSet });
-            return created != null && created.length > 0 ? created[0] : null;
+            return HawkbitResponse.from(firmwareService.distributionSetsResource.create(distributionSet)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to create firmware distribution set", e,
                     Response.Status.BAD_GATEWAY);
@@ -62,29 +54,16 @@ public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSetAssignmentResult assignDistributionSet(RequestParams requestParams, Long id,
-                                                                        FirmwareDistributionSetAssignment assignment) {
+    public Response assignDistributionSet(RequestParams requestParams, Long id,
+                                          Boolean offline,
+                                          JsonNode targets) {
         try {
-            if (assignment == null || assignment.getTargets() == null || assignment.getTargets().isEmpty()) {
+            if (targets == null || !targets.isArray() || targets.isEmpty()) {
                 throw new WebApplicationException("Assignment requires at least one target", Response.Status.BAD_REQUEST);
             }
 
-            List<FirmwareTargetAssignment> targets = assignment.getTargets().stream()
-                    .map(target -> new FirmwareTargetAssignment()
-                            .setId(target.getId())
-                            .setForcetime(target.getForcetime() != null ? target.getForcetime() : assignment.getForcetime())
-                            .setWeight(target.getWeight() != null ? target.getWeight() : assignment.getWeight())
-                            .setConfirmationRequired(target.getConfirmationRequired() != null
-                                    ? target.getConfirmationRequired()
-                                    : assignment.getConfirmationRequired())
-                            .setType(target.getType() != null ? target.getType() : assignment.getType())
-                            .setMaintenanceWindow(target.getMaintenanceWindow() != null
-                                    ? target.getMaintenanceWindow()
-                                    : assignment.getMaintenanceWindow()))
-                    .toList();
-
-            return firmwareService.distributionSetsResource.assignTargets(id, assignment.getOffline(),
-                    targets.toArray(FirmwareTargetAssignment[]::new));
+            return HawkbitResponse.from(firmwareService.distributionSetsResource.assignTargets(id, offline, targets))
+                    .asResource();
         } catch (WebApplicationException e) {
             throw e;
         } catch (Exception e) {
@@ -94,9 +73,10 @@ public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSets getDistributionSets(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getDistributionSets(RequestParams requestParams, Integer offset, Integer limit) {
         try {
-            return firmwareService.distributionSetsResource.getDistributionSets(offset, limit);
+            return HawkbitResponse.from(firmwareService.distributionSetsResource.getDistributionSets(offset, limit))
+                    .asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware distribution sets", e,
                     Response.Status.BAD_GATEWAY);
@@ -104,9 +84,9 @@ public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSet getDistributionSet(RequestParams requestParams, Long id) {
+    public Response getDistributionSet(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.distributionSetsResource.get(id);
+            return HawkbitResponse.from(firmwareService.distributionSetsResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware distribution set '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);

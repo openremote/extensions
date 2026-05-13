@@ -20,39 +20,36 @@
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
 import jakarta.ws.rs.*;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareAction;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareActions;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataList;
+import jakarta.ws.rs.core.Response;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataUpdate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargets;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 
 @Path("targets")
 public interface HawkbitTargetsResource {
     @GET
     @Produces(APPLICATION_JSON)
-    FirmwareTargets getTargets(@QueryParam("q") String query, @QueryParam("offset") Integer offset, @QueryParam("limit") Integer limit);
+    Response getTargets(@QueryParam("q") String query, @QueryParam("offset") Integer offset, @QueryParam("limit") Integer limit);
 
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
-    FirmwareTarget[] create(FirmwareTarget[] targets);
+    Response create(FirmwareTarget[] targets);
 
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
-    FirmwareTarget get(@PathParam("id") String id);
+    Response get(@PathParam("id") String id);
 
     @PUT
     @Path("{id}")
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
-    FirmwareTarget update(@PathParam("id") String id, FirmwareTarget target);
+    Response update(@PathParam("id") String id, FirmwareTarget target);
 
     @DELETE
     @Path("{id}")
@@ -61,7 +58,7 @@ public interface HawkbitTargetsResource {
     @GET
     @Path("{id}/metadata")
     @Produces(APPLICATION_JSON)
-    FirmwareMetadataList getMetadata(@PathParam("id") String id);
+    Response getMetadata(@PathParam("id") String id);
 
     @PUT
     @Path("{id}/metadata/{key}")
@@ -77,24 +74,24 @@ public interface HawkbitTargetsResource {
     @GET
     @Path("{id}/assignedDS")
     @Produces(APPLICATION_JSON)
-    FirmwareDistributionSet getAssignedDs(@PathParam("id") String id);
+    Response getAssignedDs(@PathParam("id") String id);
 
     @GET
     @Path("{id}/installedDS")
     @Produces(APPLICATION_JSON)
-    FirmwareDistributionSet getInstalledDs(@PathParam("id") String id);
+    Response getInstalledDs(@PathParam("id") String id);
 
     @GET
     @Path("{id}/actions")
-    @Produces("application/hal+json")
-    FirmwareActions getActions(@PathParam("id") String id,
-                               @QueryParam("offset") Integer offset,
-                               @QueryParam("limit") Integer limit);
+    @Produces(APPLICATION_HAL_JSON)
+    Response getActions(@PathParam("id") String id,
+                        @QueryParam("offset") Integer offset,
+                        @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}/actions/{actionId}")
-    @Produces("application/hal+json")
-    FirmwareAction getAction(@PathParam("id") String id, @PathParam("actionId") Long actionId);
+    @Produces(APPLICATION_HAL_JSON)
+    Response getAction(@PathParam("id") String id, @PathParam("actionId") Long actionId);
 
     @DELETE
     @Path("{id}/actions/{actionId}")

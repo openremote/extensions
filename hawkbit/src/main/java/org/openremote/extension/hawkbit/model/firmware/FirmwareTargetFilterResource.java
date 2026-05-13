@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
 
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
@@ -43,23 +45,23 @@ public interface FirmwareTargetFilterResource {
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareTargetFilterQueries getTargetFilters(@BeanParam RequestParams requestParams,
-                                                  @QueryParam("offset") Integer offset,
-                                                  @QueryParam("limit") Integer limit);
+    Response getTargetFilters(@BeanParam RequestParams requestParams,
+                              @QueryParam("offset") Integer offset,
+                              @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareTargetFilterQuery getTargetFilter(@BeanParam RequestParams requestParams,
-                                               @PathParam("id") Long id);
+    Response getTargetFilter(@BeanParam RequestParams requestParams,
+                             @PathParam("id") Long id);
 
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareTargetFilterQuery createTargetFilter(@BeanParam RequestParams requestParams,
-                                                  FirmwareTargetFilterQueryRequest filter);
+    Response createTargetFilter(@BeanParam RequestParams requestParams,
+                                JsonNode filter);
 
     @DELETE
     @Path("{id}")
@@ -71,17 +73,17 @@ public interface FirmwareTargetFilterResource {
     @Path("{id}/autoAssignDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSet getAutoAssignDS(@BeanParam RequestParams requestParams,
-                                             @PathParam("id") Long id);
+    Response getAutoAssignDS(@BeanParam RequestParams requestParams,
+                             @PathParam("id") Long id);
 
     @POST
     @Path("{id}/autoAssignDS")
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareTargetFilterQuery setAutoAssignDS(@BeanParam RequestParams requestParams,
-                                               @PathParam("id") Long id,
-                                               FirmwareAutoAssignRequest request);
+    Response setAutoAssignDS(@BeanParam RequestParams requestParams,
+                             @PathParam("id") Long id,
+                             JsonNode request);
 
     @DELETE
     @Path("{id}/autoAssignDS")

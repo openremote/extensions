@@ -19,27 +19,8 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class FirmwareMetadataUpdate {
-    protected String value;
-
-    @JsonCreator
-    protected FirmwareMetadataUpdate() {
-    }
-
-    public FirmwareMetadataUpdate(String value) {
-        this.value = value;
-    }
-
-    public String getValue() {
-        return value;
-    }
-
-    public FirmwareMetadataUpdate setValue(String value) {
-        this.value = value;
-        return this;
-    }
+public record FirmwareMetadataUpdate(String value) {
 }

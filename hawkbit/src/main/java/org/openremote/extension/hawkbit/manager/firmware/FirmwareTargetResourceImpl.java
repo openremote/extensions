@@ -25,13 +25,7 @@ import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareAction;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareActions;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSet;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareMetadataList;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTarget;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareTargets;
 
 public class FirmwareTargetResourceImpl extends ManagerWebResource implements FirmwareTargetResource {
 
@@ -44,18 +38,18 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareTargets getTargets(RequestParams requestParams, String query, Integer offset, Integer limit) {
+    public Response getTargets(RequestParams requestParams, String query, Integer offset, Integer limit) {
         try {
-            return firmwareService.targetsResource.getTargets(query, offset, limit);
+            return HawkbitResponse.from(firmwareService.targetsResource.getTargets(query, offset, limit)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware targets", e, Response.Status.BAD_GATEWAY);
         }
     }
 
     @Override
-    public FirmwareTarget getTarget(RequestParams requestParams, String id) {
+    public Response getTarget(RequestParams requestParams, String id) {
         try {
-            return firmwareService.targetsResource.get(id);
+            return HawkbitResponse.from(firmwareService.targetsResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -63,9 +57,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareMetadataList getMetadata(RequestParams requestParams, String id) {
+    public Response getMetadata(RequestParams requestParams, String id) {
         try {
-            return firmwareService.targetsResource.getMetadata(id);
+            return HawkbitResponse.from(firmwareService.targetsResource.getMetadata(id)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve metadata for firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -73,9 +67,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareDistributionSet getAssignedDs(RequestParams requestParams, String id) {
+    public Response getAssignedDs(RequestParams requestParams, String id) {
         try {
-            return firmwareService.targetsResource.getAssignedDs(id);
+            return HawkbitResponse.from(firmwareService.targetsResource.getAssignedDs(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve assigned DS for firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -83,9 +77,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareDistributionSet getInstalledDs(RequestParams requestParams, String id) {
+    public Response getInstalledDs(RequestParams requestParams, String id) {
         try {
-            return firmwareService.targetsResource.getInstalledDs(id);
+            return HawkbitResponse.from(firmwareService.targetsResource.getInstalledDs(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve installed DS for firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -93,9 +87,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareActions getActions(RequestParams requestParams, String id, Integer offset, Integer limit) {
+    public Response getActions(RequestParams requestParams, String id, Integer offset, Integer limit) {
         try {
-            return firmwareService.targetsResource.getActions(id, offset, limit);
+            return HawkbitResponse.from(firmwareService.targetsResource.getActions(id, offset, limit)).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve actions for firmware target '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -103,9 +97,9 @@ public class FirmwareTargetResourceImpl extends ManagerWebResource implements Fi
     }
 
     @Override
-    public FirmwareAction getAction(RequestParams requestParams, String id, Long actionId) {
+    public Response getAction(RequestParams requestParams, String id, Long actionId) {
         try {
-            return firmwareService.targetsResource.getAction(id, actionId);
+            return HawkbitResponse.from(firmwareService.targetsResource.getAction(id, actionId)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to retrieve action '" + actionId + "' for firmware target '" + id + "'", e,

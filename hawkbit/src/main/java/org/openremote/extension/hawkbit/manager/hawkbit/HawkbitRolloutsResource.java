@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -27,34 +28,29 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRollout;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutGroup;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutGroups;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutRequest;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRollouts;
+import jakarta.ws.rs.core.Response;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 @Path("rollouts")
 public interface HawkbitRolloutsResource {
 
-    String APPLICATION_HAL_JSON = "application/hal+json";
-
     @GET
     @Produces(APPLICATION_JSON)
-    FirmwareRollouts getRollouts(@QueryParam("offset") Integer offset,
-                                 @QueryParam("limit") Integer limit,
-                                 @QueryParam("representation") String representation);
+    Response getRollouts(@QueryParam("offset") Integer offset,
+                         @QueryParam("limit") Integer limit,
+                         @QueryParam("representation") String representation);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
-    FirmwareRollout get(@PathParam("id") Long id);
+    Response get(@PathParam("id") Long id);
 
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    FirmwareRollout create(FirmwareRolloutRequest rollout);
+    Response create(JsonNode rollout);
 
     @DELETE
     @Path("{id}")
@@ -63,7 +59,7 @@ public interface HawkbitRolloutsResource {
     @POST
     @Path("{id}/start")
     @Produces(APPLICATION_HAL_JSON)
-    FirmwareRollout start(@PathParam("id") Long id);
+    Response start(@PathParam("id") Long id);
 
     @POST
     @Path("{id}/pause")
@@ -72,14 +68,14 @@ public interface HawkbitRolloutsResource {
     @GET
     @Path("{id}/deploygroups")
     @Produces(APPLICATION_JSON)
-    FirmwareRolloutGroups getRolloutGroups(@PathParam("id") Long id,
-                                           @QueryParam("offset") Integer offset,
-                                           @QueryParam("limit") Integer limit,
-                                           @QueryParam("representation") String representation);
+    Response getRolloutGroups(@PathParam("id") Long id,
+                              @QueryParam("offset") Integer offset,
+                              @QueryParam("limit") Integer limit,
+                              @QueryParam("representation") String representation);
 
     @GET
     @Path("{id}/deploygroups/{groupId}")
     @Produces(APPLICATION_JSON)
-    FirmwareRolloutGroup getRolloutGroup(@PathParam("id") Long id,
-                                          @PathParam("groupId") Long groupId);
+    Response getRolloutGroup(@PathParam("id") Long id,
+                             @PathParam("groupId") Long groupId);
 }

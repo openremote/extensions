@@ -19,17 +19,13 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRollout;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutGroup;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutGroups;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutRequest;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareRolloutResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareRollouts;
 import org.openremote.model.http.RequestParams;
 
 public class FirmwareRolloutResourceImpl extends ManagerWebResource
@@ -44,10 +40,10 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRollouts getRollouts(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getRollouts(RequestParams requestParams, Integer offset, Integer limit) {
         try {
             // Request full representation so totalTargetsPerStatus and totalGroups are populated; hawkBit defaults to compact.
-            return firmwareService.rolloutsResource.getRollouts(offset, limit, "full");
+            return HawkbitResponse.from(firmwareService.rolloutsResource.getRollouts(offset, limit, "full")).asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware rollouts", e,
                     Response.Status.BAD_GATEWAY);
@@ -55,9 +51,9 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRollout getRollout(RequestParams requestParams, Long id) {
+    public Response getRollout(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.rolloutsResource.get(id);
+            return HawkbitResponse.from(firmwareService.rolloutsResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware rollout '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -65,9 +61,9 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRollout createRollout(RequestParams requestParams, FirmwareRolloutRequest rollout) {
+    public Response createRollout(RequestParams requestParams, JsonNode rollout) {
         try {
-            return firmwareService.rolloutsResource.create(rollout);
+            return HawkbitResponse.from(firmwareService.rolloutsResource.create(rollout)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to create firmware rollout", e,
                     Response.Status.BAD_GATEWAY);
@@ -85,9 +81,9 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRollout startRollout(RequestParams requestParams, Long id) {
+    public Response startRollout(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.rolloutsResource.start(id);
+            return HawkbitResponse.from(firmwareService.rolloutsResource.start(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to start firmware rollout '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -105,10 +101,11 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRolloutGroups getRolloutGroups(RequestParams requestParams, Long id,
-                                                   Integer offset, Integer limit) {
+    public Response getRolloutGroups(RequestParams requestParams, Long id,
+                                     Integer offset, Integer limit) {
         try {
-            return firmwareService.rolloutsResource.getRolloutGroups(id, offset, limit, "full");
+            return HawkbitResponse.from(firmwareService.rolloutsResource.getRolloutGroups(id, offset, limit, "full"))
+                    .asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve groups for rollout '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -116,9 +113,9 @@ public class FirmwareRolloutResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareRolloutGroup getRolloutGroup(RequestParams requestParams, Long id, Long groupId) {
+    public Response getRolloutGroup(RequestParams requestParams, Long id, Long groupId) {
         try {
-            return firmwareService.rolloutsResource.getRolloutGroup(id, groupId);
+            return HawkbitResponse.from(firmwareService.rolloutsResource.getRolloutGroup(id, groupId)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to retrieve group '" + groupId + "' for rollout '" + id + "'", e,

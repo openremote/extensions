@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
 
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
@@ -44,40 +46,40 @@ public interface FirmwareDistributionSetTypeResource {
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    FirmwareDistributionSetType createDistributionSetType(@BeanParam RequestParams requestParams,
-                                                          FirmwareDistributionSetType distributionSetType);
+    Response createDistributionSetType(@BeanParam RequestParams requestParams,
+                                       JsonNode distributionSetType);
 
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSetTypes getDistributionSetTypes(@BeanParam RequestParams requestParams,
-                                                         @QueryParam("offset") Integer offset,
-                                                         @QueryParam("limit") Integer limit);
+    Response getDistributionSetTypes(@BeanParam RequestParams requestParams,
+                                     @QueryParam("offset") Integer offset,
+                                     @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareDistributionSetType getDistributionSetType(@BeanParam RequestParams requestParams,
-                                                       @PathParam("id") Long id);
+    Response getDistributionSetType(@BeanParam RequestParams requestParams,
+                                    @PathParam("id") Long id);
 
     @GET
     @Path("{id}/mandatorymoduletypes")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareSoftwareModuleType[] getMandatoryModuleTypes(@BeanParam RequestParams requestParams,
-                                                         @PathParam("id") Long id,
-                                                         @QueryParam("offset") Integer offset,
-                                                         @QueryParam("limit") Integer limit);
+    Response getMandatoryModuleTypes(@BeanParam RequestParams requestParams,
+                                     @PathParam("id") Long id,
+                                     @QueryParam("offset") Integer offset,
+                                     @QueryParam("limit") Integer limit);
 
     @GET
     @Path("{id}/optionalmoduletypes")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    FirmwareSoftwareModuleType[] getOptionalModuleTypes(@BeanParam RequestParams requestParams,
-                                                        @PathParam("id") Long id,
-                                                        @QueryParam("offset") Integer offset,
-                                                        @QueryParam("limit") Integer limit);
+    Response getOptionalModuleTypes(@BeanParam RequestParams requestParams,
+                                    @PathParam("id") Long id,
+                                    @QueryParam("offset") Integer offset,
+                                    @QueryParam("limit") Integer limit);
 
     @DELETE
     @Path("{id}")

@@ -19,16 +19,14 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetType;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetTypeResource;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetTypes;
-import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleType;
 
 public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
         implements FirmwareDistributionSetTypeResource {
@@ -43,12 +41,11 @@ public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSetType createDistributionSetType(RequestParams requestParams,
-                                                                 FirmwareDistributionSetType distributionSetType) {
+    public Response createDistributionSetType(RequestParams requestParams,
+                                              JsonNode distributionSetType) {
         try {
-            FirmwareDistributionSetType[] created = firmwareService.distributionSetTypesResource.create(
-                    new FirmwareDistributionSetType[] { distributionSetType });
-            return created != null && created.length > 0 ? created[0] : null;
+            return HawkbitResponse.from(firmwareService.distributionSetTypesResource.create(distributionSetType))
+                    .asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to create firmware distribution set type", e,
                     Response.Status.BAD_GATEWAY);
@@ -56,10 +53,11 @@ public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSetTypes getDistributionSetTypes(RequestParams requestParams, Integer offset,
-                                                                Integer limit) {
+    public Response getDistributionSetTypes(RequestParams requestParams, Integer offset,
+                                            Integer limit) {
         try {
-            return firmwareService.distributionSetTypesResource.getDistributionSetTypes(offset, limit);
+            return HawkbitResponse.from(firmwareService.distributionSetTypesResource.getDistributionSetTypes(offset, limit))
+                    .asPage();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware distribution set types", e,
                     Response.Status.BAD_GATEWAY);
@@ -67,9 +65,9 @@ public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareDistributionSetType getDistributionSetType(RequestParams requestParams, Long id) {
+    public Response getDistributionSetType(RequestParams requestParams, Long id) {
         try {
-            return firmwareService.distributionSetTypesResource.get(id);
+            return HawkbitResponse.from(firmwareService.distributionSetTypesResource.get(id)).asResource();
         } catch (Exception e) {
             throw new WebApplicationException("Failed to retrieve firmware distribution set type '" + id + "'", e,
                     Response.Status.BAD_GATEWAY);
@@ -77,10 +75,11 @@ public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareSoftwareModuleType[] getMandatoryModuleTypes(RequestParams requestParams, Long id, Integer offset,
-                                                                Integer limit) {
+    public Response getMandatoryModuleTypes(RequestParams requestParams, Long id, Integer offset,
+                                            Integer limit) {
         try {
-            return firmwareService.distributionSetTypesResource.getMandatoryModuleTypes(id, offset, limit);
+            return HawkbitResponse.from(firmwareService.distributionSetTypesResource.getMandatoryModuleTypes(id, offset, limit))
+                    .asPage();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to retrieve mandatory module types for firmware distribution set type '" + id + "'",
@@ -89,10 +88,11 @@ public class FirmwareDistributionSetTypeResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public FirmwareSoftwareModuleType[] getOptionalModuleTypes(RequestParams requestParams, Long id, Integer offset,
-                                                               Integer limit) {
+    public Response getOptionalModuleTypes(RequestParams requestParams, Long id, Integer offset,
+                                           Integer limit) {
         try {
-            return firmwareService.distributionSetTypesResource.getOptionalModuleTypes(id, offset, limit);
+            return HawkbitResponse.from(firmwareService.distributionSetTypesResource.getOptionalModuleTypes(id, offset, limit))
+                    .asPage();
         } catch (Exception e) {
             throw new WebApplicationException(
                     "Failed to retrieve optional module types for firmware distribution set type '" + id + "'",
