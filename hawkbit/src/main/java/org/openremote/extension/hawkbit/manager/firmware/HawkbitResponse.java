@@ -33,11 +33,13 @@ import java.util.Map;
 
 class HawkbitResponse {
 
-    private static final Map<String, String> DEFAULT_LINK_ID_FIELDS = Map.of(
-            "distributionset", "distributionSetId");
+    private record LinkMapping(String idField, String nameField) {}
+
+    private static final Map<String, LinkMapping> DEFAULT_LINK_MAPPINGS = Map.of(
+            "distributionset", new LinkMapping("distributionSetId", "distributionSetName"));
 
     private final Response response;
-    private final Map<String, String> linkIdFields = new LinkedHashMap<>(DEFAULT_LINK_ID_FIELDS);
+    private final Map<String, LinkMapping> linkMappings = new LinkedHashMap<>(DEFAULT_LINK_MAPPINGS);
 
     private HawkbitResponse(Response response) {
         this.response = response;
@@ -47,8 +49,8 @@ class HawkbitResponse {
         return new HawkbitResponse(response);
     }
 
-    HawkbitResponse withLinkId(String rel, String fieldName) {
-        linkIdFields.put(rel, fieldName);
+    HawkbitResponse withLinkMapping(String rel, String idField, String nameField) {
+        linkMappings.put(rel, new LinkMapping(idField, nameField));
         return this;
     }
 
@@ -143,10 +145,15 @@ class HawkbitResponse {
             return;
         }
 
-        linkIdFields.forEach((rel, fieldName) -> {
-            Long id = idFromHref(links.path(rel).path("href"));
-            if (id != null && !target.has(fieldName)) {
-                target.put(fieldName, id);
+        linkMappings.forEach((rel, mapping) -> {
+            JsonNode link = links.path(rel);
+            Long id = idFromHref(link.path("href"));
+            if (id != null && !target.has(mapping.idField())) {
+                target.put(mapping.idField(), id);
+            }
+            JsonNode name = link.path("name");
+            if (name.isTextual() && !target.has(mapping.nameField())) {
+                target.put(mapping.nameField(), name.textValue());
             }
         });
     }
