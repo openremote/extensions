@@ -19,7 +19,6 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -47,7 +46,7 @@ public interface FirmwareDistributionSetResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createDistributionSet(@BeanParam RequestParams requestParams,
-                                   JsonNode distributionSet);
+                                   FirmwareDistributionSetCreate distributionSet);
 
     @POST
     @Path("{id}/assign")
@@ -57,7 +56,7 @@ public interface FirmwareDistributionSetResource {
     Response assignDistributionSet(@BeanParam RequestParams requestParams,
                                    @PathParam("id") Long id,
                                    @QueryParam("offline") Boolean offline,
-                                   JsonNode targets);
+                                   FirmwareDistributionSetAssignment[] targets);
 
     @GET
     @Produces(APPLICATION_JSON)

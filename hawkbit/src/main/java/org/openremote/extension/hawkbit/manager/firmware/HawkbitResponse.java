@@ -1,5 +1,5 @@
 /*
- * Copyright 2026, OpenRemote Inc.
+ * Copyright 2025, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -30,8 +30,29 @@ import org.openremote.model.util.ValueUtil;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 class HawkbitResponse {
+
+    static HawkbitResponse proxy(String errorMessage, Supplier<Response> call) {
+        try {
+            return from(call.get());
+        } catch (WebApplicationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new WebApplicationException(errorMessage, e, Response.Status.BAD_GATEWAY);
+        }
+    }
+
+    static void proxy(String errorMessage, Runnable call) {
+        try {
+            call.run();
+        } catch (WebApplicationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new WebApplicationException(errorMessage, e, Response.Status.BAD_GATEWAY);
+        }
+    }
 
     private record LinkMapping(String idField, String nameField) {}
 
@@ -166,7 +187,7 @@ class HawkbitResponse {
         String href = hrefNode.textValue();
         int end = href.endsWith("/") ? href.length() - 1 : href.length();
         int start = href.lastIndexOf('/', end - 1) + 1;
-        if (start < 0 || start >= end) {
+        if (start >= end) {
             return null;
         }
         try {

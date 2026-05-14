@@ -19,16 +19,14 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetAssignment;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetCreate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetResource;
 
 public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
@@ -44,63 +42,38 @@ public class FirmwareDistributionSetResourceImpl extends ManagerWebResource
 
     @Override
     public Response createDistributionSet(RequestParams requestParams,
-                                          JsonNode distributionSet) {
-        try {
-            return HawkbitResponse.from(firmwareService.distributionSetsResource.create(distributionSet)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to create firmware distribution set", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+                                          FirmwareDistributionSetCreate distributionSet) {
+        return HawkbitResponse.proxy("Failed to create firmware distribution set",
+                () -> firmwareService.distributionSetsResource.create(
+                        new FirmwareDistributionSetCreate[] { distributionSet })).asResource();
     }
 
     @Override
     public Response assignDistributionSet(RequestParams requestParams, Long id,
                                           Boolean offline,
-                                          JsonNode targets) {
-        try {
-            if (targets == null || !targets.isArray() || targets.isEmpty()) {
-                throw new WebApplicationException("Assignment requires at least one target", Response.Status.BAD_REQUEST);
-            }
-
-            return HawkbitResponse.from(firmwareService.distributionSetsResource.assignTargets(id, offline, targets))
-                    .asResource();
-        } catch (WebApplicationException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to assign firmware distribution set '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
+                                          FirmwareDistributionSetAssignment[] targets) {
+        if (targets == null || targets.length == 0) {
+            throw new WebApplicationException("Assignment requires at least one target", Response.Status.BAD_REQUEST);
         }
+        return HawkbitResponse.proxy("Failed to assign firmware distribution set '" + id + "'",
+                () -> firmwareService.distributionSetsResource.assignTargets(id, offline, targets)).asResource();
     }
 
     @Override
     public Response getDistributionSets(RequestParams requestParams, Integer offset, Integer limit) {
-        try {
-            return HawkbitResponse.from(firmwareService.distributionSetsResource.getDistributionSets(offset, limit))
-                    .asPage();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware distribution sets", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware distribution sets",
+                () -> firmwareService.distributionSetsResource.getDistributionSets(offset, limit)).asPage();
     }
 
     @Override
     public Response getDistributionSet(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.distributionSetsResource.get(id)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware distribution set '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware distribution set '" + id + "'",
+                () -> firmwareService.distributionSetsResource.get(id)).asResource();
     }
 
-    @DELETE
-    @Path("{id}")
-    public void deleteDistributionSet(RequestParams requestParams, @PathParam("id") Long id) {
-        try {
-            firmwareService.distributionSetsResource.delete(id);
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to delete firmware distribution set '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+    @Override
+    public void deleteDistributionSet(RequestParams requestParams, Long id) {
+        HawkbitResponse.proxy("Failed to delete firmware distribution set '" + id + "'",
+                () -> firmwareService.distributionSetsResource.delete(id));
     }
 }

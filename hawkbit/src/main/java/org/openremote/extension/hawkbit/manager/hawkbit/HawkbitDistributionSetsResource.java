@@ -19,7 +19,6 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Consumes;
@@ -29,6 +28,8 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetAssignment;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareDistributionSetCreate;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -39,7 +40,7 @@ public interface HawkbitDistributionSetsResource {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(JsonNode distributionSets);
+    Response create(FirmwareDistributionSetCreate[] distributionSets);
 
     @POST
     @Path("{id}/assignedTargets")
@@ -47,7 +48,7 @@ public interface HawkbitDistributionSetsResource {
     @Produces(APPLICATION_HAL_JSON)
     Response assignTargets(@PathParam("id") Long id,
                            @QueryParam("offline") Boolean offline,
-                           JsonNode targets);
+                           FirmwareDistributionSetAssignment[] targets);
 
     @GET
     @Produces(APPLICATION_JSON)

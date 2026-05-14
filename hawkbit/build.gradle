@@ -13,6 +13,7 @@ dependencies {
 
     api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
     api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
+    api "org.jboss.resteasy:resteasy-multipart-provider:$resteasyVersion"
 
     testImplementation "io.openremote:openremote-test:$openremoteVersion"
 }

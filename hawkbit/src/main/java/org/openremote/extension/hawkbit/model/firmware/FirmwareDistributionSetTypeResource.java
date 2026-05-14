@@ -19,7 +19,6 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -47,7 +46,7 @@ public interface FirmwareDistributionSetTypeResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createDistributionSetType(@BeanParam RequestParams requestParams,
-                                       JsonNode distributionSetType);
+                                       FirmwareDistributionSetTypeCreate distributionSetType);
 
     @GET
     @Produces(APPLICATION_JSON)

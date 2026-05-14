@@ -19,7 +19,6 @@
  */
 package org.openremote.extension.hawkbit.model.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.BeanParam;
@@ -61,7 +60,7 @@ public interface FirmwareTargetFilterResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createTargetFilter(@BeanParam RequestParams requestParams,
-                                JsonNode filter);
+                                FirmwareTargetFilterCreate filter);
 
     @DELETE
     @Path("{id}")
@@ -83,7 +82,7 @@ public interface FirmwareTargetFilterResource {
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response setAutoAssignDS(@BeanParam RequestParams requestParams,
                              @PathParam("id") Long id,
-                             JsonNode request);
+                             FirmwareAutoAssignDS request);
 
     @DELETE
     @Path("{id}/autoAssignDS")

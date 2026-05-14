@@ -19,7 +19,6 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Consumes;
@@ -29,8 +28,11 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleCreate;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+import static jakarta.ws.rs.core.MediaType.MULTIPART_FORM_DATA;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 @Path("softwaremodules")
@@ -39,7 +41,7 @@ public interface HawkbitSoftwareModulesResource {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(JsonNode softwareModules);
+    Response create(FirmwareSoftwareModuleCreate[] softwareModules);
 
     @GET
     @Produces(APPLICATION_JSON)
@@ -55,6 +57,14 @@ public interface HawkbitSoftwareModulesResource {
     @Path("{id}/artifacts")
     @Produces(APPLICATION_JSON)
     Response getArtifacts(@PathParam("id") Long id);
+
+    @POST
+    @Path("{id}/artifacts")
+    @Consumes(MULTIPART_FORM_DATA)
+    @Produces(APPLICATION_HAL_JSON)
+    Response uploadArtifact(@PathParam("id") Long id,
+                            @QueryParam("filename") String filename,
+                            MultipartFormDataOutput form);
 
     @DELETE
     @Path("{id}")

@@ -17,12 +17,10 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.openremote.extension.hawkbit.manager.hawkbit;
+package org.openremote.extension.hawkbit.model.firmware;
 
-public final class HawkbitMediaType {
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-    public static final String APPLICATION_HAL_JSON = "application/hal+json";
-
-    private HawkbitMediaType() {
-    }
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record FirmwareRolloutAction(String action, String expression) {
 }

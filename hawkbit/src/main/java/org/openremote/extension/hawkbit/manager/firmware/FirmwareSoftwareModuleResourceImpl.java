@@ -19,22 +19,14 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.EntityPart;
-import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleCreate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleResource;
 
 import java.io.InputStream;
@@ -53,52 +45,34 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
 
     @Override
     public Response createSoftwareModule(RequestParams requestParams,
-                                         JsonNode softwareModule) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModulesResource.create(softwareModule)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to create firmware software module", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+                                         FirmwareSoftwareModuleCreate softwareModule) {
+        return HawkbitResponse.proxy("Failed to create firmware software module",
+                () -> firmwareService.softwareModulesResource.create(
+                        new FirmwareSoftwareModuleCreate[] { softwareModule })).asResource();
     }
 
     @Override
     public Response getSoftwareModules(RequestParams requestParams, Integer offset, Integer limit) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModulesResource.getSoftwareModules(offset, limit)).asPage();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware software modules", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware software modules",
+                () -> firmwareService.softwareModulesResource.getSoftwareModules(offset, limit)).asPage();
     }
 
     @Override
     public Response getSoftwareModule(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModulesResource.get(id)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware software module '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware software module '" + id + "'",
+                () -> firmwareService.softwareModulesResource.get(id)).asResource();
     }
 
     @Override
     public Response getSoftwareModuleArtifacts(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModulesResource.getArtifacts(id)).asPage();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve artifacts for firmware software module '" + id + "'",
-                    e, Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve artifacts for firmware software module '" + id + "'",
+                () -> firmwareService.softwareModulesResource.getArtifacts(id)).asPage();
     }
 
-    @POST
-    @Path("{id}/artifacts")
-    @Consumes(MediaType.MULTIPART_FORM_DATA)
-    @Produces(MediaType.APPLICATION_JSON)
+    @Override
     public Response uploadSoftwareModuleArtifact(RequestParams requestParams,
-                                                 @PathParam("id") Long id,
-                                                 @QueryParam("filename") String filename,
+                                                 Long id,
+                                                 String filename,
                                                  List<EntityPart> parts) {
         try {
             EntityPart filePart = parts == null ? null : parts.stream()
@@ -120,14 +94,9 @@ public class FirmwareSoftwareModuleResourceImpl extends ManagerWebResource
         }
     }
 
-    @DELETE
-    @Path("{id}")
-    public void deleteSoftwareModule(RequestParams requestParams, @PathParam("id") Long id) {
-        try {
-            firmwareService.softwareModulesResource.delete(id);
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to delete firmware software module '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+    @Override
+    public void deleteSoftwareModule(RequestParams requestParams, Long id) {
+        HawkbitResponse.proxy("Failed to delete firmware software module '" + id + "'",
+                () -> firmwareService.softwareModulesResource.delete(id));
     }
 }

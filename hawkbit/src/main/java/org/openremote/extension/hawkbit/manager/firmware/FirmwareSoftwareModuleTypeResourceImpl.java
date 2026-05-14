@@ -19,13 +19,12 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleTypeCreate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareSoftwareModuleTypeResource;
 
 public class FirmwareSoftwareModuleTypeResourceImpl extends ManagerWebResource
@@ -41,45 +40,28 @@ public class FirmwareSoftwareModuleTypeResourceImpl extends ManagerWebResource
 
     @Override
     public Response createSoftwareModuleType(RequestParams requestParams,
-                                             JsonNode softwareModuleType) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModuleTypesResource.create(softwareModuleType))
-                    .asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to create firmware software module type", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+                                             FirmwareSoftwareModuleTypeCreate softwareModuleType) {
+        return HawkbitResponse.proxy("Failed to create firmware software module type",
+                () -> firmwareService.softwareModuleTypesResource.create(
+                        new FirmwareSoftwareModuleTypeCreate[] { softwareModuleType })).asResource();
     }
 
     @Override
     public Response getSoftwareModuleTypes(RequestParams requestParams, Integer offset,
                                            Integer limit) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModuleTypesResource.getSoftwareModuleTypes(offset, limit))
-                    .asPage();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware software module types", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware software module types",
+                () -> firmwareService.softwareModuleTypesResource.getSoftwareModuleTypes(offset, limit)).asPage();
     }
 
     @Override
     public Response getSoftwareModuleType(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.softwareModuleTypesResource.get(id)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware software module type '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware software module type '" + id + "'",
+                () -> firmwareService.softwareModuleTypesResource.get(id)).asResource();
     }
 
     @Override
     public void deleteSoftwareModuleType(RequestParams requestParams, Long id) {
-        try {
-            firmwareService.softwareModuleTypesResource.delete(id);
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to delete firmware software module type '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        HawkbitResponse.proxy("Failed to delete firmware software module type '" + id + "'",
+                () -> firmwareService.softwareModuleTypesResource.delete(id));
     }
 }

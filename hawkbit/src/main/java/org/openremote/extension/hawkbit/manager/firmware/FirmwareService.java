@@ -1,5 +1,5 @@
 /*
- * Copyright 2021, OpenRemote Inc.
+ * Copyright 2025, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -25,7 +25,6 @@ import static org.openremote.container.web.WebTargetBuilder.createClient;
 import static org.openremote.model.syslog.SyslogCategory.API;
 import static org.openremote.model.util.MapAccess.getString;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -38,18 +37,20 @@ import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.client.jaxrs.internal.ResteasyClientBuilderImpl;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataWriter;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.WebClient;
 import org.openremote.container.web.WebTargetBuilder;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.event.ClientEventService;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitArtifactUploadClient;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitBasicAuth;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitDistributionSetsResource;
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitDistributionSetTypesResource;
@@ -88,9 +89,9 @@ public class FirmwareService implements ContainerService {
     public static final String HAWKBIT_MANAGEMENT_API_URL = "HAWKBIT_MANAGEMENT_API_URL";
     public static final String HAWKBIT_MANAGEMENT_API_URL_DEFAULT = "http://localhost:8083/hawkbit/rest/v1";
 
-    protected static final Logger LOG = SyslogCategory.getLogger(API, FirmwareService.class);
+    private static final Logger LOG = SyslogCategory.getLogger(API, FirmwareService.class);
 
-    protected static ResteasyClient client;
+    protected ResteasyClient client;
 
     protected String hawkbitRealm;
     protected ClientEventService clientEventService;
@@ -105,18 +106,6 @@ public class FirmwareService implements ContainerService {
     protected HawkbitSoftwareModuleTypesResource softwareModuleTypesResource;
     protected HawkbitRolloutsResource rolloutsResource;
     protected HawkbitTargetFiltersResource targetFiltersResource;
-    protected HawkbitArtifactUploadClient artifactUploadClient;
-
-    static {
-        client = createClient(org.openremote.container.Container.EXECUTOR, CONNECTION_POOL_SIZE,
-                CONNECTION_TIMEOUT_MILLISECONDS, resteasyClientBuilder -> {
-                    WebClient.registerDefaults((ResteasyClientBuilderImpl) resteasyClientBuilder);
-                    ResteasyJackson2Provider provider = new ResteasyJackson2Provider();
-                    provider.setMapper(ValueUtil.JSON);
-                    resteasyClientBuilder.register(provider);
-                    return resteasyClientBuilder;
-                });
-    }
 
     @Override
     public void init(Container container) throws Exception {
@@ -172,7 +161,17 @@ public class FirmwareService implements ContainerService {
         hawkbitRealm = getString(container.getConfig(), HAWKBIT_REALM, HAWKBIT_REALM_DEFAULT);
 
         LOG.info(HAWKBIT_MANAGEMENT_API_URL + "=" + uri);
-        
+
+        client = createClient(org.openremote.container.Container.EXECUTOR, CONNECTION_POOL_SIZE,
+                CONNECTION_TIMEOUT_MILLISECONDS, resteasyClientBuilder -> {
+                    WebClient.registerDefaults((ResteasyClientBuilderImpl) resteasyClientBuilder);
+                    ResteasyJackson2Provider provider = new ResteasyJackson2Provider();
+                    provider.setMapper(ValueUtil.JSON);
+                    resteasyClientBuilder.register(provider);
+                    resteasyClientBuilder.register(MultipartFormDataWriter.class);
+                    return resteasyClientBuilder;
+                });
+
         ResteasyWebTarget webTarget = new WebTargetBuilder(client, uri).build();
         webTarget.register((ClientRequestFilter) requestContext -> requestContext.getHeaders().putSingle(
                 HttpHeaders.AUTHORIZATION,
@@ -186,10 +185,6 @@ public class FirmwareService implements ContainerService {
         softwareModuleTypesResource = webTarget.proxy(HawkbitSoftwareModuleTypesResource.class);
         rolloutsResource = webTarget.proxy(HawkbitRolloutsResource.class);
         targetFiltersResource = webTarget.proxy(HawkbitTargetFiltersResource.class);
-
-        // Artifact upload uses raw multipart forwarding because Hawkbit expects
-        // multipart/form-data for this endpoint.
-        artifactUploadClient = new HawkbitArtifactUploadClient(uri, hawkbitUsername, hawkbitPassword);
 
         // Subscribe on asset events
         clientEventService.addSubscription(
@@ -213,10 +208,15 @@ public class FirmwareService implements ContainerService {
     }
 
     public Response uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
-            String originalFilename, String filename)
-            throws IOException, InterruptedException {
-        return HawkbitResponse.from(artifactUploadClient.uploadSoftwareModuleArtifact(softwareModuleId, inputStream,
-                originalFilename, filename)).asResource();
+            String originalFilename, String filename) {
+        String effectiveFilename = TextUtil.isNullOrEmpty(filename) ? originalFilename : filename;
+        String uploadFilename = TextUtil.isNullOrEmpty(effectiveFilename) ? "artifact.bin" : effectiveFilename;
+        MultipartFormDataOutput form = new MultipartFormDataOutput();
+        form.addFormData("file", inputStream, MediaType.APPLICATION_OCTET_STREAM_TYPE, uploadFilename);
+        return HawkbitResponse.from(softwareModulesResource.uploadArtifact(softwareModuleId,
+                        TextUtil.isNullOrEmpty(effectiveFilename) ? null : effectiveFilename,
+                        form))
+                .asResource();
     }
 
     private void onAssetChange(AssetEvent assetEvent) {
@@ -249,10 +249,10 @@ public class FirmwareService implements ContainerService {
             return;
         }
 
-        attributeEvent.getValue().ifPresent(value -> syncFirmwareTargetMetadataValue(
+        syncFirmwareTargetMetadataValue(
                 attributeEvent.getId(),
                 attributeEvent.getName(),
-                value));
+                attributeEvent.getValue().orElse(null));
     }
 
     private void handleAssetChange(AssetEvent assetEvent) {
@@ -275,21 +275,24 @@ public class FirmwareService implements ContainerService {
                 shouldUpdateFirmwareTargetInfo = createFirmwareTarget(buildFirmwareTarget(asset));
                 break;
             case UPDATE:
-                LOG.info("Checking hawkbit target for update asset id=" + asset.getId());
+                LOG.fine("Checking hawkbit target for update asset id=" + asset.getId());
+                FirmwareTarget existingTarget;
                 try {
-                    FirmwareTarget existingTarget = getFirmwareTarget(controllerId);
-                    if (existingTarget != null) {
-                        LOG.info("hawkbit target already exists so nothing to do id=" + controllerId);
-                        shouldUpdateFirmwareTargetInfo = true;
-                        break;
-                    }
+                    existingTarget = getFirmwareTarget(controllerId);
                 } catch (Exception e) {
-                    LOG.log(Level.FINE, "Failed to load hawkbit target id=" + controllerId
-                            + ", trying create instead", e);
+                    LOG.log(Level.WARNING, "Failed to query hawkbit target id=" + controllerId
+                            + ", skipping update to avoid spurious create", e);
+                    break;
                 }
 
+                if (existingTarget != null) {
+                    LOG.fine("hawkbit target already exists id=" + controllerId);
+                    shouldUpdateFirmwareTargetInfo = true;
+                    break;
+                }
+
+                LOG.info("hawkbit target missing for asset id=" + asset.getId() + ", creating it now");
                 if (createFirmwareTarget(buildFirmwareTarget(asset))) {
-                    LOG.info("hawkbit target missing for asset id=" + asset.getId() + ", creating it now");
                     shouldUpdateFirmwareTargetInfo = true;
                 }
                 break;
@@ -313,8 +316,7 @@ public class FirmwareService implements ContainerService {
                 continue;
             }
 
-            attribute.getValue().ifPresent(value ->
-                    syncFirmwareTargetMetadataValue(controllerId, attribute.getName(), value));
+            syncFirmwareTargetMetadataValue(controllerId, attribute.getName(), attribute.getValue().orElse(null));
         }
     }
 
@@ -343,7 +345,8 @@ public class FirmwareService implements ContainerService {
     }
 
     private void syncFirmwareTargetMetadataValue(String controllerId, String key, Object value) {
-        if (value == null) {
+        if (isAttributeEmptyOrNull(value)) {
+            deleteFirmwareTargetMetadata(controllerId, key);
             return;
         }
 
@@ -355,6 +358,12 @@ public class FirmwareService implements ContainerService {
         }
 
         updateFirmwareTargetMetadata(controllerId, key, metadataValue.get());
+    }
+
+    private boolean isAttributeEmptyOrNull(Object value) {
+        return value == null || ValueUtil.getStringCoerced(value)
+                .map(String::isEmpty)
+                .orElse(false);
     }
 
     private void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
@@ -384,9 +393,11 @@ public class FirmwareService implements ContainerService {
     }
 
     private Optional<AttributeDescriptor<?>> getFirmwareTargetInfoDescriptor(Asset<?> asset) {
+        // TODO: Decide whether firmwareTarget should also be honored when defined on
+        // an asset attribute instance instead of only on the asset type descriptor.
         Optional<AssetTypeInfo> assetTypeInfo = ValueUtil.getAssetInfo(asset.getType());
         if (assetTypeInfo.isEmpty()) {
-            LOG.warning("Cannot resolve asset type info for asset type '" + asset.getType() + "'");
+            LOG.fine("Cannot resolve asset type info for asset type '" + asset.getType() + "'");
             return Optional.empty();
         }
 
@@ -465,11 +476,18 @@ public class FirmwareService implements ContainerService {
                     Map<String, String> firmwareTargetInfo = new LinkedHashMap<>();
                     firmwareTargetInfo.put("controllerId", firmwareTarget.controllerId());
                     firmwareTargetInfo.put("securityToken", firmwareTarget.securityToken());
+                    String newValueJson = ValueUtil.asJSON(firmwareTargetInfo).orElse(null);
+
+                    String existingValueJson = asset.getAttribute(attributeName)
+                            .flatMap(attr -> attr.getValue(String.class))
+                            .orElse(null);
+                    if (Objects.equals(existingValueJson, newValueJson)) {
+                        LOG.fine("Firmware target info attribute up to date for asset id=" + asset.getId());
+                        return;
+                    }
+
                     assetProcessingService.sendAttributeEvent(
-                            new AttributeEvent(
-                                    asset.getId(),
-                                    attributeName,
-                                    ValueUtil.asJSON(firmwareTargetInfo).orElse(null)),
+                            new AttributeEvent(asset.getId(), attributeName, newValueJson),
                             getClass().getSimpleName());
                     LOG.info("Updated firmware target info attribute for asset id=" + asset.getId()
                             + ", controllerId=" + firmwareTarget.controllerId());

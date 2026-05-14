@@ -19,12 +19,12 @@
  */
 package org.openremote.extension.hawkbit.manager.firmware;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareAutoAssignDS;
+import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterCreate;
 import org.openremote.extension.hawkbit.model.firmware.FirmwareTargetFilterResource;
 import org.openremote.model.http.RequestParams;
 
@@ -41,76 +41,48 @@ public class FirmwareTargetFilterResourceImpl extends ManagerWebResource
 
     @Override
     public Response getTargetFilters(RequestParams requestParams, Integer offset, Integer limit) {
-        try {
-            return HawkbitResponse.from(firmwareService.targetFiltersResource.getTargetFilters(offset, limit)).asPage();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware target filters", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware target filters",
+                () -> firmwareService.targetFiltersResource.getTargetFilters(offset, limit)).asPage();
     }
 
     @Override
     public Response getTargetFilter(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.targetFiltersResource.get(id)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to retrieve firmware target filter '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy("Failed to retrieve firmware target filter '" + id + "'",
+                () -> firmwareService.targetFiltersResource.get(id)).asResource();
     }
 
     @Override
     public Response createTargetFilter(RequestParams requestParams,
-                                       JsonNode filter) {
-        try {
-            return HawkbitResponse.from(firmwareService.targetFiltersResource.create(filter)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to create firmware target filter", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+                                       FirmwareTargetFilterCreate filter) {
+        return HawkbitResponse.proxy("Failed to create firmware target filter",
+                () -> firmwareService.targetFiltersResource.create(filter)).asResource();
     }
 
     @Override
     public void deleteTargetFilter(RequestParams requestParams, Long id) {
-        try {
-            firmwareService.targetFiltersResource.delete(id);
-        } catch (Exception e) {
-            throw new WebApplicationException("Failed to delete firmware target filter '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        HawkbitResponse.proxy("Failed to delete firmware target filter '" + id + "'",
+                () -> firmwareService.targetFiltersResource.delete(id));
     }
 
     @Override
     public Response getAutoAssignDS(RequestParams requestParams, Long id) {
-        try {
-            return HawkbitResponse.from(firmwareService.targetFiltersResource.getAutoAssignDS(id)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException(
-                    "Failed to retrieve auto assign distribution set for filter '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        return HawkbitResponse.proxy(
+                "Failed to retrieve auto assign distribution set for filter '" + id + "'",
+                () -> firmwareService.targetFiltersResource.getAutoAssignDS(id)).asResource();
     }
 
     @Override
     public Response setAutoAssignDS(RequestParams requestParams, Long id,
-                                    JsonNode request) {
-        try {
-            return HawkbitResponse.from(firmwareService.targetFiltersResource.setAutoAssignDS(id, request)).asResource();
-        } catch (Exception e) {
-            throw new WebApplicationException(
-                    "Failed to set auto assign distribution set for filter '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+                                    FirmwareAutoAssignDS request) {
+        return HawkbitResponse.proxy(
+                "Failed to set auto assign distribution set for filter '" + id + "'",
+                () -> firmwareService.targetFiltersResource.setAutoAssignDS(id, request)).asResource();
     }
 
     @Override
     public void deleteAutoAssignDS(RequestParams requestParams, Long id) {
-        try {
-            firmwareService.targetFiltersResource.deleteAutoAssignDS(id);
-        } catch (Exception e) {
-            throw new WebApplicationException(
-                    "Failed to remove auto assign distribution set from filter '" + id + "'", e,
-                    Response.Status.BAD_GATEWAY);
-        }
+        HawkbitResponse.proxy(
+                "Failed to remove auto assign distribution set from filter '" + id + "'",
+                () -> firmwareService.targetFiltersResource.deleteAutoAssignDS(id));
     }
 }
