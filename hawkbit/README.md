@@ -174,21 +174,39 @@ sequenceDiagram
 ## Components
 
 ```
-manager/firmware/
-  FirmwareService.java                         Starts the integration, syncs assets and registers API resources
-  FirmwareTargetResourceImpl.java             Proxies target and action requests to hawkBit
-  FirmwareSoftwareModuleResourceImpl.java     Proxies software module requests and artifact uploads
-  FirmwareDistributionSetResourceImpl.java    Proxies distribution set requests and target assignment
-  FirmwareRolloutResourceImpl.java            Proxies rollout requests
+manager/
+  HawkbitFirmwareService.java                  Starts the integration, syncs assets and registers API resources
+  HawkbitResponseHandler.java                  Calls hawkBit clients and adapts responses for OpenRemote APIs
+
+manager/resource/
+  TargetResourceImpl.java                     Proxies target and action requests to hawkBit
+  SoftwareModuleResourceImpl.java             Proxies software module requests and artifact uploads
+  DistributionSetResourceImpl.java            Proxies distribution set requests and target assignment
+  DistributionSetTypeResourceImpl.java        Proxies distribution set type requests
+  SoftwareModuleTypeResourceImpl.java         Proxies software module type requests
+  TargetFilterResourceImpl.java               Proxies target filter requests
+  RolloutResourceImpl.java                    Proxies rollout requests
 
 manager/hawkbit/
-  HawkbitTargetsResource.java                 RESTEasy client proxy for hawkBit targets
-  HawkbitSoftwareModulesResource.java         RESTEasy client proxy for software modules
-  HawkbitDistributionSetsResource.java        RESTEasy client proxy for distribution sets
-  HawkbitRolloutsResource.java                RESTEasy client proxy for rollouts
-  HawkbitArtifactUploadClient.java            Multipart artifact upload client
+  HawkbitTargetsClient.java                   RESTEasy client proxy for hawkBit targets
+  HawkbitSoftwareModulesClient.java           RESTEasy client proxy for software modules
+  HawkbitDistributionSetsClient.java          RESTEasy client proxy for distribution sets
+  HawkbitDistributionSetTypesClient.java       RESTEasy client proxy for distribution set types
+  HawkbitSoftwareModuleTypesClient.java        RESTEasy client proxy for software module types
+  HawkbitTargetFiltersClient.java             RESTEasy client proxy for target filters
+  HawkbitRolloutsClient.java                  RESTEasy client proxy for rollouts
+  HawkbitBasicAuth.java                       Builds hawkBit basic auth headers
+  HawkbitMediaType.java                       Defines hawkBit media types
 
-model/firmware/
+model/
   FirmwareMetaItemType.java                   Defines firmwareTarget and firmwareMetadata meta items
   FirmwareModelProvider.java                  Registers firmware meta items in the OpenRemote model
+
+model/resource/
+  TargetResource.java                         Defines OpenRemote firmware target endpoints
+  SoftwareModuleResource.java                 Defines OpenRemote firmware software module endpoints
+  DistributionSetResource.java                Defines OpenRemote firmware distribution set endpoints
+
+model/hawkbit/
+  hawkBit API payload records used by the RESTEasy clients and firmware resources
 ```
