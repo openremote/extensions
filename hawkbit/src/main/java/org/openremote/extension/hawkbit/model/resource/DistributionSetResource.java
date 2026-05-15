@@ -19,12 +19,11 @@
  */
 package org.openremote.extension.hawkbit.model.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.DistributionSetAssignmentRequest;
-import org.openremote.extension.hawkbit.model.hawkbit.DistributionSetCreateRequest;
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
 
@@ -39,7 +38,7 @@ public interface DistributionSetResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createDistributionSet(@BeanParam RequestParams requestParams,
-                                   DistributionSetCreateRequest distributionSet);
+                                   JsonNode distributionSet);
 
     @POST
     @Path("{id}/assign")
@@ -49,7 +48,7 @@ public interface DistributionSetResource {
     Response assignDistributionSet(@BeanParam RequestParams requestParams,
                                    @PathParam("id") Long id,
                                    @QueryParam("offline") Boolean offline,
-                                   DistributionSetAssignmentRequest[] targets);
+                                   JsonNode targets);
 
     @GET
     @Produces(APPLICATION_JSON)

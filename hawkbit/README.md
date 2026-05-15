@@ -176,7 +176,7 @@ sequenceDiagram
 ```
 manager/
   HawkbitFirmwareService.java                  Starts the integration, syncs assets and registers API resources
-  HawkbitResponseHandler.java                  Calls hawkBit clients and adapts responses for OpenRemote APIs
+  HawkbitResponseProxy.java                    Proxies hawkBit client responses for OpenRemote APIs
 
 manager/resource/
   TargetResourceImpl.java                     Proxies target and action requests to hawkBit

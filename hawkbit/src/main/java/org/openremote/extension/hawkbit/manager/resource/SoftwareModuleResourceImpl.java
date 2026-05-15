@@ -19,13 +19,13 @@
  */
 package org.openremote.extension.hawkbit.manager.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.EntityPart;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
-import org.openremote.extension.hawkbit.manager.HawkbitResponseHandler;
-import org.openremote.extension.hawkbit.model.hawkbit.SoftwareModuleCreateRequest;
+import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.SoftwareModuleResource;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
@@ -47,27 +47,26 @@ public class SoftwareModuleResourceImpl extends ManagerWebResource
 
     @Override
     public Response createSoftwareModule(RequestParams requestParams,
-                                         SoftwareModuleCreateRequest softwareModule) {
-        return HawkbitResponseHandler.call("Failed to create firmware software module",
-                () -> hawkbitFirmwareService.softwareModules().create(
-                        new SoftwareModuleCreateRequest[]{softwareModule}));
+                                         JsonNode softwareModule) {
+        return HawkbitResponseProxy.proxy("Failed to create firmware software module",
+                () -> hawkbitFirmwareService.softwareModules().create(softwareModule));
     }
 
     @Override
     public Response getSoftwareModules(RequestParams requestParams, Integer offset, Integer limit) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware software modules",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software modules",
                 () -> hawkbitFirmwareService.softwareModules().getSoftwareModules(offset, limit));
     }
 
     @Override
     public Response getSoftwareModule(RequestParams requestParams, Long id) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware software module '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().get(id));
     }
 
     @Override
     public Response getSoftwareModuleArtifacts(RequestParams requestParams, Long id) {
-        return HawkbitResponseHandler.call("Failed to retrieve artifacts for firmware software module '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve artifacts for firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().getArtifacts(id));
     }
 
@@ -98,7 +97,7 @@ public class SoftwareModuleResourceImpl extends ManagerWebResource
 
     @Override
     public void deleteSoftwareModule(RequestParams requestParams, Long id) {
-        HawkbitResponseHandler.call("Failed to delete firmware software module '" + id + "'",
+        HawkbitResponseProxy.proxy("Failed to delete firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().delete(id));
     }
 }

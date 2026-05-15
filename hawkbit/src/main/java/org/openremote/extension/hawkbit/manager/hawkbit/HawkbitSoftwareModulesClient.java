@@ -19,10 +19,10 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
-import org.openremote.extension.hawkbit.model.hawkbit.SoftwareModuleCreateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static jakarta.ws.rs.core.MediaType.MULTIPART_FORM_DATA;
@@ -34,7 +34,7 @@ public interface HawkbitSoftwareModulesClient {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(SoftwareModuleCreateRequest[] softwareModules);
+    Response create(JsonNode softwareModules);
 
     @GET
     @Produces(APPLICATION_JSON)

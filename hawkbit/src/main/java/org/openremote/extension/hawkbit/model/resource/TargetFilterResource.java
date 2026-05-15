@@ -19,12 +19,11 @@
  */
 package org.openremote.extension.hawkbit.model.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.AutoAssignDistributionSetRequest;
-import org.openremote.extension.hawkbit.model.hawkbit.TargetFilterCreateRequest;
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
 
@@ -53,7 +52,7 @@ public interface TargetFilterResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createTargetFilter(@BeanParam RequestParams requestParams,
-                                TargetFilterCreateRequest filter);
+                                JsonNode filter);
 
     @DELETE
     @Path("{id}")
@@ -75,7 +74,7 @@ public interface TargetFilterResource {
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response setAutoAssignDS(@BeanParam RequestParams requestParams,
                              @PathParam("id") Long id,
-                             AutoAssignDistributionSetRequest request);
+                             JsonNode request);
 
     @DELETE
     @Path("{id}/autoAssignDS")

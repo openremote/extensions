@@ -22,7 +22,7 @@ package org.openremote.extension.hawkbit.manager.resource;
 import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
-import org.openremote.extension.hawkbit.manager.HawkbitResponseHandler;
+import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.TargetResource;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
@@ -40,50 +40,50 @@ public class TargetResourceImpl extends ManagerWebResource implements TargetReso
 
     @Override
     public Response getTargets(RequestParams requestParams, String query, Integer offset, Integer limit) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware targets",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware targets",
                 () -> hawkbitFirmwareService.targets().getTargets(query, offset, limit));
     }
 
     @Override
     public Response getTarget(RequestParams requestParams, String id) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware target '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().get(id));
     }
 
     @Override
     public Response getMetadata(RequestParams requestParams, String id) {
-        return HawkbitResponseHandler.call("Failed to retrieve metadata for firmware target '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve metadata for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().getMetadata(id));
     }
 
     @Override
     public Response getAssignedDs(RequestParams requestParams, String id) {
-        return HawkbitResponseHandler.call("Failed to retrieve assigned DS for firmware target '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve assigned DS for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().getAssignedDs(id));
     }
 
     @Override
     public Response getInstalledDs(RequestParams requestParams, String id) {
-        return HawkbitResponseHandler.call("Failed to retrieve installed DS for firmware target '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve installed DS for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().getInstalledDs(id));
     }
 
     @Override
     public Response getActions(RequestParams requestParams, String id, Integer offset, Integer limit) {
-        return HawkbitResponseHandler.call("Failed to retrieve actions for firmware target '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve actions for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().getActions(id, offset, limit));
     }
 
     @Override
     public Response getAction(RequestParams requestParams, String id, Long actionId) {
-        return HawkbitResponseHandler.call(
+        return HawkbitResponseProxy.proxy(
                 "Failed to retrieve action '" + actionId + "' for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().getAction(id, actionId));
     }
 
     @Override
     public void cancelAction(RequestParams requestParams, String id, Long actionId, Boolean force) {
-        HawkbitResponseHandler.call(
+        HawkbitResponseProxy.proxy(
                 "Failed to cancel action '" + actionId + "' for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().cancelAction(id, actionId, force));
     }

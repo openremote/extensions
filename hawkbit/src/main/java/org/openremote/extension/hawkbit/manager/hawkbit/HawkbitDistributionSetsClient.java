@@ -19,10 +19,9 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.DistributionSetAssignmentRequest;
-import org.openremote.extension.hawkbit.model.hawkbit.DistributionSetCreateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -33,15 +32,15 @@ public interface HawkbitDistributionSetsClient {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(DistributionSetCreateRequest[] distributionSets);
+    Response create(JsonNode distributionSets);
 
     @POST
     @Path("{id}/assignedTargets")
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
     Response assignTargets(@PathParam("id") Long id,
-                           @QueryParam("offline") Boolean offline,
-                           DistributionSetAssignmentRequest[] targets);
+                            @QueryParam("offline") Boolean offline,
+                            JsonNode targets);
 
     @GET
     @Produces(APPLICATION_JSON)

@@ -19,11 +19,11 @@
  */
 package org.openremote.extension.hawkbit.model.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.DistributionSetTypeCreateRequest;
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
 
@@ -38,7 +38,7 @@ public interface DistributionSetTypeResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createDistributionSetType(@BeanParam RequestParams requestParams,
-                                       DistributionSetTypeCreateRequest distributionSetType);
+                                       JsonNode distributionSetType);
 
     @GET
     @Produces(APPLICATION_JSON)

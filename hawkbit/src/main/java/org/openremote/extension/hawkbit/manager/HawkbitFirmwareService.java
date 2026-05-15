@@ -515,7 +515,7 @@ public class HawkbitFirmwareService implements ContainerService {
         String uploadFilename = TextUtil.isNullOrEmpty(effectiveFilename) ? "artifact.bin" : effectiveFilename;
         MultipartFormDataOutput form = new MultipartFormDataOutput();
         form.addFormData("file", inputStream, MediaType.APPLICATION_OCTET_STREAM_TYPE, uploadFilename);
-        return HawkbitResponseHandler.call("Failed to upload artifact for firmware software module '" + softwareModuleId + "'",
+        return HawkbitResponseProxy.proxy("Failed to upload artifact for firmware software module '" + softwareModuleId + "'",
                 () -> softwareModules.uploadArtifact(softwareModuleId,
                         TextUtil.isNullOrEmpty(effectiveFilename) ? null : effectiveFilename,
                         form));

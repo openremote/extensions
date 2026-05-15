@@ -19,10 +19,9 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.AutoAssignDistributionSetRequest;
-import org.openremote.extension.hawkbit.model.hawkbit.TargetFilterCreateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -43,7 +42,7 @@ public interface HawkbitTargetFiltersClient {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(TargetFilterCreateRequest filter);
+    Response create(JsonNode filter);
 
     @DELETE
     @Path("{filterId}")
@@ -59,7 +58,7 @@ public interface HawkbitTargetFiltersClient {
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
     Response setAutoAssignDS(@PathParam("filterId") Long filterId,
-                             AutoAssignDistributionSetRequest request);
+                             JsonNode request);
 
     @DELETE
     @Path("{filterId}/autoAssignDS")

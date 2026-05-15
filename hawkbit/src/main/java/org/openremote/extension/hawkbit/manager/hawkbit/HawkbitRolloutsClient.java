@@ -19,9 +19,9 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.RolloutCreateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -43,7 +43,7 @@ public interface HawkbitRolloutsClient {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(RolloutCreateRequest rollout);
+    Response create(JsonNode rollout);
 
     @DELETE
     @Path("{id}")

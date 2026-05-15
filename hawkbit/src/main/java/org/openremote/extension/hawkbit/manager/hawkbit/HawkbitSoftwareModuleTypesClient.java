@@ -19,9 +19,9 @@
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.SoftwareModuleTypeCreateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -32,7 +32,7 @@ public interface HawkbitSoftwareModuleTypesClient {
     @POST
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
-    Response create(SoftwareModuleTypeCreateRequest[] softwareModuleTypes);
+    Response create(JsonNode softwareModuleTypes);
 
     @GET
     @Produces(APPLICATION_JSON)

@@ -20,10 +20,10 @@
 package org.openremote.extension.hawkbit.manager.resource;
 
 import jakarta.ws.rs.core.Response;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
-import org.openremote.extension.hawkbit.manager.HawkbitResponseHandler;
-import org.openremote.extension.hawkbit.model.hawkbit.RolloutCreateRequest;
+import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.RolloutResource;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
@@ -43,50 +43,50 @@ public class RolloutResourceImpl extends ManagerWebResource
     @Override
     public Response getRollouts(RequestParams requestParams, Integer offset, Integer limit) {
         // Request full representation so totalTargetsPerStatus and totalGroups are populated; hawkBit defaults to compact.
-        return HawkbitResponseHandler.call("Failed to retrieve firmware rollouts",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware rollouts",
                 () -> hawkbitFirmwareService.rollouts().getRollouts(offset, limit, "full"));
     }
 
     @Override
     public Response getRollout(RequestParams requestParams, Long id) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().get(id));
     }
 
     @Override
-    public Response createRollout(RequestParams requestParams, RolloutCreateRequest rollout) {
-        return HawkbitResponseHandler.call("Failed to create firmware rollout",
+    public Response createRollout(RequestParams requestParams, JsonNode rollout) {
+        return HawkbitResponseProxy.proxy("Failed to create firmware rollout",
                 () -> hawkbitFirmwareService.rollouts().create(rollout));
     }
 
     @Override
     public void deleteRollout(RequestParams requestParams, Long id) {
-        HawkbitResponseHandler.call("Failed to delete firmware rollout '" + id + "'",
+        HawkbitResponseProxy.proxy("Failed to delete firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().delete(id));
     }
 
     @Override
     public Response startRollout(RequestParams requestParams, Long id) {
-        return HawkbitResponseHandler.call("Failed to start firmware rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to start firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().start(id));
     }
 
     @Override
     public void pauseRollout(RequestParams requestParams, Long id) {
-        HawkbitResponseHandler.call("Failed to pause firmware rollout '" + id + "'",
+        HawkbitResponseProxy.proxy("Failed to pause firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().pause(id));
     }
 
     @Override
     public Response getRolloutGroups(RequestParams requestParams, Long id,
                                      Integer offset, Integer limit) {
-        return HawkbitResponseHandler.call("Failed to retrieve groups for rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve groups for rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().getRolloutGroups(id, offset, limit, "full"));
     }
 
     @Override
     public Response getRolloutGroup(RequestParams requestParams, Long id, Long groupId) {
-        return HawkbitResponseHandler.call(
+        return HawkbitResponseProxy.proxy(
                 "Failed to retrieve group '" + groupId + "' for rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().getRolloutGroup(id, groupId));
     }

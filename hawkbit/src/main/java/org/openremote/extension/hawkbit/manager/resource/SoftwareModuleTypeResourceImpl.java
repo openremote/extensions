@@ -20,10 +20,10 @@
 package org.openremote.extension.hawkbit.manager.resource;
 
 import jakarta.ws.rs.core.Response;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
-import org.openremote.extension.hawkbit.manager.HawkbitResponseHandler;
-import org.openremote.extension.hawkbit.model.hawkbit.SoftwareModuleTypeCreateRequest;
+import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.SoftwareModuleTypeResource;
 import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.manager.web.ManagerWebResource;
@@ -42,28 +42,27 @@ public class SoftwareModuleTypeResourceImpl extends ManagerWebResource
 
     @Override
     public Response createSoftwareModuleType(RequestParams requestParams,
-                                             SoftwareModuleTypeCreateRequest softwareModuleType) {
-        return HawkbitResponseHandler.call("Failed to create firmware software module type",
-                () -> hawkbitFirmwareService.softwareModuleTypes().create(
-                        new SoftwareModuleTypeCreateRequest[]{softwareModuleType}));
+                                             JsonNode softwareModuleType) {
+        return HawkbitResponseProxy.proxy("Failed to create firmware software module type",
+                () -> hawkbitFirmwareService.softwareModuleTypes().create(softwareModuleType));
     }
 
     @Override
     public Response getSoftwareModuleTypes(RequestParams requestParams, Integer offset,
                                            Integer limit) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware software module types",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module types",
                 () -> hawkbitFirmwareService.softwareModuleTypes().getSoftwareModuleTypes(offset, limit));
     }
 
     @Override
     public Response getSoftwareModuleType(RequestParams requestParams, Long id) {
-        return HawkbitResponseHandler.call("Failed to retrieve firmware software module type '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module type '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModuleTypes().get(id));
     }
 
     @Override
     public void deleteSoftwareModuleType(RequestParams requestParams, Long id) {
-        HawkbitResponseHandler.call("Failed to delete firmware software module type '" + id + "'",
+        HawkbitResponseProxy.proxy("Failed to delete firmware software module type '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModuleTypes().delete(id));
     }
 }

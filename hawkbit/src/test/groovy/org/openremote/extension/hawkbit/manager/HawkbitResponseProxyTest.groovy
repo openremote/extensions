@@ -26,9 +26,9 @@ import jakarta.ws.rs.core.Response
 import org.openremote.model.util.ValueUtil
 import spock.lang.Specification
 
-class HawkbitResponseHandlerTest extends Specification {
+class HawkbitResponseProxyTest extends Specification {
 
-    def "strips HAL fields from single resource response"() {
+    def "preserves JSON response body and media type"() {
         given: "a hawkBit HAL resource response"
         def upstream = jsonResponse('''
         {
@@ -49,46 +49,22 @@ class HawkbitResponseHandlerTest extends Specification {
         }
         ''')
 
-        when: "the response is adapted"
-        def formatted = HawkbitResponseHandler.call("Failed to call hawkBit", { upstream })
+        when: "the response is copied"
+        def formatted = HawkbitResponseProxy.proxy("Failed to call hawkBit", { upstream })
         def body = readJson(formatted)
 
-        then: "HAL fields are removed and normal fields are preserved"
+        then: "the original JSON body and media type are preserved"
         formatted.status == 200
         formatted.mediaType == MediaType.APPLICATION_JSON_TYPE
         body.path("id").asInt() == 42
         body.path("name").asText() == "target-a"
         body.path("nested").path("enabled").asBoolean()
-        !body.has("_links")
-        !body.has("_embedded")
-        !body.path("nested").has("_links")
+        body.path("_links").path("self").path("href").asText() == "http://hawkbit/rest/v1/targets/42"
+        body.path("_embedded").path("ignored").size() == 1
+        body.path("nested").path("_links").path("self").path("href").asText() == "http://hawkbit/rest/v1/nested/7"
     }
 
-    def "maps distribution set link to explicit fields"() {
-        given: "a hawkBit resource response with a distribution set link"
-        def upstream = jsonResponse('''
-        {
-          "id": 7,
-          "_links": {
-            "distributionset": {
-              "href": "http://hawkbit/rest/v1/distributionsets/123",
-              "name": "Release 1.2.3"
-            }
-          }
-        }
-        ''')
-
-        when: "the response is adapted"
-        def body = readJson(HawkbitResponseHandler.call("Failed to call hawkBit", { upstream }))
-
-        then: "the link is represented as explicit fields"
-        body.path("id").asInt() == 7
-        body.path("distributionSetId").asLong() == 123L
-        body.path("distributionSetName").asText() == "Release 1.2.3"
-        !body.has("_links")
-    }
-
-    def "flattens embedded HAL collection to paged response"() {
+    def "preserves embedded HAL collection response"() {
         given: "a hawkBit HAL collection response"
         def upstream = jsonResponse('''
         {
@@ -105,65 +81,15 @@ class HawkbitResponseHandlerTest extends Specification {
         }
         ''')
 
-        when: "the response is adapted"
-        def body = readJson(HawkbitResponseHandler.call("Failed to call hawkBit", { upstream }))
+        when: "the response is copied"
+        def body = readJson(HawkbitResponseProxy.proxy("Failed to call hawkBit", { upstream }))
 
-        then: "embedded items become page content and HAL fields are stripped"
-        body.path("total").asInt() == 10
-        body.path("size").asInt() == 2
-        body.path("content").size() == 2
-        body.path("content").get(0).path("controllerId").asText() == "target-a"
-        body.path("content").get(1).path("controllerId").asText() == "target-b"
-        !body.path("content").get(0).has("_links")
-        !body.path("content").get(1).has("_embedded")
-    }
-
-    def "flattens root array to paged response"() {
-        given: "a JSON array response"
-        def upstream = jsonResponse('''
-        [
-          {"id": 1, "_links": {"self": {"href": "http://hawkbit/rest/v1/items/1"}}},
-          {"id": 2}
-        ]
-        ''')
-
-        when: "the response is adapted"
-        def body = readJson(HawkbitResponseHandler.call("Failed to call hawkBit", { upstream }))
-
-        then: "array items become page content"
-        body.path("total").asInt() == 2
-        body.path("size").asInt() == 2
-        body.path("content").size() == 2
-        body.path("content").get(0).path("id").asInt() == 1
-        body.path("content").get(1).path("id").asInt() == 2
-        !body.path("content").get(0).has("_links")
-    }
-
-    def "flattens content array to paged response"() {
-        given: "a Spring Data REST paged response"
-        def upstream = jsonResponse('''
-        {
-          "content": [
-            {"id": 3, "_links": {"self": {"href": "http://hawkbit/rest/v1/items/3"}}},
-            {"id": 4}
-          ],
-          "page": {
-            "totalElements": 5,
-            "size": 2
-          }
-        }
-        ''')
-
-        when: "the response is adapted"
-        def body = readJson(HawkbitResponseHandler.call("Failed to call hawkBit", { upstream }))
-
-        then: "content items are preserved and HAL fields are stripped"
-        body.path("total").asInt() == 5
-        body.path("size").asInt() == 2
-        body.path("content").size() == 2
-        body.path("content").get(0).path("id").asInt() == 3
-        body.path("content").get(1).path("id").asInt() == 4
-        !body.path("content").get(0).has("_links")
+        then: "embedded items and page metadata stay in hawkBit's shape"
+        body.path("_embedded").path("targets").size() == 2
+        body.path("_embedded").path("targets").get(0).path("controllerId").asText() == "target-a"
+        body.path("_embedded").path("targets").get(0).path("_links").path("self").path("href").asText() == "http://hawkbit/rest/v1/targets/target-a"
+        body.path("page").path("totalElements").asInt() == 10
+        body.path("page").path("size").asInt() == 2
     }
 
     def "preserves non-JSON body and media type"() {
@@ -173,8 +99,8 @@ class HawkbitResponseHandlerTest extends Specification {
                 .entity("upstream unavailable")
                 .build()
 
-        when: "the response is adapted"
-        def formatted = HawkbitResponseHandler.call("Failed to call hawkBit", { upstream })
+        when: "the response is copied"
+        def formatted = HawkbitResponseProxy.proxy("Failed to call hawkBit", { upstream })
 
         then: "the original body and media type are preserved"
         formatted.status == Response.Status.BAD_GATEWAY.statusCode
@@ -186,8 +112,8 @@ class HawkbitResponseHandlerTest extends Specification {
         given: "an upstream response without an entity"
         def upstream = Response.noContent().build()
 
-        when: "the response is adapted"
-        def formatted = HawkbitResponseHandler.call("Failed to call hawkBit", { upstream })
+        when: "the response is copied"
+        def formatted = HawkbitResponseProxy.proxy("Failed to call hawkBit", { upstream })
 
         then: "the empty status is preserved"
         formatted.status == Response.Status.NO_CONTENT.statusCode
@@ -195,8 +121,8 @@ class HawkbitResponseHandlerTest extends Specification {
     }
 
     def "wraps checked exceptions as bad gateway"() {
-        when: "an adapted call throws an unexpected exception"
-        HawkbitResponseHandler.call("Failed to call hawkBit", {
+        when: "a hawkBit call throws an unexpected exception"
+        HawkbitResponseProxy.proxy("Failed to call hawkBit", {
             throw new IOException("connection failed")
         })
 
@@ -211,8 +137,8 @@ class HawkbitResponseHandlerTest extends Specification {
         given: "an existing web application exception"
         def original = new WebApplicationException("not found", Response.Status.NOT_FOUND)
 
-        when: "an adapted call throws it"
-        HawkbitResponseHandler.call("Failed to call hawkBit", {
+        when: "a hawkBit call throws it"
+        HawkbitResponseProxy.proxy("Failed to call hawkBit", {
             throw original
         })
 

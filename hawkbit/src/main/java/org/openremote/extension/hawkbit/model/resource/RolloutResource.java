@@ -19,11 +19,11 @@
  */
 package org.openremote.extension.hawkbit.model.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
-import org.openremote.extension.hawkbit.model.hawkbit.RolloutCreateRequest;
 import org.openremote.model.Constants;
 import org.openremote.model.http.RequestParams;
 
@@ -52,7 +52,7 @@ public interface RolloutResource {
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createRollout(@BeanParam RequestParams requestParams,
-                           RolloutCreateRequest rollout);
+                           JsonNode rollout);
 
     @DELETE
     @Path("{id}")
