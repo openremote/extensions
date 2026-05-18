@@ -19,8 +19,8 @@
  */
 package org.openremote.extension.hawkbit.manager.resource;
 
-import jakarta.ws.rs.core.Response;
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
@@ -32,7 +32,7 @@ public class RolloutResourceImpl extends HawkbitWebResource
         implements RolloutResource {
 
     public RolloutResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                HawkbitFirmwareService hawkbitFirmwareService) {
+                               HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
@@ -59,29 +59,29 @@ public class RolloutResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteRollout(RequestParams requestParams, String realm, Long id) {
+    public Response deleteRollout(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to delete firmware rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to delete firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().delete(id));
     }
 
     @Override
-    public void startRollout(RequestParams requestParams, String realm, Long id) {
+    public Response startRollout(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to start firmware rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to start firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().start(id));
     }
 
     @Override
-    public void pauseRollout(RequestParams requestParams, String realm, Long id) {
+    public Response pauseRollout(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to pause firmware rollout '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to pause firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().pause(id));
     }
 
     @Override
     public Response getRolloutGroups(RequestParams requestParams, String realm, Long id,
-                                      Integer offset, Integer limit) {
+                                     Integer offset, Integer limit) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve groups for rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().getRolloutGroups(id, offset, limit, "full"));

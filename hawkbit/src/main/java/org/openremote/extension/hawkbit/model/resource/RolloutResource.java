@@ -51,50 +51,60 @@ public interface RolloutResource {
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRollouts(@BeanParam RequestParams requestParams,
                          @QueryParam("realm") String realm,
-                          @QueryParam("offset") Integer offset,
-                          @QueryParam("limit") Integer limit);
+                         @QueryParam("offset") Integer offset,
+                         @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single rollout by id. */
+    /**
+     * Retrieve a single rollout by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRollout(@BeanParam RequestParams requestParams,
                         @QueryParam("realm") String realm,
-                         @PathParam("id") Long id);
+                        @PathParam("id") Long id);
 
-    /** Create a rollout. Body matches hawkBit's Rollout create payload. */
+    /**
+     * Create a rollout. Body matches hawkBit's Rollout create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createRollout(@BeanParam RequestParams requestParams,
                            @QueryParam("realm") String realm,
-                            JsonNode rollout);
+                           JsonNode rollout);
 
-    /** Delete a rollout. */
+    /**
+     * Delete a rollout.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteRollout(@BeanParam RequestParams requestParams,
-                       @QueryParam("realm") String realm,
-                        @PathParam("id") Long id);
+    Response deleteRollout(@BeanParam RequestParams requestParams,
+                           @QueryParam("realm") String realm,
+                           @PathParam("id") Long id);
 
-    /** Start a rollout. */
+    /**
+     * Start a rollout.
+     */
     @POST
     @Path("{id}/start")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void startRollout(@BeanParam RequestParams requestParams,
-                      @QueryParam("realm") String realm,
-                       @PathParam("id") Long id);
+    Response startRollout(@BeanParam RequestParams requestParams,
+                          @QueryParam("realm") String realm,
+                          @PathParam("id") Long id);
 
-    /** Pause a running rollout. */
+    /**
+     * Pause a running rollout.
+     */
     @POST
     @Path("{id}/pause")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void pauseRollout(@BeanParam RequestParams requestParams,
-                      @QueryParam("realm") String realm,
-                       @PathParam("id") Long id);
+    Response pauseRollout(@BeanParam RequestParams requestParams,
+                          @QueryParam("realm") String realm,
+                          @PathParam("id") Long id);
 
     /**
      * Retrieve deployment groups for a rollout, paged.
@@ -107,17 +117,19 @@ public interface RolloutResource {
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRolloutGroups(@BeanParam RequestParams requestParams,
                               @QueryParam("realm") String realm,
-                               @PathParam("id") Long id,
-                               @QueryParam("offset") Integer offset,
-                               @QueryParam("limit") Integer limit);
+                              @PathParam("id") Long id,
+                              @QueryParam("offset") Integer offset,
+                              @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single deployment group within a rollout. */
+    /**
+     * Retrieve a single deployment group within a rollout.
+     */
     @GET
     @Path("{id}/deploygroups/{groupId}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRolloutGroup(@BeanParam RequestParams requestParams,
                              @QueryParam("realm") String realm,
-                              @PathParam("id") Long id,
-                              @PathParam("groupId") Long groupId);
+                             @PathParam("id") Long id,
+                             @PathParam("groupId") Long groupId);
 }

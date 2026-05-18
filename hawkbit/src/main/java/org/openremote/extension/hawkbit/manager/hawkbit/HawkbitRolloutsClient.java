@@ -51,7 +51,6 @@ public interface HawkbitRolloutsClient {
 
     @POST
     @Path("{id}/start")
-    @Produces(APPLICATION_HAL_JSON)
     Response start(@PathParam("id") Long id);
 
     @POST

@@ -22,7 +22,9 @@ package org.openremote.extension.hawkbit.manager.resource;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.EntityPart;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
@@ -37,14 +39,14 @@ public class SoftwareModuleResourceImpl extends HawkbitWebResource
         implements SoftwareModuleResource {
 
     public SoftwareModuleResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                       HawkbitFirmwareService hawkbitFirmwareService) {
+                                      HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
     public Response createSoftwareModule(RequestParams requestParams,
                                          String realm,
-                                          JsonNode softwareModule) {
+                                         JsonNode softwareModule) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware software module",
                 () -> hawkbitFirmwareService.softwareModules().create(softwareModule));
@@ -89,7 +91,14 @@ public class SoftwareModuleResourceImpl extends HawkbitWebResource
 
             String submittedFileName = filePart.getFileName().orElse(null);
             InputStream inputStream = filePart.getContent(InputStream.class);
-            return hawkbitFirmwareService.uploadSoftwareModuleArtifact(id, inputStream, submittedFileName, filename);
+            String effectiveFilename = filename == null || filename.isEmpty() ? submittedFileName : filename;
+            String uploadFilename = effectiveFilename == null || effectiveFilename.isEmpty() ? "artifact.bin" : effectiveFilename;
+            MultipartFormDataOutput form = new MultipartFormDataOutput();
+            form.addFormData("file", inputStream, MediaType.APPLICATION_OCTET_STREAM_TYPE, uploadFilename);
+            return HawkbitResponseProxy.proxy("Failed to upload artifact for firmware software module '" + id + "'",
+                    () -> hawkbitFirmwareService.softwareModules().uploadArtifact(id,
+                            effectiveFilename == null || effectiveFilename.isEmpty() ? null : effectiveFilename,
+                            form));
         } catch (WebApplicationException e) {
             throw e;
         } catch (Exception e) {
@@ -99,9 +108,9 @@ public class SoftwareModuleResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteSoftwareModule(RequestParams requestParams, String realm, Long id) {
+    public Response deleteSoftwareModule(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to delete firmware software module '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to delete firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().delete(id));
     }
 }

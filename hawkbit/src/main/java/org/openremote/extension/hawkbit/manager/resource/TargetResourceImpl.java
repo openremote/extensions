@@ -30,7 +30,7 @@ import org.openremote.model.http.RequestParams;
 public class TargetResourceImpl extends HawkbitWebResource implements TargetResource {
 
     public TargetResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                               HawkbitFirmwareService hawkbitFirmwareService) {
+                              HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
@@ -46,6 +46,13 @@ public class TargetResourceImpl extends HawkbitWebResource implements TargetReso
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().get(id));
+    }
+
+    @Override
+    public Response deleteTarget(RequestParams requestParams, String realm, String id) {
+        requireHawkbitRealmAccess(realm);
+        return HawkbitResponseProxy.proxy("Failed to delete firmware target '" + id + "'",
+                () -> hawkbitFirmwareService.targets().delete(id));
     }
 
     @Override
@@ -85,9 +92,9 @@ public class TargetResourceImpl extends HawkbitWebResource implements TargetReso
     }
 
     @Override
-    public void cancelAction(RequestParams requestParams, String realm, String id, Long actionId, Boolean force) {
+    public Response cancelAction(RequestParams requestParams, String realm, String id, Long actionId, Boolean force) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy(
+        return HawkbitResponseProxy.proxy(
                 "Failed to cancel action '" + actionId + "' for firmware target '" + id + "'",
                 () -> hawkbitFirmwareService.targets().cancelAction(id, actionId, force));
     }

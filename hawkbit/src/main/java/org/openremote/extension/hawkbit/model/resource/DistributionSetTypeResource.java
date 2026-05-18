@@ -39,32 +39,38 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 @Path("firmware/distributionsettype")
 public interface DistributionSetTypeResource {
 
-    /** Create a distribution-set type. Body is a hawkBit DistributionSetType create payload. */
+    /**
+     * Create a distribution-set type. Body is a hawkBit DistributionSetType create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createDistributionSetType(@BeanParam RequestParams requestParams,
                                        @QueryParam("realm") String realm,
-                                        JsonNode distributionSetType);
+                                       JsonNode distributionSetType);
 
-    /** Retrieve all distribution-set types, paged. */
+    /**
+     * Retrieve all distribution-set types, paged.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getDistributionSetTypes(@BeanParam RequestParams requestParams,
                                      @QueryParam("realm") String realm,
-                                      @QueryParam("offset") Integer offset,
-                                      @QueryParam("limit") Integer limit);
+                                     @QueryParam("offset") Integer offset,
+                                     @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single distribution-set type by id. */
+    /**
+     * Retrieve a single distribution-set type by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getDistributionSetType(@BeanParam RequestParams requestParams,
                                     @QueryParam("realm") String realm,
-                                     @PathParam("id") Long id);
+                                    @PathParam("id") Long id);
 
     /**
      * Retrieve the module types every DS of this type must include.
@@ -78,9 +84,9 @@ public interface DistributionSetTypeResource {
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getMandatoryModuleTypes(@BeanParam RequestParams requestParams,
                                      @QueryParam("realm") String realm,
-                                      @PathParam("id") Long id,
-                                      @QueryParam("offset") Integer offset,
-                                      @QueryParam("limit") Integer limit);
+                                     @PathParam("id") Long id,
+                                     @QueryParam("offset") Integer offset,
+                                     @QueryParam("limit") Integer limit);
 
     /**
      * Retrieve the module types that a DS of this type may optionally include.
@@ -94,13 +100,15 @@ public interface DistributionSetTypeResource {
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getOptionalModuleTypes(@BeanParam RequestParams requestParams,
                                     @QueryParam("realm") String realm,
-                                     @PathParam("id") Long id,
-                                     @QueryParam("offset") Integer offset,
-                                     @QueryParam("limit") Integer limit);
+                                    @PathParam("id") Long id,
+                                    @QueryParam("offset") Integer offset,
+                                    @QueryParam("limit") Integer limit);
 
-    /** Delete a distribution-set type. */
+    /**
+     * Delete a distribution-set type.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteDistributionSetType(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
+    Response deleteDistributionSetType(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 }

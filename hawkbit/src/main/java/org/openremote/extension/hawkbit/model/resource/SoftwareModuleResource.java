@@ -43,32 +43,40 @@ import static jakarta.ws.rs.core.MediaType.MULTIPART_FORM_DATA;
 @Path("firmware/softwaremodule")
 public interface SoftwareModuleResource {
 
-    /** Create a software module. Body matches hawkBit's SoftwareModule create payload. */
+    /**
+     * Create a software module. Body matches hawkBit's SoftwareModule create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createSoftwareModule(@BeanParam RequestParams requestParams,
                                   @QueryParam("realm") String realm,
-                                   JsonNode softwareModule);
+                                  JsonNode softwareModule);
 
-    /** Retrieve all software modules, paged. */
+    /**
+     * Retrieve all software modules, paged.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModules(@BeanParam RequestParams requestParams,
                                 @QueryParam("realm") String realm,
-                                 @QueryParam("offset") Integer offset,
-                                 @QueryParam("limit") Integer limit);
+                                @QueryParam("offset") Integer offset,
+                                @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single software module by id. */
+    /**
+     * Retrieve a single software module by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModule(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
-    /** Retrieve all artifacts attached to a software module. */
+    /**
+     * Retrieve all artifacts attached to a software module.
+     */
     @GET
     @Path("{id}/artifacts")
     @Produces(APPLICATION_JSON)
@@ -90,14 +98,16 @@ public interface SoftwareModuleResource {
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response uploadSoftwareModuleArtifact(@BeanParam RequestParams requestParams,
                                           @QueryParam("realm") String realm,
-                                           @PathParam("id") Long id,
-                                           @QueryParam("filename") String filename,
-                                           List<EntityPart> parts);
+                                          @PathParam("id") Long id,
+                                          @QueryParam("filename") String filename,
+                                          List<EntityPart> parts);
 
-    /** Delete a software module. */
+    /**
+     * Delete a software module.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteSoftwareModule(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
+    Response deleteSoftwareModule(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
 }

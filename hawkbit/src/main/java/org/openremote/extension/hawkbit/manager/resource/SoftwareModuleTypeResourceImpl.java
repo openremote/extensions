@@ -19,8 +19,8 @@
  */
 package org.openremote.extension.hawkbit.manager.resource;
 
-import jakarta.ws.rs.core.Response;
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.ws.rs.core.Response;
 import org.openremote.container.timer.TimerService;
 import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
@@ -32,14 +32,14 @@ public class SoftwareModuleTypeResourceImpl extends HawkbitWebResource
         implements SoftwareModuleTypeResource {
 
     public SoftwareModuleTypeResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                           HawkbitFirmwareService hawkbitFirmwareService) {
+                                          HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
     public Response createSoftwareModuleType(RequestParams requestParams,
                                              String realm,
-                                              JsonNode softwareModuleType) {
+                                             JsonNode softwareModuleType) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware software module type",
                 () -> hawkbitFirmwareService.softwareModuleTypes().create(softwareModuleType));
@@ -47,7 +47,7 @@ public class SoftwareModuleTypeResourceImpl extends HawkbitWebResource
 
     @Override
     public Response getSoftwareModuleTypes(RequestParams requestParams, String realm, Integer offset,
-                                            Integer limit) {
+                                           Integer limit) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module types",
                 () -> hawkbitFirmwareService.softwareModuleTypes().getSoftwareModuleTypes(offset, limit));
@@ -61,9 +61,9 @@ public class SoftwareModuleTypeResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
+    public Response deleteSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to delete firmware software module type '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to delete firmware software module type '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModuleTypes().delete(id));
     }
 }

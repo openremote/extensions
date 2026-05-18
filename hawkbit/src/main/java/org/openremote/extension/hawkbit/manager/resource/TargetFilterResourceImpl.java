@@ -32,7 +32,7 @@ public class TargetFilterResourceImpl extends HawkbitWebResource
         implements TargetFilterResource {
 
     public TargetFilterResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                     HawkbitFirmwareService hawkbitFirmwareService) {
+                                    HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
@@ -60,9 +60,9 @@ public class TargetFilterResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteTargetFilter(RequestParams requestParams, String realm, Long id) {
+    public Response deleteTargetFilter(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to delete firmware target filter '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to delete firmware target filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().delete(id));
     }
 
@@ -76,7 +76,7 @@ public class TargetFilterResourceImpl extends HawkbitWebResource
 
     @Override
     public Response setAutoAssignDS(RequestParams requestParams, String realm, Long id,
-                                     JsonNode request) {
+                                    JsonNode request) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to set auto assign distribution set for filter '" + id + "'",
@@ -84,9 +84,9 @@ public class TargetFilterResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteAutoAssignDS(RequestParams requestParams, String realm, Long id) {
+    public Response deleteAutoAssignDS(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy(
+        return HawkbitResponseProxy.proxy(
                 "Failed to remove auto assign distribution set from filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().deleteAutoAssignDS(id));
     }

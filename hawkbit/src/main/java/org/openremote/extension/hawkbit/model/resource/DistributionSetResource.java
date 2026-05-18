@@ -39,7 +39,9 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 @Path("firmware/distributionset")
 public interface DistributionSetResource {
 
-    /** Create a distribution set. Body is a hawkBit DistributionSet create payload. */
+    /**
+     * Create a distribution set. Body is a hawkBit DistributionSet create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
@@ -68,25 +70,31 @@ public interface DistributionSetResource {
                                    @QueryParam("offline") Boolean offline,
                                    JsonNode targets);
 
-    /** Retrieve all distribution sets, paged. */
+    /**
+     * Retrieve all distribution sets, paged.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getDistributionSets(@BeanParam RequestParams requestParams,
-                                  @QueryParam("realm") String realm,
-                                  @QueryParam("offset") Integer offset,
-                                  @QueryParam("limit") Integer limit);
+                                 @QueryParam("realm") String realm,
+                                 @QueryParam("offset") Integer offset,
+                                 @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single distribution set by id. */
+    /**
+     * Retrieve a single distribution set by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getDistributionSet(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
-    /** Delete a distribution set. */
+    /**
+     * Delete a distribution set.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteDistributionSet(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
+    Response deleteDistributionSet(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 }

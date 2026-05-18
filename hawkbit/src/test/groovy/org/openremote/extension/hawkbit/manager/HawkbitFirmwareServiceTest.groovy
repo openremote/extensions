@@ -26,11 +26,7 @@ import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest
 import org.openremote.extension.hawkbit.model.hawkbit.Target
 import org.openremote.model.asset.Asset
 import org.openremote.model.asset.AssetEvent
-import org.openremote.model.attribute.AttributeEvent
-import org.openremote.model.attribute.AttributeMap
-import org.openremote.model.attribute.MetaItem
-import org.openremote.model.attribute.MetaMap
-import org.openremote.model.value.AttributeDescriptor
+import org.openremote.model.attribute.*
 import org.openremote.test.ManagerContainerTrait
 import spock.lang.Specification
 
@@ -45,9 +41,26 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
      * with any asset type.
      */
     static class TestableHawkbitFirmwareService extends HawkbitFirmwareService {
-        protected Optional<AttributeDescriptor<?>> getFirmwareTargetInfoDescriptor(Asset asset) {
-            return Optional.of(new AttributeDescriptor<>("firmwareTarget", TEXT))
+        protected Optional<String> getFirmwareTargetInfoAttributeName(Asset asset) {
+            return Optional.of("firmwareTarget")
         }
+    }
+
+    def "getFirmwareTargetInfoAttributeName rejects multiple marked attributes"() {
+        given: "an asset with multiple attributes marked as firmware target"
+        def service = new HawkbitFirmwareService()
+        def meta = new MetaMap()
+        meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+        def asset = Mock(Asset)
+        asset.getType() >> "unknown:asset:type"
+        asset.getAttributes() >> new AttributeMap([
+                new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta),
+                new Attribute<>("otherFirmwareTargetInfo", TEXT).setMeta(meta)
+        ])
+
+        expect: "ambiguous firmware target info attributes are ignored"
+        service.getFirmwareTargetInfoAttributeName(asset) == Optional.empty()
     }
 
     def "handleAssetChange with CREATE cause creates target when it does not exist"() {

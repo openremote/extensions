@@ -39,8 +39,8 @@ public interface HawkbitDistributionSetsClient {
     @Consumes(APPLICATION_HAL_JSON)
     @Produces(APPLICATION_HAL_JSON)
     Response assignTargets(@PathParam("id") Long id,
-                            @QueryParam("offline") Boolean offline,
-                            JsonNode targets);
+                           @QueryParam("offline") Boolean offline,
+                           JsonNode targets);
 
     @GET
     @Produces(APPLICATION_JSON)

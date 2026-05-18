@@ -33,7 +33,7 @@ public class DistributionSetResourceImpl extends HawkbitWebResource
         implements DistributionSetResource {
 
     public DistributionSetResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                        HawkbitFirmwareService hawkbitFirmwareService) {
+                                       HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService, hawkbitFirmwareService);
     }
 
@@ -48,8 +48,8 @@ public class DistributionSetResourceImpl extends HawkbitWebResource
 
     @Override
     public Response assignDistributionSet(RequestParams requestParams, String realm, Long id,
-                                            Boolean offline,
-                                            JsonNode targets) {
+                                          Boolean offline,
+                                          JsonNode targets) {
         requireHawkbitRealmAccess(realm);
         if (targets == null || !targets.isArray() || targets.isEmpty()) {
             throw new WebApplicationException("Assignment requires at least one target", Response.Status.BAD_REQUEST);
@@ -73,9 +73,9 @@ public class DistributionSetResourceImpl extends HawkbitWebResource
     }
 
     @Override
-    public void deleteDistributionSet(RequestParams requestParams, String realm, Long id) {
+    public Response deleteDistributionSet(RequestParams requestParams, String realm, Long id) {
         requireHawkbitRealmAccess(realm);
-        HawkbitResponseProxy.proxy("Failed to delete firmware distribution set '" + id + "'",
+        return HawkbitResponseProxy.proxy("Failed to delete firmware distribution set '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSets().delete(id));
     }
 }

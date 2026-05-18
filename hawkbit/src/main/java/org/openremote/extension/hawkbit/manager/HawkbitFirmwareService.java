@@ -19,16 +19,13 @@
  */
 package org.openremote.extension.hawkbit.manager;
 
-import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.core.HttpHeaders;
-import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
-import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataWriter;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.WebClient;
@@ -54,9 +51,7 @@ import org.openremote.model.attribute.MetaMap;
 import org.openremote.model.syslog.SyslogCategory;
 import org.openremote.model.util.TextUtil;
 import org.openremote.model.util.ValueUtil;
-import org.openremote.model.value.AttributeDescriptor;
 
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
@@ -69,10 +64,14 @@ import static org.openremote.model.syslog.SyslogCategory.API;
 import static org.openremote.model.util.MapAccess.getString;
 
 public class HawkbitFirmwareService implements ContainerService {
-
-
+    /**
+     * hawkBit integration is currently limited to a single realm,
+     * this is due to hawkBit's tenancy model being difficult to work with because of
+     * the authentication/security mechanisms that are in place.
+     */
     public static final String HAWKBIT_REALM = "HAWKBIT_REALM";
     public static final String HAWKBIT_REALM_DEFAULT = "master";
+
     public static final String HAWKBIT_USERNAME = "HAWKBIT_USERNAME";
     public static final String HAWKBIT_USERNAME_DEFAULT = "hawkbit";
     public static final String HAWKBIT_PASSWORD = "HAWKBIT_PASSWORD";
@@ -87,10 +86,8 @@ public class HawkbitFirmwareService implements ContainerService {
 
     protected String hawkbitRealm;
     protected ClientEventService clientEventService;
-    protected ManagerIdentityService identityService;
     protected AssetProcessingService assetProcessingService;
     protected ExecutorService executorService;
-    protected TimerService timerService;
 
     protected HawkbitTargetsClient targets;
     protected HawkbitDistributionSetsClient distributionSets;
@@ -105,8 +102,8 @@ public class HawkbitFirmwareService implements ContainerService {
         clientEventService = container.getService(ClientEventService.class);
         assetProcessingService = container.getService(AssetProcessingService.class);
         executorService = container.getExecutor();
-        timerService = container.getService(TimerService.class);
-        identityService = container.getService(ManagerIdentityService.class);
+        TimerService timerService = container.getService(TimerService.class);
+        ManagerIdentityService identityService = container.getService(ManagerIdentityService.class);
 
         container.getService(ManagerWebService.class).addApiSingleton(
                 new TargetResourceImpl(timerService, identityService, this));
@@ -196,7 +193,10 @@ public class HawkbitFirmwareService implements ContainerService {
 
     @Override
     public void stop(Container container) throws Exception {
-        // Client lifecycle is managed by the container.
+        if (client != null) {
+            client.close();
+            client = null;
+        }
     }
 
     protected void onAssetChange(AssetEvent assetEvent) {
@@ -232,13 +232,13 @@ public class HawkbitFirmwareService implements ContainerService {
     }
 
     /**
-     * Synchronises an OpenRemote asset with a hawkBit target.
+     * Synchronizes an OpenRemote asset with a hawkBit target.
      * CREATE ensures the target exists; UPDATE recreates it if missing; DELETE removes it.
      */
     protected void handleAssetChange(AssetEvent assetEvent) {
         Asset<?> asset = assetEvent.getAsset();
 
-        if (getFirmwareTargetInfoDescriptor(asset).isEmpty()) {
+        if (getFirmwareTargetInfoAttributeName(asset).isEmpty()) {
             return;
         }
 
@@ -352,10 +352,17 @@ public class HawkbitFirmwareService implements ContainerService {
 
     protected void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
         try (Response response = targets.updateMetadata(controllerId, key, new MetadataUpdateRequest(value))) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkbit target not found for metadata sync targetId="
+                        + controllerId + ", key=" + key);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to update hawkbit target metadata targetId="
+                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
+                return;
+            }
             LOG.fine("Updated hawkbit target metadata targetId=" + controllerId + ", key=" + key);
-        } catch (NotFoundException e) {
-            LOG.fine("hawkbit target not found for metadata sync targetId="
-                    + controllerId + ", key=" + key);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to update hawkbit target metadata targetId="
                     + controllerId + ", key=" + key, e);
@@ -364,10 +371,17 @@ public class HawkbitFirmwareService implements ContainerService {
 
     protected void deleteFirmwareTargetMetadata(String controllerId, String key) {
         try (Response response = targets.deleteMetadata(controllerId, key)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkbit target metadata not found for delete targetId="
+                        + controllerId + ", key=" + key);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to delete hawkbit target metadata targetId="
+                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
+                return;
+            }
             LOG.fine("Deleted hawkbit target metadata targetId=" + controllerId + ", key=" + key);
-        } catch (NotFoundException e) {
-            LOG.fine("hawkbit target metadata not found for delete targetId="
-                    + controllerId + ", key=" + key);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to delete hawkbit target metadata targetId="
                     + controllerId + ", key=" + key, e);
@@ -375,39 +389,35 @@ public class HawkbitFirmwareService implements ContainerService {
     }
 
     /**
-     * Finds the single attribute descriptor marked as {@code firmwareTarget} for the given asset type.
+     * Finds the single asset attribute marked as {@code firmwareTarget}.
      * Returns empty if none or more than one is found.
      */
-    protected Optional<AttributeDescriptor<?>> getFirmwareTargetInfoDescriptor(Asset<?> asset) {
-        // TODO: Decide whether firmwareTarget should also be honored when defined on
-        // an asset attribute instance instead of only on the asset type descriptor.
-        Optional<AssetTypeInfo> assetTypeInfo = ValueUtil.getAssetInfo(asset.getType());
-        if (assetTypeInfo.isEmpty()) {
-            LOG.fine("Cannot resolve asset type info for asset type '" + asset.getType() + "'");
-            return Optional.empty();
-        }
-
-        List<AttributeDescriptor<?>> matchingDescriptors = assetTypeInfo.get().getAttributeDescriptors().values()
-                .stream()
-                .filter(attributeDescriptor -> attributeDescriptor.getMeta() != null
-                        && attributeDescriptor.getMeta()
-                        .get(FirmwareMetaItemType.FIRMWARE_TARGET)
-                        .flatMap(metaItem -> metaItem.getValue(Boolean.class))
-                        .orElse(false))
+    protected Optional<String> getFirmwareTargetInfoAttributeName(Asset<?> asset) {
+        List<String> matchingAttributeNames = asset.getAttributes().values().stream()
+                .filter(attribute -> hasFirmwareTarget(attribute.getMeta()))
+                .map(Attribute::getName)
+                .distinct()
                 .toList();
 
-        if (matchingDescriptors.isEmpty()) {
+        if (matchingAttributeNames.isEmpty()) {
             return Optional.empty();
         }
 
-        if (matchingDescriptors.size() > 1) {
+        if (matchingAttributeNames.size() > 1) {
             LOG.warning("Asset type '" + asset.getType()
-                    + "' has multiple attribute descriptors with meta item '"
+                    + "' has multiple attributes with meta item '"
                     + FirmwareMetaItemType.FIRMWARE_TARGET.getName() + "'");
             return Optional.empty();
         }
 
-        return Optional.of(matchingDescriptors.getFirst());
+        return Optional.of(matchingAttributeNames.getFirst());
+    }
+
+    protected boolean hasFirmwareTarget(MetaMap meta) {
+        return meta != null
+                && meta.get(FirmwareMetaItemType.FIRMWARE_TARGET)
+                .flatMap(metaItem -> metaItem.getValue(Boolean.class))
+                .orElse(false);
     }
 
     protected TargetCreateRequest buildFirmwareTarget(Asset<?> asset) {
@@ -434,6 +444,15 @@ public class HawkbitFirmwareService implements ContainerService {
 
     protected void deleteFirmwareTarget(String controllerId) {
         try (Response response = targets.delete(controllerId)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkbit target not found for delete id=" + controllerId);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to delete hawkbit target id=" + controllerId
+                        + ", status=" + response.getStatus());
+                return;
+            }
             LOG.info("Deleted hawkbit target id=" + controllerId);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to delete hawkbit target id=" + controllerId, e);
@@ -446,12 +465,12 @@ public class HawkbitFirmwareService implements ContainerService {
      */
     protected void updateFirmwareTargetInfo(AssetEvent assetEvent) {
         Asset<?> asset = assetEvent.getAsset();
-        Optional<AttributeDescriptor<?>> firmwareTargetInfoDescriptor = getFirmwareTargetInfoDescriptor(asset);
-        if (firmwareTargetInfoDescriptor.isEmpty()) {
+        Optional<String> firmwareTargetInfoAttributeName = getFirmwareTargetInfoAttributeName(asset);
+        if (firmwareTargetInfoAttributeName.isEmpty()) {
             return;
         }
 
-        String attributeName = firmwareTargetInfoDescriptor.get().getName();
+        String attributeName = firmwareTargetInfoAttributeName.get();
         String controllerId = asset.getId();
 
         switch (assetEvent.getCause()) {
@@ -504,21 +523,6 @@ public class HawkbitFirmwareService implements ContainerService {
             }
             return response.readEntity(Target.class);
         }
-    }
-
-    /**
-     * Uploads an artifact file to the given hawkBit software module.
-     */
-    public Response uploadSoftwareModuleArtifact(Long softwareModuleId, InputStream inputStream,
-                                                 String originalFilename, String filename) {
-        String effectiveFilename = TextUtil.isNullOrEmpty(filename) ? originalFilename : filename;
-        String uploadFilename = TextUtil.isNullOrEmpty(effectiveFilename) ? "artifact.bin" : effectiveFilename;
-        MultipartFormDataOutput form = new MultipartFormDataOutput();
-        form.addFormData("file", inputStream, MediaType.APPLICATION_OCTET_STREAM_TYPE, uploadFilename);
-        return HawkbitResponseProxy.proxy("Failed to upload artifact for firmware software module '" + softwareModuleId + "'",
-                () -> softwareModules.uploadArtifact(softwareModuleId,
-                        TextUtil.isNullOrEmpty(effectiveFilename) ? null : effectiveFilename,
-                        form));
     }
 
     /**

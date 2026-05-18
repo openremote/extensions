@@ -31,28 +31,29 @@ import java.util.Objects;
 /**
  * Base resource for hawkBit Management API proxy endpoints.
  * <p>
- * The request path realm remains the OpenRemote authentication realm. The hawkBit target realm is supplied explicitly by
- * each endpoint, matching manager APIs that allow superusers authenticated on {@code master} to operate on another realm.
+ * The request path realm remains the OpenRemote authentication realm. The hawkBit target realm defaults to the
+ * authenticated realm, and can be supplied explicitly by endpoints for superuser cross-realm access.
  */
 public abstract class HawkbitWebResource extends ManagerWebResource {
 
     protected final HawkbitFirmwareService hawkbitFirmwareService;
 
     protected HawkbitWebResource(TimerService timerService, ManagerIdentityService identityService,
-                                  HawkbitFirmwareService hawkbitFirmwareService) {
+                                 HawkbitFirmwareService hawkbitFirmwareService) {
         super(timerService, identityService);
         this.hawkbitFirmwareService = hawkbitFirmwareService;
     }
 
     /**
-     * Verifies that the requested hawkBit realm is present, accessible to the caller, and is the realm configured for
-     * this hawkBit integration.
+     * Verifies that the requested hawkBit realm is accessible to the caller and is the realm configured for this
+     * hawkBit integration. If no target realm is supplied, the authenticated realm is used.
      *
-     * @param realm target OpenRemote realm for firmware management
-     * @throws BadRequestException if no target realm was supplied
-     * @throws ForbiddenException if the caller cannot access the realm, or hawkBit is not configured for that realm
+     * @param realm optional target OpenRemote realm for firmware management
+     * @throws BadRequestException if no target realm can be resolved
+     * @throws ForbiddenException  if the caller cannot access the realm, or hawkBit is not configured for that realm
      */
     protected void requireHawkbitRealmAccess(String realm) {
+        realm = realm == null || realm.isBlank() ? getAuthenticatedRealmName() : realm;
         if (realm == null || realm.isBlank()) {
             throw new BadRequestException("Firmware realm is required");
         }

@@ -39,36 +39,44 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 @Path("firmware/softwaremoduletype")
 public interface SoftwareModuleTypeResource {
 
-    /** Create a software-module type. Body matches hawkBit's SoftwareModuleType create payload. */
+    /**
+     * Create a software-module type. Body matches hawkBit's SoftwareModuleType create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createSoftwareModuleType(@BeanParam RequestParams requestParams,
                                       @QueryParam("realm") String realm,
-                                       JsonNode softwareModuleType);
+                                      JsonNode softwareModuleType);
 
-    /** Retrieve all software-module types, paged. */
+    /**
+     * Retrieve all software-module types, paged.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModuleTypes(@BeanParam RequestParams requestParams,
                                     @QueryParam("realm") String realm,
-                                     @QueryParam("offset") Integer offset,
-                                     @QueryParam("limit") Integer limit);
+                                    @QueryParam("offset") Integer offset,
+                                    @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single software-module type by id. */
+    /**
+     * Retrieve a single software-module type by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModuleType(@BeanParam RequestParams requestParams,
                                    @QueryParam("realm") String realm,
-                                    @PathParam("id") Long id);
+                                   @PathParam("id") Long id);
 
-    /** Delete a software-module type. */
+    /**
+     * Delete a software-module type.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteSoftwareModuleType(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
+    Response deleteSoftwareModuleType(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 }

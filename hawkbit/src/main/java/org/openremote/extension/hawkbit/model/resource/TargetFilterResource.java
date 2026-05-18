@@ -39,16 +39,20 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 @Path("firmware/targetfilter")
 public interface TargetFilterResource {
 
-    /** Retrieve all target filter queries, paged. */
+    /**
+     * Retrieve all target filter queries, paged.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getTargetFilters(@BeanParam RequestParams requestParams,
                               @QueryParam("realm") String realm,
-                               @QueryParam("offset") Integer offset,
-                               @QueryParam("limit") Integer limit);
+                              @QueryParam("offset") Integer offset,
+                              @QueryParam("limit") Integer limit);
 
-    /** Retrieve a single target filter query by id. */
+    /**
+     * Retrieve a single target filter query by id.
+     */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
@@ -57,31 +61,37 @@ public interface TargetFilterResource {
                              @QueryParam("realm") String realm,
                              @PathParam("id") Long id);
 
-    /** Create a target filter query. Body matches hawkBit's TargetFilterQuery create payload. */
+    /**
+     * Create a target filter query. Body matches hawkBit's TargetFilterQuery create payload.
+     */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createTargetFilter(@BeanParam RequestParams requestParams,
                                 @QueryParam("realm") String realm,
-                                 JsonNode filter);
+                                JsonNode filter);
 
-    /** Delete a target filter query. */
+    /**
+     * Delete a target filter query.
+     */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteTargetFilter(@BeanParam RequestParams requestParams,
-                            @QueryParam("realm") String realm,
-                             @PathParam("id") Long id);
+    Response deleteTargetFilter(@BeanParam RequestParams requestParams,
+                                @QueryParam("realm") String realm,
+                                @PathParam("id") Long id);
 
-    /** Retrieve the auto-assign distribution set configured for a target filter. */
+    /**
+     * Retrieve the auto-assign distribution set configured for a target filter.
+     */
     @GET
     @Path("{id}/autoAssignDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getAutoAssignDS(@BeanParam RequestParams requestParams,
                              @QueryParam("realm") String realm,
-                              @PathParam("id") Long id);
+                             @PathParam("id") Long id);
 
     /**
      * Configure the auto-assign distribution set for a target filter.
@@ -96,14 +106,16 @@ public interface TargetFilterResource {
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response setAutoAssignDS(@BeanParam RequestParams requestParams,
                              @QueryParam("realm") String realm,
-                              @PathParam("id") Long id,
-                              JsonNode request);
+                             @PathParam("id") Long id,
+                             JsonNode request);
 
-    /** Remove the auto-assign distribution set from a target filter. */
+    /**
+     * Remove the auto-assign distribution set from a target filter.
+     */
     @DELETE
     @Path("{id}/autoAssignDS")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteAutoAssignDS(@BeanParam RequestParams requestParams,
-                            @QueryParam("realm") String realm,
-                             @PathParam("id") Long id);
+    Response deleteAutoAssignDS(@BeanParam RequestParams requestParams,
+                                @QueryParam("realm") String realm,
+                                @PathParam("id") Long id);
 }
