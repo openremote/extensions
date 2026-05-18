@@ -28,53 +28,56 @@ import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.SoftwareModuleResource;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
 
 import java.io.InputStream;
 import java.util.List;
 
-public class SoftwareModuleResourceImpl extends ManagerWebResource
+public class SoftwareModuleResourceImpl extends HawkbitWebResource
         implements SoftwareModuleResource {
 
-    protected final HawkbitFirmwareService hawkbitFirmwareService;
-
     public SoftwareModuleResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                      HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService);
-        this.hawkbitFirmwareService = hawkbitFirmwareService;
+                                       HawkbitFirmwareService hawkbitFirmwareService) {
+        super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
     public Response createSoftwareModule(RequestParams requestParams,
-                                         JsonNode softwareModule) {
+                                         String realm,
+                                          JsonNode softwareModule) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware software module",
                 () -> hawkbitFirmwareService.softwareModules().create(softwareModule));
     }
 
     @Override
-    public Response getSoftwareModules(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getSoftwareModules(RequestParams requestParams, String realm, Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware software modules",
                 () -> hawkbitFirmwareService.softwareModules().getSoftwareModules(offset, limit));
     }
 
     @Override
-    public Response getSoftwareModule(RequestParams requestParams, Long id) {
+    public Response getSoftwareModule(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().get(id));
     }
 
     @Override
-    public Response getSoftwareModuleArtifacts(RequestParams requestParams, Long id) {
+    public Response getSoftwareModuleArtifacts(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve artifacts for firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().getArtifacts(id));
     }
 
     @Override
     public Response uploadSoftwareModuleArtifact(RequestParams requestParams,
+                                                 String realm,
                                                  Long id,
                                                  String filename,
                                                  List<EntityPart> parts) {
+        requireHawkbitRealmAccess(realm);
         try {
             EntityPart filePart = parts == null ? null : parts.stream()
                     .filter(part -> "file".equals(part.getName()))
@@ -96,7 +99,8 @@ public class SoftwareModuleResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public void deleteSoftwareModule(RequestParams requestParams, Long id) {
+    public void deleteSoftwareModule(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to delete firmware software module '" + id + "'",
                 () -> hawkbitFirmwareService.softwareModules().delete(id));
     }

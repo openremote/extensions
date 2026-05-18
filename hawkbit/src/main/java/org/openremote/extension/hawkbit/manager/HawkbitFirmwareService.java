@@ -522,6 +522,13 @@ public class HawkbitFirmwareService implements ContainerService {
     }
 
     /**
+     * Returns the realm this service is bound to. Firmware endpoints are scoped to it.
+     */
+    public String getRealm() {
+        return hawkbitRealm;
+    }
+
+    /**
      * Returns the hawkBit targets client.
      */
     public HawkbitTargetsClient targets() {

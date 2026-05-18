@@ -26,62 +26,66 @@ import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.TargetFilterResource;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
 
-public class TargetFilterResourceImpl extends ManagerWebResource
+public class TargetFilterResourceImpl extends HawkbitWebResource
         implements TargetFilterResource {
 
-    protected final HawkbitFirmwareService hawkbitFirmwareService;
-
     public TargetFilterResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                    HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService);
-        this.hawkbitFirmwareService = hawkbitFirmwareService;
+                                     HawkbitFirmwareService hawkbitFirmwareService) {
+        super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
-    public Response getTargetFilters(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getTargetFilters(RequestParams requestParams, String realm, Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware target filters",
                 () -> hawkbitFirmwareService.targetFilters().getTargetFilters(offset, limit));
     }
 
     @Override
-    public Response getTargetFilter(RequestParams requestParams, Long id) {
+    public Response getTargetFilter(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware target filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().get(id));
     }
 
     @Override
     public Response createTargetFilter(RequestParams requestParams,
+                                       String realm,
                                        JsonNode filter) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware target filter",
                 () -> hawkbitFirmwareService.targetFilters().create(filter));
     }
 
     @Override
-    public void deleteTargetFilter(RequestParams requestParams, Long id) {
+    public void deleteTargetFilter(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to delete firmware target filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().delete(id));
     }
 
     @Override
-    public Response getAutoAssignDS(RequestParams requestParams, Long id) {
+    public Response getAutoAssignDS(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to retrieve auto assign distribution set for filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().getAutoAssignDS(id));
     }
 
     @Override
-    public Response setAutoAssignDS(RequestParams requestParams, Long id,
-                                    JsonNode request) {
+    public Response setAutoAssignDS(RequestParams requestParams, String realm, Long id,
+                                     JsonNode request) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to set auto assign distribution set for filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().setAutoAssignDS(id, request));
     }
 
     @Override
-    public void deleteAutoAssignDS(RequestParams requestParams, Long id) {
+    public void deleteAutoAssignDS(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy(
                 "Failed to remove auto assign distribution set from filter '" + id + "'",
                 () -> hawkbitFirmwareService.targetFilters().deleteAutoAssignDS(id));

@@ -28,63 +28,100 @@ import org.openremote.model.http.RequestParams;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 
+/**
+ * Proxies the hawkBit Management API target endpoints.
+ * <p>
+ * Delegates to {@link org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetsClient}
+ * and returns the upstream response body unchanged.
+ */
 @Tag(name = "Firmware Targets", description = "Management of firmware targets")
 @Path("firmware/target")
 public interface TargetResource {
 
+    /**
+     * Retrieve firmware targets, paged.
+     * <p>
+     * {@code q} is a hawkBit RSQL filter (e.g. {@code name==foo}), not free-text search.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getTargets(@BeanParam RequestParams requestParams,
+                        @QueryParam("realm") String realm,
                         @QueryParam("q") String query,
                         @QueryParam("offset") Integer offset,
                         @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single firmware target by controllerId. */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getTarget(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getTarget(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") String id);
 
+    /** Retrieve all metadata key/value pairs for a firmware target. */
     @GET
     @Path("{id}/metadata")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getMetadata(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getMetadata(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") String id);
 
+    /**
+     * Retrieve the distribution set currently assigned to a firmware target.
+     * <p>
+     * "Assigned" is the DS the server has scheduled. See {@link #getInstalledDs}
+     * for what the target has confirmed installed.
+     */
     @GET
     @Path("{id}/assignedDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getAssignedDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getAssignedDs(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") String id);
 
+    /**
+     * Retrieve the distribution set currently reported as installed on a firmware target.
+     * <p>
+     * "Installed" reflects the target's last confirmation. See {@link #getAssignedDs}
+     * for what the server has scheduled.
+     */
     @GET
     @Path("{id}/installedDS")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getInstalledDs(@BeanParam RequestParams requestParams, @PathParam("id") String id);
+    Response getInstalledDs(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") String id);
 
+    /** Retrieve the action history for a firmware target, paged. */
     @GET
     @Path("{id}/actions")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getActions(@BeanParam RequestParams requestParams,
+                        @QueryParam("realm") String realm,
                         @PathParam("id") String id,
                         @QueryParam("offset") Integer offset,
                         @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single action for a firmware target. */
     @GET
     @Path("{id}/actions/{actionId}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getAction(@BeanParam RequestParams requestParams,
+                       @QueryParam("realm") String realm,
                        @PathParam("id") String id,
                        @PathParam("actionId") Long actionId);
 
+    /**
+     * Cancel an in-flight action on a firmware target.
+     * <p>
+     * {@code force=true} bypasses the cancel-confirmation handshake with the
+     * controller. The target stays in an unknown state until its next poll.
+     */
     @DELETE
     @Path("{id}/actions/{actionId}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     void cancelAction(@BeanParam RequestParams requestParams,
+                      @QueryParam("realm") String realm,
                       @PathParam("id") String id,
                       @PathParam("actionId") Long actionId,
                       @QueryParam("force") Boolean force);

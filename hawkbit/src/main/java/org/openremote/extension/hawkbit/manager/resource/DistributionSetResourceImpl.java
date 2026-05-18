@@ -27,31 +27,30 @@ import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.DistributionSetResource;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
 
-public class DistributionSetResourceImpl extends ManagerWebResource
+public class DistributionSetResourceImpl extends HawkbitWebResource
         implements DistributionSetResource {
 
-    protected final HawkbitFirmwareService hawkbitFirmwareService;
-
     public DistributionSetResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                       HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService);
-        this.hawkbitFirmwareService = hawkbitFirmwareService;
+                                        HawkbitFirmwareService hawkbitFirmwareService) {
+        super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
     public Response createDistributionSet(RequestParams requestParams,
+                                          String realm,
                                           JsonNode distributionSet) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware distribution set",
                 () -> hawkbitFirmwareService.distributionSets().create(distributionSet));
     }
 
     @Override
-    public Response assignDistributionSet(RequestParams requestParams, Long id,
-                                           Boolean offline,
-                                           JsonNode targets) {
+    public Response assignDistributionSet(RequestParams requestParams, String realm, Long id,
+                                            Boolean offline,
+                                            JsonNode targets) {
+        requireHawkbitRealmAccess(realm);
         if (targets == null || !targets.isArray() || targets.isEmpty()) {
             throw new WebApplicationException("Assignment requires at least one target", Response.Status.BAD_REQUEST);
         }
@@ -60,19 +59,22 @@ public class DistributionSetResourceImpl extends ManagerWebResource
     }
 
     @Override
-    public Response getDistributionSets(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getDistributionSets(RequestParams requestParams, String realm, Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware distribution sets",
                 () -> hawkbitFirmwareService.distributionSets().getDistributionSets(offset, limit));
     }
 
     @Override
-    public Response getDistributionSet(RequestParams requestParams, Long id) {
+    public Response getDistributionSet(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware distribution set '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSets().get(id));
     }
 
     @Override
-    public void deleteDistributionSet(RequestParams requestParams, Long id) {
+    public void deleteDistributionSet(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to delete firmware distribution set '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSets().delete(id));
     }

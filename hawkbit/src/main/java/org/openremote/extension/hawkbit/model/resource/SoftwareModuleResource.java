@@ -33,49 +33,71 @@ import java.util.List;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static jakarta.ws.rs.core.MediaType.MULTIPART_FORM_DATA;
 
+/**
+ * Proxies the hawkBit Management API software-module endpoints.
+ * <p>
+ * Delegates to {@link org.openremote.extension.hawkbit.manager.hawkbit.HawkbitSoftwareModulesClient}
+ * and returns the upstream response body unchanged.
+ */
 @Tag(name = "Firmware Software Modules", description = "Management of firmware software modules")
 @Path("firmware/softwaremodule")
 public interface SoftwareModuleResource {
 
+    /** Create a software module. Body matches hawkBit's SoftwareModule create payload. */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createSoftwareModule(@BeanParam RequestParams requestParams,
-                                  JsonNode softwareModule);
+                                  @QueryParam("realm") String realm,
+                                   JsonNode softwareModule);
 
+    /** Retrieve all software modules, paged. */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModules(@BeanParam RequestParams requestParams,
-                                @QueryParam("offset") Integer offset,
-                                @QueryParam("limit") Integer limit);
+                                @QueryParam("realm") String realm,
+                                 @QueryParam("offset") Integer offset,
+                                 @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single software module by id. */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getSoftwareModule(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    Response getSoftwareModule(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
+    /** Retrieve all artifacts attached to a software module. */
     @GET
     @Path("{id}/artifacts")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
-    Response getSoftwareModuleArtifacts(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    Response getSoftwareModuleArtifacts(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
+    /**
+     * Upload an artifact file to a software module.
+     * <p>
+     * Multipart body must include a part named {@code "file"}. Requests without it
+     * return {@code 400}. The {@code filename} query parameter overrides the
+     * filename from the multipart part. If neither is set the upload falls back
+     * to {@code "artifact.bin"}.
+     */
     @POST
     @Path("{id}/artifacts")
     @Consumes(MULTIPART_FORM_DATA)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response uploadSoftwareModuleArtifact(@BeanParam RequestParams requestParams,
-                                          @PathParam("id") Long id,
-                                          @QueryParam("filename") String filename,
-                                          List<EntityPart> parts);
+                                          @QueryParam("realm") String realm,
+                                           @PathParam("id") Long id,
+                                           @QueryParam("filename") String filename,
+                                           List<EntityPart> parts);
 
+    /** Delete a software module. */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteSoftwareModule(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    void deleteSoftwareModule(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 
 }

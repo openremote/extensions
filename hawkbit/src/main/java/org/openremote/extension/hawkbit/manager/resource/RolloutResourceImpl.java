@@ -26,66 +26,70 @@ import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.RolloutResource;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
 
-public class RolloutResourceImpl extends ManagerWebResource
+public class RolloutResourceImpl extends HawkbitWebResource
         implements RolloutResource {
 
-    protected final HawkbitFirmwareService hawkbitFirmwareService;
-
     public RolloutResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                               HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService);
-        this.hawkbitFirmwareService = hawkbitFirmwareService;
+                                HawkbitFirmwareService hawkbitFirmwareService) {
+        super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
-    public Response getRollouts(RequestParams requestParams, Integer offset, Integer limit) {
+    public Response getRollouts(RequestParams requestParams, String realm, Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
         // Request full representation so totalTargetsPerStatus and totalGroups are populated; hawkBit defaults to compact.
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware rollouts",
                 () -> hawkbitFirmwareService.rollouts().getRollouts(offset, limit, "full"));
     }
 
     @Override
-    public Response getRollout(RequestParams requestParams, Long id) {
+    public Response getRollout(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().get(id));
     }
 
     @Override
-    public Response createRollout(RequestParams requestParams, JsonNode rollout) {
+    public Response createRollout(RequestParams requestParams, String realm, JsonNode rollout) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware rollout",
                 () -> hawkbitFirmwareService.rollouts().create(rollout));
     }
 
     @Override
-    public void deleteRollout(RequestParams requestParams, Long id) {
+    public void deleteRollout(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to delete firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().delete(id));
     }
 
     @Override
-    public Response startRollout(RequestParams requestParams, Long id) {
-        return HawkbitResponseProxy.proxy("Failed to start firmware rollout '" + id + "'",
+    public void startRollout(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
+        HawkbitResponseProxy.proxy("Failed to start firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().start(id));
     }
 
     @Override
-    public void pauseRollout(RequestParams requestParams, Long id) {
+    public void pauseRollout(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to pause firmware rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().pause(id));
     }
 
     @Override
-    public Response getRolloutGroups(RequestParams requestParams, Long id,
-                                     Integer offset, Integer limit) {
+    public Response getRolloutGroups(RequestParams requestParams, String realm, Long id,
+                                      Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve groups for rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().getRolloutGroups(id, offset, limit, "full"));
     }
 
     @Override
-    public Response getRolloutGroup(RequestParams requestParams, Long id, Long groupId) {
+    public Response getRolloutGroup(RequestParams requestParams, String realm, Long id, Long groupId) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to retrieve group '" + groupId + "' for rollout '" + id + "'",
                 () -> hawkbitFirmwareService.rollouts().getRolloutGroup(id, groupId));

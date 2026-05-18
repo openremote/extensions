@@ -29,33 +29,46 @@ import org.openremote.model.http.RequestParams;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 
+/**
+ * Proxies the hawkBit Management API software-module-type endpoints.
+ * <p>
+ * Delegates to {@link org.openremote.extension.hawkbit.manager.hawkbit.HawkbitSoftwareModuleTypesClient}
+ * and returns the upstream response body unchanged.
+ */
 @Tag(name = "Firmware Software Module Types", description = "Management of firmware software module types")
 @Path("firmware/softwaremoduletype")
 public interface SoftwareModuleTypeResource {
 
+    /** Create a software-module type. Body matches hawkBit's SoftwareModuleType create payload. */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createSoftwareModuleType(@BeanParam RequestParams requestParams,
-                                      JsonNode softwareModuleType);
+                                      @QueryParam("realm") String realm,
+                                       JsonNode softwareModuleType);
 
+    /** Retrieve all software-module types, paged. */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModuleTypes(@BeanParam RequestParams requestParams,
-                                    @QueryParam("offset") Integer offset,
-                                    @QueryParam("limit") Integer limit);
+                                    @QueryParam("realm") String realm,
+                                     @QueryParam("offset") Integer offset,
+                                     @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single software-module type by id. */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getSoftwareModuleType(@BeanParam RequestParams requestParams,
-                                   @PathParam("id") Long id);
+                                   @QueryParam("realm") String realm,
+                                    @PathParam("id") Long id);
 
+    /** Delete a software-module type. */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    void deleteSoftwareModuleType(@BeanParam RequestParams requestParams, @PathParam("id") Long id);
+    void deleteSoftwareModuleType(@BeanParam RequestParams requestParams, @QueryParam("realm") String realm, @PathParam("id") Long id);
 }

@@ -26,59 +26,62 @@ import org.openremote.extension.hawkbit.manager.HawkbitFirmwareService;
 import org.openremote.extension.hawkbit.manager.HawkbitResponseProxy;
 import org.openremote.extension.hawkbit.model.resource.DistributionSetTypeResource;
 import org.openremote.manager.security.ManagerIdentityService;
-import org.openremote.manager.web.ManagerWebResource;
 import org.openremote.model.http.RequestParams;
 
-public class DistributionSetTypeResourceImpl extends ManagerWebResource
+public class DistributionSetTypeResourceImpl extends HawkbitWebResource
         implements DistributionSetTypeResource {
 
-    protected final HawkbitFirmwareService hawkbitFirmwareService;
-
     public DistributionSetTypeResourceImpl(TimerService timerService,
-                                           ManagerIdentityService identityService,
-                                           HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService);
-        this.hawkbitFirmwareService = hawkbitFirmwareService;
+                                            ManagerIdentityService identityService,
+                                            HawkbitFirmwareService hawkbitFirmwareService) {
+        super(timerService, identityService, hawkbitFirmwareService);
     }
 
     @Override
     public Response createDistributionSetType(RequestParams requestParams,
-                                              JsonNode distributionSetType) {
+                                              String realm,
+                                               JsonNode distributionSetType) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to create firmware distribution set type",
                 () -> hawkbitFirmwareService.distributionSetTypes().create(distributionSetType));
     }
 
     @Override
-    public Response getDistributionSetTypes(RequestParams requestParams, Integer offset,
-                                            Integer limit) {
+    public Response getDistributionSetTypes(RequestParams requestParams, String realm, Integer offset,
+                                             Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware distribution set types",
                 () -> hawkbitFirmwareService.distributionSetTypes().getDistributionSetTypes(offset, limit));
     }
 
     @Override
-    public Response getDistributionSetType(RequestParams requestParams, Long id) {
+    public Response getDistributionSetType(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy("Failed to retrieve firmware distribution set type '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSetTypes().get(id));
     }
 
     @Override
-    public Response getMandatoryModuleTypes(RequestParams requestParams, Long id, Integer offset,
-                                            Integer limit) {
+    public Response getMandatoryModuleTypes(RequestParams requestParams, String realm, Long id, Integer offset,
+                                             Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to retrieve mandatory module types for firmware distribution set type '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSetTypes().getMandatoryModuleTypes(id, offset, limit));
     }
 
     @Override
-    public Response getOptionalModuleTypes(RequestParams requestParams, Long id, Integer offset,
-                                           Integer limit) {
+    public Response getOptionalModuleTypes(RequestParams requestParams, String realm, Long id, Integer offset,
+                                            Integer limit) {
+        requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(
                 "Failed to retrieve optional module types for firmware distribution set type '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSetTypes().getOptionalModuleTypes(id, offset, limit));
     }
 
     @Override
-    public void deleteDistributionSetType(RequestParams requestParams, Long id) {
+    public void deleteDistributionSetType(RequestParams requestParams, String realm, Long id) {
+        requireHawkbitRealmAccess(realm);
         HawkbitResponseProxy.proxy("Failed to delete firmware distribution set type '" + id + "'",
                 () -> hawkbitFirmwareService.distributionSetTypes().delete(id));
     }

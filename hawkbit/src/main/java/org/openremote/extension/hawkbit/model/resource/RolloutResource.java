@@ -29,65 +29,95 @@ import org.openremote.model.http.RequestParams;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 
+/**
+ * Proxies the hawkBit Management API rollout endpoints.
+ * <p>
+ * Delegates to {@link org.openremote.extension.hawkbit.manager.hawkbit.HawkbitRolloutsClient}
+ * and returns the upstream response body unchanged.
+ */
 @Tag(name = "Firmware Rollouts", description = "Management of firmware rollouts")
 @Path("firmware/rollout")
 public interface RolloutResource {
 
+    /**
+     * Retrieve all rollouts, paged.
+     * <p>
+     * Forces {@code representation=full} so {@code totalTargetsPerStatus} and
+     * {@code totalGroups} are populated. hawkBit's default is {@code compact}
+     * which omits both.
+     */
     @GET
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRollouts(@BeanParam RequestParams requestParams,
-                         @QueryParam("offset") Integer offset,
-                         @QueryParam("limit") Integer limit);
+                         @QueryParam("realm") String realm,
+                          @QueryParam("offset") Integer offset,
+                          @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single rollout by id. */
     @GET
     @Path("{id}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRollout(@BeanParam RequestParams requestParams,
-                        @PathParam("id") Long id);
+                        @QueryParam("realm") String realm,
+                         @PathParam("id") Long id);
 
+    /** Create a rollout. Body matches hawkBit's Rollout create payload. */
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     Response createRollout(@BeanParam RequestParams requestParams,
-                           JsonNode rollout);
+                           @QueryParam("realm") String realm,
+                            JsonNode rollout);
 
+    /** Delete a rollout. */
     @DELETE
     @Path("{id}")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     void deleteRollout(@BeanParam RequestParams requestParams,
-                       @PathParam("id") Long id);
+                       @QueryParam("realm") String realm,
+                        @PathParam("id") Long id);
 
+    /** Start a rollout. */
     @POST
     @Path("{id}/start")
-    @Consumes(APPLICATION_JSON)
-    @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
-    Response startRollout(@BeanParam RequestParams requestParams,
-                          @PathParam("id") Long id);
+    void startRollout(@BeanParam RequestParams requestParams,
+                      @QueryParam("realm") String realm,
+                       @PathParam("id") Long id);
 
+    /** Pause a running rollout. */
     @POST
     @Path("{id}/pause")
     @RolesAllowed({Constants.WRITE_ADMIN_ROLE})
     void pauseRollout(@BeanParam RequestParams requestParams,
-                      @PathParam("id") Long id);
+                      @QueryParam("realm") String realm,
+                       @PathParam("id") Long id);
 
+    /**
+     * Retrieve deployment groups for a rollout, paged.
+     * <p>
+     * Forces {@code representation=full} so per-group status counters are populated.
+     */
     @GET
     @Path("{id}/deploygroups")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRolloutGroups(@BeanParam RequestParams requestParams,
-                              @PathParam("id") Long id,
-                              @QueryParam("offset") Integer offset,
-                              @QueryParam("limit") Integer limit);
+                              @QueryParam("realm") String realm,
+                               @PathParam("id") Long id,
+                               @QueryParam("offset") Integer offset,
+                               @QueryParam("limit") Integer limit);
 
+    /** Retrieve a single deployment group within a rollout. */
     @GET
     @Path("{id}/deploygroups/{groupId}")
     @Produces(APPLICATION_JSON)
     @RolesAllowed({Constants.READ_ADMIN_ROLE})
     Response getRolloutGroup(@BeanParam RequestParams requestParams,
-                             @PathParam("id") Long id,
-                             @PathParam("groupId") Long groupId);
+                             @QueryParam("realm") String realm,
+                              @PathParam("id") Long id,
+                              @PathParam("groupId") Long groupId);
 }
