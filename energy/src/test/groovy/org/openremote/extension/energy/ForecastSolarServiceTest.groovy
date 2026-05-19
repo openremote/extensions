@@ -26,7 +26,6 @@ import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastSolarService.OR_FORECAST_SOLAR_API_KEY
 
-@Ignore
 class ForecastSolarServiceTest extends Specification implements ManagerContainerTrait {
 
     @Shared
