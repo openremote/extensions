@@ -1,4 +1,3 @@
-apply plugin: "groovy"
 apply plugin: "java-library"
 apply plugin: "maven-publish"
 apply plugin: "signing"
@@ -9,12 +8,7 @@ base {
 
 dependencies {
     api "io.openremote:openremote-manager:$openremoteVersion"
-    api "io.openremote:openremote-model:$openremoteVersion"
-
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
-
-    testImplementation "io.openremote:openremote-test:$openremoteVersion"
+    implementation project(":energy")
 }
 
 jar {
@@ -37,9 +31,9 @@ publishing {
             artifactId = "openremote-${project.name}-extension"
             from components.java
             pom {
-                name = 'OpenRemote ENTSO-E extension'
-                description = 'Adds the ENTSO-E extension'
-                url = 'https://github.com/openremote/extensions'
+                name = 'OpenRemote Demo setup'
+                description = 'Adds the OpenRemote Demo setup'
+                url = 'https://github.com/openremote/openremote'
                 licenses {
                     license {
                         name = 'GNU Affero General Public License v3.0'
@@ -56,9 +50,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection = 'scm:git:git://github.com/openremote/extensions.git'
-                    developerConnection = 'scm:git:ssh://github.com:openremote/extensions.git'
-                    url = 'https://github.com/openremote/extensions/tree/main'
+                    connection = 'scm:git:git://github.com/openremote/openremote.git'
+                    developerConnection = 'scm:git:ssh://github.com:openremote/openremote.git'
+                    url = 'https://github.com/openremote/openremote/tree/master'
                 }
             }
         }

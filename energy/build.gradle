@@ -8,11 +8,11 @@ base {
 }
 
 dependencies {
+    api "org.apache.camel:camel-core-model:$camelVersion"
+    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
+
     api "io.openremote:openremote-manager:$openremoteVersion"
     api "io.openremote:openremote-model:$openremoteVersion"
-
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
 
     testImplementation "io.openremote:openremote-test:$openremoteVersion"
 }
@@ -37,9 +37,9 @@ publishing {
             artifactId = "openremote-${project.name}-extension"
             from components.java
             pom {
-                name = 'OpenRemote ENTSO-E extension'
-                description = 'Adds the ENTSO-E extension'
-                url = 'https://github.com/openremote/extensions'
+                name = 'OpenRemote energy extension'
+                description = 'Adds the energy domain extension'
+                url = 'https://github.com/openremote/openremote'
                 licenses {
                     license {
                         name = 'GNU Affero General Public License v3.0'
@@ -56,9 +56,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection = 'scm:git:git://github.com/openremote/extensions.git'
-                    developerConnection = 'scm:git:ssh://github.com:openremote/extensions.git'
-                    url = 'https://github.com/openremote/extensions/tree/main'
+                    connection = 'scm:git:git://github.com/openremote/openremote.git'
+                    developerConnection = 'scm:git:ssh://github.com:openremote/openremote.git'
+                    url = 'https://github.com/openremote/openremote/tree/master'
                 }
             }
         }
