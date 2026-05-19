@@ -52,7 +52,7 @@ jobs:
 
       - name: Login to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        #if: ${{ success() && steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        if: ${{ success() && steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         with:
           username: ${{ secrets._TEMP_DOCKERHUB_USER }}
           password: ${{ secrets._TEMP_DOCKERHUB_PASSWORD }}
@@ -85,22 +85,13 @@ jobs:
 
       - name: Run build and publish
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > keystore
-          ./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository \
-              -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD \
-              -PkeystoreKeyAlias=$KEYSTORE_KEY_ALIAS -PkeystoreKeyPassword=$KEYSTORE_KEY_PASSWORD -PkeystoreFile=$PWD/keystore -PkeystorePassword=$KEYSTORE_PASSWORD
-        env:
-          MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY || secrets.MAVEN_SIGNING_KEY }}
-          MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD || secrets.MAVEN_SIGNING_PASSWORD }}
-          MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME || secrets.MAVEN_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD || secrets.MAVEN_PASSWORD }}
-          KEYSTORE_BASE64: |
-            ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEYSTORE_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_KEY_ALIAS }}
-          KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
         timeout-minutes: 20
+        run: ./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
+        env:
+          MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY }}
+          MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD }}
+          MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
 
       - name: Archive backend test results
         if: always()
