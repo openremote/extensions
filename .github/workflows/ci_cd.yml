@@ -56,7 +56,7 @@ jobs:
           curl -o dev-testing.yml https://raw.githubusercontent.com/openremote/openremote/refs/heads/master/profile/dev-testing.yml
 
           # Start the stack
-          docker compose -f profile/dev-testing.yml up -d --no-build
+          docker compose -f dev-testing.yml up -d --no-build
 
       - name: Run build
         if: ${{ !steps.is_main_repo.outputs.value || github.event_name == 'pull_request' }}
