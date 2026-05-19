@@ -54,22 +54,18 @@ jobs:
             echo "value=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Run dev-testing profile
-        timeout-minutes: 20
-        run: |
-          # Run dev-testing profile
-          # Make temp dir with 777 mask as docker seems to run as root
-          mkdir -pm 777 tmp
-          
-          # Start the stack
-          docker compose -f openremote/profile/dev-testing.yml up -d --no-build
-          
-          ./gradlew entsoe:test
-
       - name: Run build
         if: ${{ !steps.is_main_repo.outputs.value || github.event_name == 'pull_request' }}
         timeout-minutes: 20
-        run: ./gradlew build
+        run: |
+          # Run build
+          # Make temp dir with 777 mask as docker seems to run as root
+          mkdir -pm 777 tmp
+          
+          # Start the dev-testing stack
+          docker compose -f openremote/profile/dev-testing.yml up -d --no-build
+          
+          ./gradlew build
 
       - name: Login to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
