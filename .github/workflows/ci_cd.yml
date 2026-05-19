@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: openremote/openremote
-          path: .
+          path: openremote
           ref: master
           sparse-checkout: profile
           sparse-checkout-cone-mode: false
@@ -62,7 +62,7 @@ jobs:
           mkdir -pm 777 tmp
           
           # Start the stack
-          docker compose -f profile/dev-testing.yml up -d --no-build
+          docker compose -f openremote/profile/dev-testing.yml up -d --no-build
 
       - name: Run build
         if: ${{ !steps.is_main_repo.outputs.value || github.event_name == 'pull_request' }}
