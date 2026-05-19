@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: openremote/openremote
-          path: openremote
+          path: .
           ref: master
           sparse-checkout: profile
           sparse-checkout-cone-mode: false
