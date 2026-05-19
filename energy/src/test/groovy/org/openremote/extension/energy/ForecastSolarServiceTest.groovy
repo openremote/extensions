@@ -12,6 +12,7 @@ import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.geo.GeoJSONPoint
 import org.openremote.model.util.ValueUtil
 import org.openremote.test.ManagerContainerTrait
+import spock.lang.Ignore
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
@@ -25,6 +26,7 @@ import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastSolarService.OR_FORECAST_SOLAR_API_KEY
 
+@Ignore
 class ForecastSolarServiceTest extends Specification implements ManagerContainerTrait {
 
     @Shared

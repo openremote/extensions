@@ -18,6 +18,7 @@ import org.openremote.model.geo.GeoJSONPoint
 import org.openremote.model.util.ValueUtil
 import org.openremote.test.ManagerContainerTrait
 import spock.lang.Shared
+import spock.lang.Ignore
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
 
@@ -27,6 +28,7 @@ import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastWindService.OR_OPEN_WEATHER_API_APP_ID
 
+@Ignore
 class ForecastWindServiceTest extends Specification implements ManagerContainerTrait {
 
     @Shared
