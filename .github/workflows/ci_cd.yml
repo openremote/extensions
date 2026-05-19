@@ -59,7 +59,7 @@ jobs:
         timeout-minutes: 20
         run: |
           # Run build
-          # Make temp dir with 777 maesk as docker seems to run as root
+          # Make temp dir with 777 mask as docker seems to run as root
           mkdir -pm 777 tmp
           
           # Start the dev-testing stack
@@ -100,10 +100,10 @@ jobs:
           DOCKER_BUILD_SUMMARY: false
           DOCKER_BUILD_RECORD_UPLOAD: false
 
-      - name: Run build and publish
+      - name: Publish to Maven Sonatype
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         timeout-minutes: 20
-        run: ./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
         env:
           MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY }}
           MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD }}
