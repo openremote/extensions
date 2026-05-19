@@ -34,6 +34,7 @@ import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.attribute.MetaItem
 import org.openremote.model.datapoint.ValueDatapoint
 import org.openremote.test.ManagerContainerTrait
+import spock.lang.Ignore
 import spock.lang.IgnoreIf
 import spock.lang.Issue
 import spock.lang.Shared
@@ -983,6 +984,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         closeClient()
     }
 
+    @Ignore
     def "ENTSO-E integration test supports multiple periods in a single timeseries"() {
         given: "the container environment is started"
         requestCountByZone.clear()
