@@ -59,7 +59,7 @@ jobs:
         timeout-minutes: 20
         run: |
           # Run build
-          # Make temp dir with 777 mask as docker seems to run as root
+          # Make temp dir with 777 maesk as docker seems to run as root
           mkdir -pm 777 tmp
           
           # Start the dev-testing stack
