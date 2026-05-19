@@ -50,7 +50,6 @@ import static org.openremote.model.Constants.MASTER_REALM
 import static org.openremote.model.value.MetaItemType.AGENT_LINK
 import static org.openremote.model.value.ValueType.NUMBER
 
-@IgnoreIf({ System.getenv("GITHUB_ACTIONS") == "true" })
 @Issue("https://github.com/openremote/openremote/issues/2599")
 class EntsoeProtocolTest extends Specification implements ManagerContainerTrait {
     private static final String DATASET_START = "2026-02-16T23:00:00.000Z"
