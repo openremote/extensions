@@ -63,6 +63,8 @@ jobs:
           
           # Start the stack
           docker compose -f openremote/profile/dev-testing.yml up -d --no-build
+          
+          ./gradlew entsoe:test
 
       - name: Run build
         if: ${{ !steps.is_main_repo.outputs.value || github.event_name == 'pull_request' }}
