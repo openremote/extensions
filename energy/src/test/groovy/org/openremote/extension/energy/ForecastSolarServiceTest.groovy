@@ -12,7 +12,6 @@ import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.geo.GeoJSONPoint
 import org.openremote.model.util.ValueUtil
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.Ignore
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
