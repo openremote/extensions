@@ -16,11 +16,6 @@ on:
   # Manual trigger
   workflow_dispatch:
 
-  # Release
-  release:
-    types:
-      - published
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
