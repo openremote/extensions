@@ -24,6 +24,7 @@ import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetsClient
 import org.openremote.extension.hawkbit.model.FirmwareMetaItemType
 import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest
 import org.openremote.extension.hawkbit.model.hawkbit.Target
+import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest
 import org.openremote.model.asset.Asset
 import org.openremote.model.asset.AssetEvent
 import org.openremote.model.attribute.*
@@ -41,12 +42,12 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
      * with any asset type.
      */
     static class TestableHawkbitFirmwareService extends HawkbitFirmwareService {
-        Optional<String> getFirmwareTargetInfoAttributeName(Asset asset) {
+        Optional<String> getTargetInfoAttributeName(Asset asset) {
             return Optional.of("firmwareTarget")
         }
     }
 
-    def "getFirmwareTargetInfoAttributeName rejects multiple marked attributes"() {
+    def "getTargetInfoAttributeName rejects multiple marked attributes"() {
         given: "an asset with multiple attributes marked as firmware target"
         def service = new HawkbitFirmwareService()
         def meta = new MetaMap()
@@ -60,7 +61,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         ])
 
         expect: "ambiguous firmware target info attributes are ignored"
-        service.getFirmwareTargetInfoAttributeName(asset) == Optional.empty()
+        service.getTargetInfoAttributeName(asset) == Optional.empty()
     }
 
     def "handleAssetChange with CREATE cause creates target when it does not exist"() {
@@ -78,7 +79,9 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         then: "hawkBit checks (404), creates, then uses the created target to update target info"
         1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
-        1 * service.targets.create(_) >> Response.ok(new Target[]{createdTarget}).build()
+        1 * service.targets.create({ TargetCreateRequest[] targets ->
+            targets.length == 1 && targets[0].securityToken() == null
+        }) >> Response.ok(new Target[]{createdTarget}).build()
     }
 
     def "handleAssetChange with CREATE cause skips create when target already exists"() {
@@ -135,10 +138,12 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         then: "hawkBit queries (404), creates, then uses the created target for info update"
         1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
-        1 * service.targets.create(_) >> Response.ok(new Target[]{createdTarget}).build()
+        1 * service.targets.create({ TargetCreateRequest[] targets ->
+            targets.length == 1 && targets[0].securityToken() == null
+        }) >> Response.ok(new Target[]{createdTarget}).build()
     }
 
-    def "handleAssetChange with UPDATE cause logs warning when getFirmwareTarget throws exception"() {
+    def "handleAssetChange with UPDATE cause logs warning when getTarget throws exception"() {
         given: "a service with mocked targets client that throws"
         def service = new TestableHawkbitFirmwareService()
         service.targets = Mock(HawkbitTargetsClient)
@@ -154,6 +159,29 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         1 * service.targets.get(CONTROLLER_ID) >> { throw new RuntimeException("connection failed") }
         0 * service.targets.create(_)
         0 * service.targets.delete(_)
+    }
+
+    def "createTarget with security token forwards token in create request"() {
+        given: "a service with mocked targets client"
+        def service = new TestableHawkbitFirmwareService()
+        service.targets = Mock(HawkbitTargetsClient)
+        def createdTarget = new Target(CONTROLLER_ID, null, null, "custom-token", null, null, null, null, null, null, null, null, null)
+
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        asset.getAssetType() >> "test:asset:type"
+        asset.getRealm() >> "master"
+
+        when: "creating a target with a custom security token"
+        def result = service.createTarget(asset, "custom-token")
+
+        then: "the token is forwarded to hawkBit"
+        1 * service.targets.create({ TargetCreateRequest[] targets ->
+            targets.length == 1 &&
+                    targets[0].controllerId() == CONTROLLER_ID &&
+                    targets[0].securityToken() == "custom-token"
+        }) >> Response.ok(new Target[]{createdTarget}).build()
+        result == createdTarget
     }
 
     def "handleAssetChange with DELETE cause deletes target"() {

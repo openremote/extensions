@@ -63,6 +63,10 @@ import static org.openremote.container.web.WebTargetBuilder.*;
 import static org.openremote.model.syslog.SyslogCategory.API;
 import static org.openremote.model.util.MapAccess.getString;
 
+/**
+ * Connects the manager to the hawkBit Management API and keeps OpenRemote assets
+ * marked for firmware management synchronized with hawkBit targets and metadata.
+ */
 public class HawkbitFirmwareService implements ContainerService {
     /**
      * hawkBit integration is currently limited to a single realm,
@@ -121,9 +125,6 @@ public class HawkbitFirmwareService implements ContainerService {
                 new TargetFilterResourceImpl(timerService, identityService, this));
     }
 
-    /**
-     * Builds the hawkBit REST client and subscribes to asset/attribute events.
-     */
     @Override
     public void start(Container container) throws Exception {
         String hawkbitURI = getString(container.getConfig(), HAWKBIT_MANAGEMENT_API_URL,
@@ -134,7 +135,7 @@ public class HawkbitFirmwareService implements ContainerService {
         }
 
         if (HAWKBIT_MANAGEMENT_API_URL_DEFAULT.equals(hawkbitURI)) {
-            LOG.info(HAWKBIT_MANAGEMENT_API_URL + " not configured, using default="
+            LOG.fine(HAWKBIT_MANAGEMENT_API_URL + " not configured, using default="
                     + HAWKBIT_MANAGEMENT_API_URL_DEFAULT);
         }
 
@@ -143,7 +144,7 @@ public class HawkbitFirmwareService implements ContainerService {
         try {
             uri = new URI(hawkbitURI);
         } catch (URISyntaxException e) {
-            LOG.log(Level.SEVERE, HAWKBIT_MANAGEMENT_API_URL + " value is not a valid URI", e);
+            LOG.log(Level.SEVERE, "Invalid " + HAWKBIT_MANAGEMENT_API_URL + " value", e);
             throw e;
         }
 
@@ -151,8 +152,6 @@ public class HawkbitFirmwareService implements ContainerService {
         String hawkbitPassword = getString(container.getConfig(), HAWKBIT_PASSWORD, HAWKBIT_PASSWORD_DEFAULT);
 
         hawkbitRealm = getString(container.getConfig(), HAWKBIT_REALM, HAWKBIT_REALM_DEFAULT);
-
-        LOG.info(HAWKBIT_MANAGEMENT_API_URL + "=" + uri);
 
         client = createClient(org.openremote.container.Container.EXECUTOR, CONNECTION_POOL_SIZE,
                 CONNECTION_TIMEOUT_MILLISECONDS, resteasyClientBuilder -> {
@@ -187,8 +186,7 @@ public class HawkbitFirmwareService implements ContainerService {
                 null,
                 this::onAttributeChange);
 
-        LOG.log(Level.INFO,
-                "Firmware Service started, connected hawkBit instance: " + uri + ", for realm: " + hawkbitRealm);
+        LOG.info("Started hawkBit firmware service uri=" + uri + ", realm=" + hawkbitRealm);
     }
 
     @Override
@@ -216,93 +214,268 @@ public class HawkbitFirmwareService implements ContainerService {
     }
 
     protected void handleAttributeChange(AttributeEvent attributeEvent) {
-        if (!hasFirmwareMetadata(attributeEvent.getAssetType(), attributeEvent.getName(), attributeEvent.getMeta())) {
+        if (!hasMetadataFlag(attributeEvent.getAssetType(), attributeEvent.getName(), attributeEvent.getMeta())) {
             return;
         }
 
         if (attributeEvent.isDeleted()) {
-            deleteFirmwareTargetMetadata(attributeEvent.getId(), attributeEvent.getName());
+            deleteTargetMetadata(attributeEvent.getId(), attributeEvent.getName());
             return;
         }
 
-        syncFirmwareTargetMetadataValue(
+        syncTargetMetadataValue(
                 attributeEvent.getId(),
                 attributeEvent.getName(),
                 attributeEvent.getValue().orElse(null));
     }
 
-    /**
-     * Synchronizes an OpenRemote asset with a hawkBit target.
-     * CREATE ensures the target exists; UPDATE recreates it if missing; DELETE removes it.
-     */
+
     protected void handleAssetChange(AssetEvent assetEvent) {
         Asset<?> asset = assetEvent.getAsset();
-        Optional<String> firmwareTargetInfoAttributeName = getFirmwareTargetInfoAttributeName(asset);
+        Optional<String> targetInfoAttributeName = getTargetInfoAttributeName(asset);
 
-        if (firmwareTargetInfoAttributeName.isEmpty()) {
+        if (targetInfoAttributeName.isEmpty()) {
             return;
         }
 
-        String attributeName = firmwareTargetInfoAttributeName.get();
+        String attributeName = targetInfoAttributeName.get();
         String controllerId = asset.getId();
-        Target firmwareTarget = null;
+        Target target = null;
 
-        LOG.fine("Processing hawkbit target sync cause=" + assetEvent.getCause()
-                + ", assetId=" + asset.getId() + ", assetType=" + asset.getType()
-                + ", controllerId=" + controllerId);
+        LOG.fine("Processing hawkBit target sync cause=" + assetEvent.getCause()
+                + ", assetId=" + asset.getId());
 
         switch (assetEvent.getCause()) {
             case CREATE:
             case UPDATE:
-                LOG.fine("Ensuring hawkbit target exists asset id=" + asset.getId());
                 Target existingTarget;
                 try {
-                    existingTarget = getFirmwareTarget(controllerId);
+                    existingTarget = getTarget(controllerId);
                 } catch (Exception e) {
-                    LOG.log(Level.WARNING, "Failed to query hawkbit target id=" + controllerId
-                            + ", skipping sync to avoid spurious create", e);
+                    LOG.log(Level.WARNING, "hawkBit target lookup failed id=" + controllerId + ", skipping sync", e);
                     break;
                 }
 
                 if (existingTarget != null) {
-                    LOG.fine("hawkbit target already exists id=" + controllerId);
-                    firmwareTarget = existingTarget;
+                    LOG.fine("hawkBit target exists id=" + controllerId);
+                    target = existingTarget;
                     break;
                 }
 
-                LOG.info("hawkbit target missing for asset id=" + asset.getId() + ", creating it now");
-                firmwareTarget = createFirmwareTarget(buildFirmwareTarget(asset));
+                LOG.fine("hawkBit target missing id=" + controllerId + ", creating");
+                target = createTarget(asset);
                 break;
             case DELETE:
-                deleteFirmwareTarget(controllerId);
-                break;
-            default:
+                deleteTarget(controllerId);
                 break;
         }
 
-        if (firmwareTarget != null) {
-            updateFirmwareTargetInfo(assetEvent, attributeName, firmwareTarget);
-            updateFirmwareTargetMetadata(asset);
-        }
-    }
-
-    public void updateFirmwareTargetMetadata(Asset<?> asset) {
-        String controllerId = asset.getId();
-        for (Attribute<?> attribute : asset.getAttributes().values()) {
-            if (!hasFirmwareMetadata(asset.getType(), attribute.getName(), attribute.getMeta())) {
-                continue;
-            }
-
-            syncFirmwareTargetMetadataValue(controllerId, attribute.getName(), attribute.getValue().orElse(null));
+        if (target != null) {
+            updateTargetInfoForAttribute(asset, attributeName, target);
+            syncTargetMetadata(asset);
         }
     }
 
     /**
-     * Checks whether an attribute (by instance meta or type descriptor meta) is marked
-     * as firmware metadata.
+     * Synchronizes all asset attributes marked as firmware metadata to the hawkBit target.
      */
-    public boolean hasFirmwareMetadata(String assetType, String attributeName, MetaMap meta) {
-        if (hasFirmwareMetadata(meta)) {
+    public void syncTargetMetadata(Asset<?> asset) {
+        String controllerId = asset.getId();
+        for (Attribute<?> attribute : asset.getAttributes().values()) {
+            if (!hasMetadataFlag(asset.getType(), attribute.getName(), attribute.getMeta())) {
+                continue;
+            }
+
+            syncTargetMetadataValue(controllerId, attribute.getName(), attribute.getValue().orElse(null));
+        }
+    }
+
+    /**
+     * Synchronizes a single metadata value to the hawkBit target.
+     * Deletes the metadata entry when the value is empty or {@code null}.
+     */
+    public void syncTargetMetadataValue(String controllerId, String key, Object value) {
+        if (isEmptyAttributeValue(value)) {
+            deleteTargetMetadata(controllerId, key);
+            return;
+        }
+
+        Optional<String> metadataValue = ValueUtil.getStringCoerced(value);
+        if (metadataValue.isEmpty()) {
+            LOG.warning("Cannot sync hawkBit metadata id=" + controllerId
+                    + ", key=" + key + ": value is not string-compatible");
+            return;
+        }
+
+        updateTargetMetadata(controllerId, key, metadataValue.get());
+    }
+
+    /**
+     * Updates a single hawkBit target metadata entry.
+     */
+    public void updateTargetMetadata(String controllerId, String key, String value) {
+        try (Response response = targets.updateMetadata(controllerId, key, new MetadataUpdateRequest(value))) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkBit target not found for metadata sync id="
+                        + controllerId + ", key=" + key);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to update hawkBit metadata id="
+                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
+                return;
+            }
+            LOG.fine("Updated hawkBit metadata id=" + controllerId + ", key=" + key);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to update hawkBit metadata id="
+                    + controllerId + ", key=" + key, e);
+        }
+    }
+
+    /**
+     * Deletes a single hawkBit target metadata entry.
+     */
+    public void deleteTargetMetadata(String controllerId, String key) {
+        try (Response response = targets.deleteMetadata(controllerId, key)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkBit metadata not found for delete id="
+                        + controllerId + ", key=" + key);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to delete hawkBit metadata id="
+                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
+                return;
+            }
+            LOG.fine("Deleted hawkBit metadata id=" + controllerId + ", key=" + key);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to delete hawkBit metadata id="
+                    + controllerId + ", key=" + key, e);
+        }
+    }
+
+    protected TargetCreateRequest buildTargetCreateRequest(Asset<?> asset, String securityToken) {
+        String controllerId = asset.getId();
+        String targetName = asset.getAssetType() + "-" + controllerId;
+        String targetDescription = "assetId=" + asset.getId() + "; realm=" + asset.getRealm();
+        return new TargetCreateRequest(controllerId, targetName, targetDescription, securityToken);
+    }
+
+    /**
+     * Creates a hawkBit target for an asset.
+     * The security token is omitted so hawkBit can generate one.
+     */
+    public Target createTarget(Asset<?> asset) {
+        return createTarget(asset, null);
+    }
+
+    /**
+     * Creates a hawkBit target for an asset using an optional security token.
+     * If {@code securityToken} is {@code null}, hawkBit can generate one.
+     */
+    public Target createTarget(Asset<?> asset, String securityToken) {
+        return createTarget(buildTargetCreateRequest(asset, securityToken));
+    }
+
+    /**
+     * Creates a hawkBit target from a create request.
+     * Returns {@code null} if creation fails or hawkBit returns no target.
+     */
+    public Target createTarget(TargetCreateRequest target) {
+        LOG.fine("Creating hawkBit target id=" + target.controllerId());
+        try (Response response = targets.create(new TargetCreateRequest[]{target})) {
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to create hawkBit target id=" + target.controllerId()
+                        + ", status=" + response.getStatus());
+                return null;
+            }
+            Target[] created = response.readEntity(Target[].class);
+            if (created == null || created.length == 0) {
+                LOG.warning("hawkBit create returned no targets id=" + target.controllerId());
+                return null;
+            }
+            LOG.info("Created hawkBit target id=" + created[0].controllerId());
+            return created[0];
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to create hawkBit target id=" + target.controllerId(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Deletes a hawkBit target by controllerId.
+     */
+    public void deleteTarget(String controllerId) {
+        try (Response response = targets.delete(controllerId)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkBit target not found for delete id=" + controllerId);
+                return;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to delete hawkBit target id=" + controllerId
+                        + ", status=" + response.getStatus());
+                return;
+            }
+            LOG.info("Deleted hawkBit target id=" + controllerId);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to delete hawkBit target id=" + controllerId, e);
+        }
+    }
+
+    protected void updateTargetInfoForAttribute(Asset<?> asset, String attributeName, Target target) {
+        try {
+            Map<String, String> targetInfo = new LinkedHashMap<>();
+            targetInfo.put("controllerId", target.controllerId());
+            targetInfo.put("securityToken", target.securityToken());
+            String newValueJson = ValueUtil.asJSON(targetInfo).orElse(null);
+
+            assetProcessingService.sendAttributeEvent(
+                    new AttributeEvent(asset.getId(), attributeName, newValueJson),
+                    getClass().getSimpleName());
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to update firmware target info assetId=" + asset.getId(), e);
+        }
+    }
+
+    /**
+     * Queries hawkBit for a target by controllerId.
+     * Returns {@code null} if the target is not found (404).
+     */
+    public Target getTarget(String controllerId) {
+        try (Response response = targets.get(controllerId)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                return null;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                throw new WebApplicationException("hawkBit target request failed with status " + response.getStatus(),
+                        response.getStatus());
+            }
+            return response.readEntity(Target.class);
+        }
+    }
+
+    protected Optional<String> getTargetInfoAttributeName(Asset<?> asset) {
+        List<String> matchingAttributeNames = asset.getAttributes().values().stream()
+                .filter(attribute -> hasTargetInfoFlag(attribute.getMeta()))
+                .map(Attribute::getName)
+                .distinct()
+                .toList();
+
+        if (matchingAttributeNames.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (matchingAttributeNames.size() > 1) {
+            LOG.warning("Multiple firmware target attributes assetType=" + asset.getType()
+                    + ", meta=" + FirmwareMetaItemType.FIRMWARE_TARGET.getName());
+            return Optional.empty();
+        }
+
+        return Optional.of(matchingAttributeNames.getFirst());
+    }
+
+    protected boolean hasMetadataFlag(String assetType, String attributeName, MetaMap meta) {
+        if (hasMetadataMetaFlag(meta)) {
             return true;
         }
 
@@ -314,204 +487,28 @@ public class HawkbitFirmwareService implements ContainerService {
         return assetTypeInfo
                 .map(typeInfo -> typeInfo.getAttributeDescriptors().values().stream()
                         .filter(attributeDescriptor -> Objects.equals(attributeDescriptor.getName(), attributeName))
-                        .anyMatch(attributeDescriptor -> hasFirmwareMetadata(attributeDescriptor.getMeta())))
+                        .anyMatch(attributeDescriptor -> hasMetadataMetaFlag(attributeDescriptor.getMeta())))
                 .orElse(false);
     }
 
-    public boolean hasFirmwareMetadata(MetaMap meta) {
+    protected boolean hasMetadataMetaFlag(MetaMap meta) {
         return meta != null
                 && meta.get(FirmwareMetaItemType.FIRMWARE_METADATA)
                 .flatMap(metaItem -> metaItem.getValue(Boolean.class))
                 .orElse(false);
     }
 
-    public void syncFirmwareTargetMetadataValue(String controllerId, String key, Object value) {
-        if (isAttributeEmptyOrNull(value)) {
-            deleteFirmwareTargetMetadata(controllerId, key);
-            return;
-        }
-
-        Optional<String> metadataValue = ValueUtil.getStringCoerced(value);
-        if (metadataValue.isEmpty()) {
-            LOG.warning("Cannot convert firmware metadata value to string for target id="
-                    + controllerId + ", key=" + key);
-            return;
-        }
-
-        updateFirmwareTargetMetadata(controllerId, key, metadataValue.get());
-    }
-
-    protected boolean isAttributeEmptyOrNull(Object value) {
-        return value == null || ValueUtil.getStringCoerced(value)
-                .map(String::isEmpty)
-                .orElse(false);
-    }
-
-    public void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
-        try (Response response = targets.updateMetadata(controllerId, key, new MetadataUpdateRequest(value))) {
-            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                LOG.fine("hawkbit target not found for metadata sync targetId="
-                        + controllerId + ", key=" + key);
-                return;
-            }
-            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
-                LOG.warning("Failed to update hawkbit target metadata targetId="
-                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
-                return;
-            }
-            LOG.fine("Updated hawkbit target metadata targetId=" + controllerId + ", key=" + key);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Failed to update hawkbit target metadata targetId="
-                    + controllerId + ", key=" + key, e);
-        }
-    }
-
-    public void deleteFirmwareTargetMetadata(String controllerId, String key) {
-        try (Response response = targets.deleteMetadata(controllerId, key)) {
-            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                LOG.fine("hawkbit target metadata not found for delete targetId="
-                        + controllerId + ", key=" + key);
-                return;
-            }
-            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
-                LOG.warning("Failed to delete hawkbit target metadata targetId="
-                        + controllerId + ", key=" + key + ", status=" + response.getStatus());
-                return;
-            }
-            LOG.fine("Deleted hawkbit target metadata targetId=" + controllerId + ", key=" + key);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Failed to delete hawkbit target metadata targetId="
-                    + controllerId + ", key=" + key, e);
-        }
-    }
-
-    /**
-     * Finds the single asset attribute marked as {@code firmwareTarget}.
-     * Returns empty if none or more than one is found.
-     */
-    public Optional<String> getFirmwareTargetInfoAttributeName(Asset<?> asset) {
-        List<String> matchingAttributeNames = asset.getAttributes().values().stream()
-                .filter(attribute -> hasFirmwareTarget(attribute.getMeta()))
-                .map(Attribute::getName)
-                .distinct()
-                .toList();
-
-        if (matchingAttributeNames.isEmpty()) {
-            return Optional.empty();
-        }
-
-        if (matchingAttributeNames.size() > 1) {
-            LOG.warning("Asset type '" + asset.getType()
-                    + "' has multiple attributes with meta item '"
-                    + FirmwareMetaItemType.FIRMWARE_TARGET.getName() + "'");
-            return Optional.empty();
-        }
-
-        return Optional.of(matchingAttributeNames.getFirst());
-    }
-
-    public boolean hasFirmwareTarget(MetaMap meta) {
+    protected boolean hasTargetInfoFlag(MetaMap meta) {
         return meta != null
                 && meta.get(FirmwareMetaItemType.FIRMWARE_TARGET)
                 .flatMap(metaItem -> metaItem.getValue(Boolean.class))
                 .orElse(false);
     }
 
-    public TargetCreateRequest buildFirmwareTarget(Asset<?> asset) {
-        String controllerId = asset.getId();
-        String targetName = asset.getAssetType() + "-" + controllerId;
-        String targetDescription = "assetId=" + asset.getId() + "; realm=" + asset.getRealm();
-        return new TargetCreateRequest(controllerId, targetName, targetDescription);
-    }
-
-    public Target createFirmwareTarget(TargetCreateRequest target) {
-        LOG.info("Creating hawkbit target id=" + target.controllerId());
-        try (Response response = targets.create(new TargetCreateRequest[]{target})) {
-            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
-                LOG.warning("Failed to create hawkbit target id=" + target.controllerId()
-                        + ", status=" + response.getStatus());
-                return null;
-            }
-            Target[] created = response.readEntity(Target[].class);
-            if (created == null || created.length == 0) {
-                LOG.warning("hawkbit create returned no targets id=" + target.controllerId());
-                return null;
-            }
-            return created[0];
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Failed to create hawkbit target id=" + target.controllerId(), e);
-            return null;
-        }
-    }
-
-    public void deleteFirmwareTarget(String controllerId) {
-        try (Response response = targets.delete(controllerId)) {
-            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                LOG.fine("hawkbit target not found for delete id=" + controllerId);
-                return;
-            }
-            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
-                LOG.warning("Failed to delete hawkbit target id=" + controllerId
-                        + ", status=" + response.getStatus());
-                return;
-            }
-            LOG.info("Deleted hawkbit target id=" + controllerId);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "Failed to delete hawkbit target id=" + controllerId, e);
-        }
-    }
-
-    /**
-     * Builds a JSON value containing the hawkBit target's controllerId and securityToken,
-     * then sends it as an attribute event if the value has changed.
-     */
-    protected void updateFirmwareTargetInfo(AssetEvent assetEvent, String attributeName, Target firmwareTarget) {
-        Asset<?> asset = assetEvent.getAsset();
-
-        switch (assetEvent.getCause()) {
-            case CREATE:
-            case UPDATE:
-                try {
-                    Map<String, String> firmwareTargetInfo = new LinkedHashMap<>();
-                    firmwareTargetInfo.put("controllerId", firmwareTarget.controllerId());
-                    firmwareTargetInfo.put("securityToken", firmwareTarget.securityToken());
-                    String newValueJson = ValueUtil.asJSON(firmwareTargetInfo).orElse(null);
-
-                    String existingValueJson = asset.getAttribute(attributeName)
-                            .flatMap(attr -> attr.getValue(String.class))
-                            .orElse(null);
-                    if (Objects.equals(existingValueJson, newValueJson)) {
-                        LOG.fine("Firmware target info attribute up to date for asset id=" + asset.getId());
-                        return;
-                    }
-
-                    assetProcessingService.sendAttributeEvent(
-                            new AttributeEvent(asset.getId(), attributeName, newValueJson),
-                            getClass().getSimpleName());
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, "Failed to update firmware target info for asset id=" + asset.getId(), e);
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
-    /**
-     * Queries hawkBit for a target by controllerId.
-     * Returns {@code null} if the target is not found (404).
-     */
-    public Target getFirmwareTarget(String controllerId) {
-        try (Response response = targets.get(controllerId)) {
-            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
-                return null;
-            }
-            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
-                throw new WebApplicationException("hawkBit target request failed with status " + response.getStatus(),
-                        response.getStatus());
-            }
-            return response.readEntity(Target.class);
-        }
+    protected boolean isEmptyAttributeValue(Object value) {
+        return value == null || ValueUtil.getStringCoerced(value)
+                .map(String::isEmpty)
+                .orElse(false);
     }
 
     /**

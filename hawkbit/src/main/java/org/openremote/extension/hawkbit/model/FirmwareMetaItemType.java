@@ -36,7 +36,6 @@ public final class FirmwareMetaItemType {
     /**
      * Can be used on any attribute to indicate that this attribute should be synced as metadata to the corresponding
      * target in hawkBit, enabling hawkBit target filters on specific metadata values.
-     * Requires the parent asset to be synced to hawkBit via the firmwareTarget metaItem.
      */
     public static final MetaItemDescriptor<Boolean> FIRMWARE_METADATA = new MetaItemDescriptor<>(
             "firmwareMetadata", ValueType.BOOLEAN);

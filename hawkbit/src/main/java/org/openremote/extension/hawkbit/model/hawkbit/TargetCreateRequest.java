@@ -19,8 +19,10 @@
  */
 package org.openremote.extension.hawkbit.model.hawkbit;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record TargetCreateRequest(String controllerId, String name, String description) {
+public record TargetCreateRequest(String controllerId, String name, String description, String securityToken) {
 }
