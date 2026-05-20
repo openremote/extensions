@@ -35,7 +35,6 @@ import org.openremote.model.attribute.MetaItem
 import org.openremote.model.datapoint.ValueDatapoint
 import org.openremote.test.ManagerContainerTrait
 import spock.lang.Ignore
-import spock.lang.IgnoreIf
 import spock.lang.Issue
 import spock.lang.Shared
 import spock.lang.Specification
