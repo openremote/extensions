@@ -24,6 +24,26 @@ allprojects {
     version = scmVersion.version
 }
 
+subprojects {
+    pluginManager.withPlugin('java') {
+        apply plugin: 'jacoco'
+        jacoco { toolVersion = "0.8.14" }
+        test {
+            finalizedBy jacocoTestReport // report is always generated after tests run
+        }
+        jacocoTestReport {
+            dependsOn test // tests are required to run before generating the report
+        }
+    }
+
+    tasks.withType(JacocoReport) {
+        reports {
+            xml.required = true
+            html.required = true
+        }
+    }
+}
+
 apply plugin: 'io.github.gradle-nexus.publish-plugin'
 nexusPublishing {
     repositories {
