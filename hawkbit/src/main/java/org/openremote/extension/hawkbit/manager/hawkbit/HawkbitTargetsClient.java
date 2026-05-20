@@ -22,8 +22,8 @@ package org.openremote.extension.hawkbit.manager.hawkbit;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest;
-import org.openremote.extension.hawkbit.model.hawkbit.Target;
 import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest;
+import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
@@ -50,7 +50,7 @@ public interface HawkbitTargetsClient {
     @Path("{id}")
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
-    Response update(@PathParam("id") String id, Target target);
+    Response update(@PathParam("id") String id, TargetUpdateRequest target);
 
     @DELETE
     @Path("{id}")

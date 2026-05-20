@@ -25,6 +25,7 @@ import org.openremote.extension.hawkbit.model.FirmwareMetaItemType
 import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest
 import org.openremote.extension.hawkbit.model.hawkbit.Target
 import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest
+import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest
 import org.openremote.model.asset.Asset
 import org.openremote.model.asset.AssetEvent
 import org.openremote.model.attribute.*
@@ -182,6 +183,30 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
                     targets[0].securityToken() == "custom-token"
         }) >> Response.ok(new Target[]{createdTarget}).build()
         result == createdTarget
+    }
+
+    def "createUpdateTarget updates token when target exists"() {
+        given: "a service with mocked targets client"
+        def service = new TestableHawkbitFirmwareService()
+        service.targets = Mock(HawkbitTargetsClient)
+        def existingTarget = new Target(CONTROLLER_ID, null, null, "old-token", null, null, null, null, null, null, null, null, null)
+        def updatedTarget = new Target(CONTROLLER_ID, null, null, "new-token", null, null, null, null, null, null, null, null, null)
+
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        asset.getAssetType() >> "test:asset:type"
+        asset.getRealm() >> "master"
+
+        when: "creating or updating a target with a custom security token"
+        def result = service.createUpdateTarget(asset, "new-token")
+
+        then: "the existing target is updated with the new token"
+        1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+        1 * service.targets.update(CONTROLLER_ID, { TargetUpdateRequest target ->
+            target.securityToken() == "new-token"
+        }) >> Response.ok(updatedTarget).build()
+        0 * service.targets.create(_)
+        result == updatedTarget
     }
 
     def "handleAssetChange with DELETE cause deletes target"() {

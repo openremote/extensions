@@ -36,6 +36,7 @@ import org.openremote.extension.hawkbit.model.FirmwareMetaItemType;
 import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest;
 import org.openremote.extension.hawkbit.model.hawkbit.Target;
 import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest;
+import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.event.ClientEventService;
 import org.openremote.manager.security.ManagerIdentityService;
@@ -398,6 +399,57 @@ public class HawkbitFirmwareService implements ContainerService {
             return created[0];
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to create hawkBit target id=" + target.controllerId(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Creates or updates a hawkBit target for an asset.
+     */
+    public Target createUpdateTarget(Asset<?> asset, String securityToken) {
+        String controllerId = asset.getId();
+        Target existingTarget;
+        try {
+            existingTarget = getTarget(controllerId);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "hawkBit target lookup failed id=" + controllerId + ", skipping create/update", e);
+            return null;
+        }
+
+        if (existingTarget != null) {
+            LOG.fine("hawkBit target exists id=" + controllerId + ", updating");
+            return updateTarget(controllerId, new TargetUpdateRequest(null, null, securityToken));
+        }
+
+        LOG.fine("hawkBit target missing id=" + controllerId + ", creating");
+        return createTarget(asset, securityToken);
+    }
+
+    /**
+     * Updates a hawkBit target by controllerId.
+     * Returns {@code null} if the target is missing or the update fails.
+     */
+    public Target updateTarget(String controllerId, TargetUpdateRequest target) {
+        LOG.fine("Updating hawkBit target id=" + controllerId);
+        try (Response response = targets.update(controllerId, target)) {
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+                LOG.fine("hawkBit target not found for update id=" + controllerId);
+                return null;
+            }
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+                LOG.warning("Failed to update hawkBit target id=" + controllerId
+                        + ", status=" + response.getStatus());
+                return null;
+            }
+            Target updated = response.hasEntity() ? response.readEntity(Target.class) : getTarget(controllerId);
+            if (updated == null) {
+                LOG.info("Updated hawkBit target id=" + controllerId);
+                return null;
+            }
+            LOG.info("Updated hawkBit target id=" + updated.controllerId());
+            return updated;
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to update hawkBit target id=" + controllerId, e);
             return null;
         }
     }
