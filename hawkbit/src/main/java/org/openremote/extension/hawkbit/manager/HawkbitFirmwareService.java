@@ -237,13 +237,15 @@ public class HawkbitFirmwareService implements ContainerService {
      */
     protected void handleAssetChange(AssetEvent assetEvent) {
         Asset<?> asset = assetEvent.getAsset();
+        Optional<String> firmwareTargetInfoAttributeName = getFirmwareTargetInfoAttributeName(asset);
 
-        if (getFirmwareTargetInfoAttributeName(asset).isEmpty()) {
+        if (firmwareTargetInfoAttributeName.isEmpty()) {
             return;
         }
 
+        String attributeName = firmwareTargetInfoAttributeName.get();
         String controllerId = asset.getId();
-        boolean shouldUpdateFirmwareTargetInfo = false;
+        Target firmwareTarget = null;
 
         LOG.fine("Processing hawkbit target sync cause=" + assetEvent.getCause()
                 + ", assetId=" + asset.getId() + ", assetType=" + asset.getType()
@@ -251,30 +253,25 @@ public class HawkbitFirmwareService implements ContainerService {
 
         switch (assetEvent.getCause()) {
             case CREATE:
-                LOG.info("Creating hawkbit target for asset id=" + asset.getId());
-                shouldUpdateFirmwareTargetInfo = createFirmwareTarget(buildFirmwareTarget(asset));
-                break;
             case UPDATE:
-                LOG.fine("Checking hawkbit target for update asset id=" + asset.getId());
+                LOG.fine("Ensuring hawkbit target exists asset id=" + asset.getId());
                 Target existingTarget;
                 try {
                     existingTarget = getFirmwareTarget(controllerId);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, "Failed to query hawkbit target id=" + controllerId
-                            + ", skipping update to avoid spurious create", e);
+                            + ", skipping sync to avoid spurious create", e);
                     break;
                 }
 
                 if (existingTarget != null) {
                     LOG.fine("hawkbit target already exists id=" + controllerId);
-                    shouldUpdateFirmwareTargetInfo = true;
+                    firmwareTarget = existingTarget;
                     break;
                 }
 
                 LOG.info("hawkbit target missing for asset id=" + asset.getId() + ", creating it now");
-                if (createFirmwareTarget(buildFirmwareTarget(asset))) {
-                    shouldUpdateFirmwareTargetInfo = true;
-                }
+                firmwareTarget = createFirmwareTarget(buildFirmwareTarget(asset));
                 break;
             case DELETE:
                 deleteFirmwareTarget(controllerId);
@@ -283,13 +280,13 @@ public class HawkbitFirmwareService implements ContainerService {
                 break;
         }
 
-        if (shouldUpdateFirmwareTargetInfo) {
-            updateFirmwareTargetInfo(assetEvent);
+        if (firmwareTarget != null) {
+            updateFirmwareTargetInfo(assetEvent, attributeName, firmwareTarget);
             updateFirmwareTargetMetadata(asset);
         }
     }
 
-    protected void updateFirmwareTargetMetadata(Asset<?> asset) {
+    public void updateFirmwareTargetMetadata(Asset<?> asset) {
         String controllerId = asset.getId();
         for (Attribute<?> attribute : asset.getAttributes().values()) {
             if (!hasFirmwareMetadata(asset.getType(), attribute.getName(), attribute.getMeta())) {
@@ -304,7 +301,7 @@ public class HawkbitFirmwareService implements ContainerService {
      * Checks whether an attribute (by instance meta or type descriptor meta) is marked
      * as firmware metadata.
      */
-    protected boolean hasFirmwareMetadata(String assetType, String attributeName, MetaMap meta) {
+    public boolean hasFirmwareMetadata(String assetType, String attributeName, MetaMap meta) {
         if (hasFirmwareMetadata(meta)) {
             return true;
         }
@@ -321,14 +318,14 @@ public class HawkbitFirmwareService implements ContainerService {
                 .orElse(false);
     }
 
-    protected boolean hasFirmwareMetadata(MetaMap meta) {
+    public boolean hasFirmwareMetadata(MetaMap meta) {
         return meta != null
                 && meta.get(FirmwareMetaItemType.FIRMWARE_METADATA)
                 .flatMap(metaItem -> metaItem.getValue(Boolean.class))
                 .orElse(false);
     }
 
-    protected void syncFirmwareTargetMetadataValue(String controllerId, String key, Object value) {
+    public void syncFirmwareTargetMetadataValue(String controllerId, String key, Object value) {
         if (isAttributeEmptyOrNull(value)) {
             deleteFirmwareTargetMetadata(controllerId, key);
             return;
@@ -350,7 +347,7 @@ public class HawkbitFirmwareService implements ContainerService {
                 .orElse(false);
     }
 
-    protected void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
+    public void updateFirmwareTargetMetadata(String controllerId, String key, String value) {
         try (Response response = targets.updateMetadata(controllerId, key, new MetadataUpdateRequest(value))) {
             if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
                 LOG.fine("hawkbit target not found for metadata sync targetId="
@@ -369,7 +366,7 @@ public class HawkbitFirmwareService implements ContainerService {
         }
     }
 
-    protected void deleteFirmwareTargetMetadata(String controllerId, String key) {
+    public void deleteFirmwareTargetMetadata(String controllerId, String key) {
         try (Response response = targets.deleteMetadata(controllerId, key)) {
             if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
                 LOG.fine("hawkbit target metadata not found for delete targetId="
@@ -392,7 +389,7 @@ public class HawkbitFirmwareService implements ContainerService {
      * Finds the single asset attribute marked as {@code firmwareTarget}.
      * Returns empty if none or more than one is found.
      */
-    protected Optional<String> getFirmwareTargetInfoAttributeName(Asset<?> asset) {
+    public Optional<String> getFirmwareTargetInfoAttributeName(Asset<?> asset) {
         List<String> matchingAttributeNames = asset.getAttributes().values().stream()
                 .filter(attribute -> hasFirmwareTarget(attribute.getMeta()))
                 .map(Attribute::getName)
@@ -413,36 +410,41 @@ public class HawkbitFirmwareService implements ContainerService {
         return Optional.of(matchingAttributeNames.getFirst());
     }
 
-    protected boolean hasFirmwareTarget(MetaMap meta) {
+    public boolean hasFirmwareTarget(MetaMap meta) {
         return meta != null
                 && meta.get(FirmwareMetaItemType.FIRMWARE_TARGET)
                 .flatMap(metaItem -> metaItem.getValue(Boolean.class))
                 .orElse(false);
     }
 
-    protected TargetCreateRequest buildFirmwareTarget(Asset<?> asset) {
+    public TargetCreateRequest buildFirmwareTarget(Asset<?> asset) {
         String controllerId = asset.getId();
         String targetName = asset.getAssetType() + "-" + controllerId;
         String targetDescription = "assetId=" + asset.getId() + "; realm=" + asset.getRealm();
         return new TargetCreateRequest(controllerId, targetName, targetDescription);
     }
 
-    protected boolean createFirmwareTarget(TargetCreateRequest target) {
+    public Target createFirmwareTarget(TargetCreateRequest target) {
         LOG.info("Creating hawkbit target id=" + target.controllerId());
         try (Response response = targets.create(new TargetCreateRequest[]{target})) {
-            boolean created = response.getStatusInfo().getFamily() == Response.Status.Family.SUCCESSFUL;
-            if (!created) {
+            if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
                 LOG.warning("Failed to create hawkbit target id=" + target.controllerId()
                         + ", status=" + response.getStatus());
+                return null;
             }
-            return created;
+            Target[] created = response.readEntity(Target[].class);
+            if (created == null || created.length == 0) {
+                LOG.warning("hawkbit create returned no targets id=" + target.controllerId());
+                return null;
+            }
+            return created[0];
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to create hawkbit target id=" + target.controllerId(), e);
-            return false;
+            return null;
         }
     }
 
-    protected void deleteFirmwareTarget(String controllerId) {
+    public void deleteFirmwareTarget(String controllerId) {
         try (Response response = targets.delete(controllerId)) {
             if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
                 LOG.fine("hawkbit target not found for delete id=" + controllerId);
@@ -463,24 +465,13 @@ public class HawkbitFirmwareService implements ContainerService {
      * Builds a JSON value containing the hawkBit target's controllerId and securityToken,
      * then sends it as an attribute event if the value has changed.
      */
-    protected void updateFirmwareTargetInfo(AssetEvent assetEvent) {
+    protected void updateFirmwareTargetInfo(AssetEvent assetEvent, String attributeName, Target firmwareTarget) {
         Asset<?> asset = assetEvent.getAsset();
-        Optional<String> firmwareTargetInfoAttributeName = getFirmwareTargetInfoAttributeName(asset);
-        if (firmwareTargetInfoAttributeName.isEmpty()) {
-            return;
-        }
-
-        String attributeName = firmwareTargetInfoAttributeName.get();
-        String controllerId = asset.getId();
 
         switch (assetEvent.getCause()) {
             case CREATE:
             case UPDATE:
                 try {
-                    Target firmwareTarget = getFirmwareTarget(controllerId);
-                    if (firmwareTarget == null) {
-                        return;
-                    }
                     Map<String, String> firmwareTargetInfo = new LinkedHashMap<>();
                     firmwareTargetInfo.put("controllerId", firmwareTarget.controllerId());
                     firmwareTargetInfo.put("securityToken", firmwareTarget.securityToken());
@@ -497,8 +488,6 @@ public class HawkbitFirmwareService implements ContainerService {
                     assetProcessingService.sendAttributeEvent(
                             new AttributeEvent(asset.getId(), attributeName, newValueJson),
                             getClass().getSimpleName());
-                    LOG.info("Updated firmware target info attribute for asset id=" + asset.getId()
-                            + ", controllerId=" + firmwareTarget.controllerId());
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, "Failed to update firmware target info for asset id=" + asset.getId(), e);
                 }
@@ -512,7 +501,7 @@ public class HawkbitFirmwareService implements ContainerService {
      * Queries hawkBit for a target by controllerId.
      * Returns {@code null} if the target is not found (404).
      */
-    protected Target getFirmwareTarget(String controllerId) {
+    public Target getFirmwareTarget(String controllerId) {
         try (Response response = targets.get(controllerId)) {
             if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
                 return null;

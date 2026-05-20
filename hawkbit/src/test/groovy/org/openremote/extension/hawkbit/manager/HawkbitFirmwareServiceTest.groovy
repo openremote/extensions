@@ -41,7 +41,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
      * with any asset type.
      */
     static class TestableHawkbitFirmwareService extends HawkbitFirmwareService {
-        protected Optional<String> getFirmwareTargetInfoAttributeName(Asset asset) {
+        Optional<String> getFirmwareTargetInfoAttributeName(Asset asset) {
             return Optional.of("firmwareTarget")
         }
     }
@@ -67,6 +67,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         given: "a service with mocked targets client"
         def service = new TestableHawkbitFirmwareService()
         service.targets = Mock(HawkbitTargetsClient)
+        def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
         asset.getRealm() >> "master"
@@ -75,9 +76,28 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         when: "handling an asset CREATE event"
         service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
 
-        then: "hawkBit creates the target and then queries it to update target info"
-        1 * service.targets.create(_) >> Response.ok().build()
-        1 * service.targets.get(CONTROLLER_ID) >> Response.ok(new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)).build()
+        then: "hawkBit checks (404), creates, then uses the created target to update target info"
+        1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
+        1 * service.targets.create(_) >> Response.ok(new Target[]{createdTarget}).build()
+    }
+
+    def "handleAssetChange with CREATE cause skips create when target already exists"() {
+        given: "a service with mocked targets client returning an existing target"
+        def service = new TestableHawkbitFirmwareService()
+        def existingTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+        service.targets = Mock(HawkbitTargetsClient)
+
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        asset.getRealm() >> "master"
+        asset.getAttributes() >> new AttributeMap()
+
+        when: "handling an asset CREATE event for an already-existing target"
+        service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+        then: "hawkBit is queried but create is not called"
+        1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+        0 * service.targets.create(_)
     }
 
     def "handleAssetChange with UPDATE cause skips create when target already exists"() {
@@ -95,14 +115,15 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
 
         then: "hawkBit is queried but create is not called"
-        2 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+        1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
         0 * service.targets.create(_)
     }
 
     def "handleAssetChange with UPDATE cause creates target when it is missing"() {
-        given: "a service with mocked targets client returning 404 then the created target"
+        given: "a service with mocked targets client returning 404 then creating the target"
         def service = new TestableHawkbitFirmwareService()
         service.targets = Mock(HawkbitTargetsClient)
+        def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
@@ -112,12 +133,9 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         when: "handling an asset UPDATE event for a missing target"
         service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
 
-        then: "hawkBit queries (404), creates, then queries again for info update"
-        2 * service.targets.get(CONTROLLER_ID) >>> [
-                Response.status(Response.Status.NOT_FOUND).build(),
-                Response.ok(new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)).build()
-        ]
-        1 * service.targets.create(_) >> Response.ok().build()
+        then: "hawkBit queries (404), creates, then uses the created target for info update"
+        1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
+        1 * service.targets.create(_) >> Response.ok(new Target[]{createdTarget}).build()
     }
 
     def "handleAssetChange with UPDATE cause logs warning when getFirmwareTarget throws exception"() {
