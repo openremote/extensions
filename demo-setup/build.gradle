@@ -33,7 +33,7 @@ publishing {
             pom {
                 name = 'OpenRemote Demo setup'
                 description = 'Adds the OpenRemote Demo setup'
-                url = 'https://github.com/openremote/openremote'
+                url = 'https://github.com/openremote/extensions'
                 licenses {
                     license {
                         name = 'GNU Affero General Public License v3.0'
@@ -50,9 +50,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection = 'scm:git:git://github.com/openremote/openremote.git'
-                    developerConnection = 'scm:git:ssh://github.com:openremote/openremote.git'
-                    url = 'https://github.com/openremote/openremote/tree/master'
+                    connection = 'scm:git:git://github.com/openremote/extensions.git'
+                    developerConnection = 'scm:git:ssh://github.com:openremote/extensions.git'
+                    url = 'https://github.com/openremote/extensions/tree/master'
                 }
             }
         }

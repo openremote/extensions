@@ -69,7 +69,7 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
         protected long timestamp;
 
         @JsonProperty("temp")
-        protected double tempature;
+        protected double temperature;
 
         @JsonProperty("humidity")
         protected int humidity;
@@ -87,8 +87,8 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
             return timestamp * 1000;
         }
 
-        public double getTempature() {
-            return tempature;
+        public double getTemperature() {
+            return temperature;
         }
 
         public int getHumidity() {

@@ -79,18 +79,18 @@ jobs:
       - name: Install QEMU
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
         with:
-          platforms: linux/amd64,linux/aarch64
+          platforms: linux/amd64,linux/arm64
 
       - name: Install Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build develop image
-        if: ${{ steps.is_main_repo.outputs.value && github.event_name == 'push' }}
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         timeout-minutes: 20
         with:
           context: deployment/build
-          platforms: linux/amd64,linux/aarch64
+          platforms: linux/amd64,linux/arm64
           load: false
           push: true
           tags: openremote/manager:develop
@@ -106,11 +106,11 @@ jobs:
         timeout-minutes: 20
         with:
           context: deployment/build
-          platforms: linux/amd64,linux/aarch64
+          platforms: linux/amd64,linux/arm64
           load: false
           push: true
           tags: |
-            openremote/manager:${{ inputs.tag }}
+            openremote/manager:${{ github.ref_name }}
             openremote/manager:latest
           build-args: |
             GIT_COMMIT=${{ github.sha }}
@@ -128,11 +128,11 @@ jobs:
           MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
 
-      - name: Archive backend test results
+      - name: Archive test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: backend-test-results
+          name: test-results
           path: '**/build/reports/tests'
 
       - name: Archive coverage report
