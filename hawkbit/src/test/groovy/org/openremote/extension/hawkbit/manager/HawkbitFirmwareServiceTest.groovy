@@ -43,6 +43,10 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
      * with any asset type.
      */
     static class TestableHawkbitFirmwareService extends HawkbitFirmwareService {
+        TestableHawkbitFirmwareService() {
+            hawkbitRealm = "test-realm"
+        }
+
         Optional<String> getTargetInfoAttributeName(Asset asset) {
             return Optional.of("firmwareTarget")
         }
@@ -72,7 +76,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
         asset.getAttributes() >> new AttributeMap()
 
         when: "handling an asset CREATE event"
@@ -93,7 +97,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
         asset.getAttributes() >> new AttributeMap()
 
         when: "handling an asset CREATE event for an already-existing target"
@@ -112,7 +116,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
         asset.getAttributes() >> new AttributeMap()
 
         when: "handling an asset UPDATE event"
@@ -131,7 +135,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
         asset.getAttributes() >> new AttributeMap()
 
         when: "handling an asset UPDATE event for a missing target"
@@ -151,7 +155,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
 
         when: "handling an asset UPDATE event when hawkBit query fails"
         service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
@@ -171,7 +175,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
         asset.getAssetType() >> "test:asset:type"
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
 
         when: "creating a target with a custom security token"
         def result = service.createTarget(asset, "custom-token")
@@ -195,7 +199,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
         asset.getAssetType() >> "test:asset:type"
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
 
         when: "creating or updating a target with a custom security token"
         def result = service.createUpdateTarget(asset, "new-token")
@@ -216,7 +220,7 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
 
         def asset = Mock(Asset)
         asset.getId() >> CONTROLLER_ID
-        asset.getRealm() >> "master"
+        asset.getRealm() >> "test-realm"
 
         when: "handling an asset DELETE event"
         service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))

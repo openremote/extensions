@@ -375,6 +375,9 @@ public class HawkbitFirmwareService implements ContainerService {
      * If {@code securityToken} is {@code null}, hawkBit can generate one.
      */
     public Target createTarget(Asset<?> asset, String securityToken) {
+        if (!isInHawkbitRealm(asset)) {
+            return null;
+        }
         return createTarget(buildTargetCreateRequest(asset, securityToken));
     }
 
@@ -407,6 +410,9 @@ public class HawkbitFirmwareService implements ContainerService {
      * Creates or updates a hawkBit target for an asset.
      */
     public Target createUpdateTarget(Asset<?> asset, String securityToken) {
+        if (!isInHawkbitRealm(asset)) {
+            return null;
+        }
         String controllerId = asset.getId();
         Target existingTarget;
         try {
@@ -561,6 +567,18 @@ public class HawkbitFirmwareService implements ContainerService {
         return value == null || ValueUtil.getStringCoerced(value)
                 .map(String::isEmpty)
                 .orElse(false);
+    }
+
+    /**
+     * Targets are only managed for assets in the configured hawkBit realm.
+     */
+    protected boolean isInHawkbitRealm(Asset<?> asset) {
+        if (!Objects.equals(asset.getRealm(), hawkbitRealm)) {
+            LOG.warning("Asset realm=" + asset.getRealm() + " is not the hawkBit realm=" + hawkbitRealm
+                    + ", skipping hawkBit target id=" + asset.getId());
+            return false;
+        }
+        return true;
     }
 
     /**
