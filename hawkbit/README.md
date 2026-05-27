@@ -152,7 +152,7 @@ OpenRemote Manager exposes endpoints that forward to the configured hawkBit inst
 
 | Resource | Path | Functionality |
 |---|---|---|
-| Firmware targets | `firmware/target` | List targets, get target details, metadata, assigned and installed distribution sets, actions |
+| Firmware targets | `firmware/target` | List targets, get target details, metadata, assigned and installed distribution sets, actions and action status messages |
 | Software module types | `firmware/softwaremoduletype` | Create, list, get and delete software module types |
 | Software modules | `firmware/softwaremodule` | Create, list, get and delete software modules, list and upload artifacts |
 | Distribution set types | `firmware/distributionsettype` | Create, list, get and delete distribution set types, list module type assignments |

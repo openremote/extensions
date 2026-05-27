@@ -128,6 +128,24 @@ public interface TargetResource {
                        @PathParam("actionId") Long actionId);
 
     /**
+     * Retrieve the status history for a single action, paged.
+     * <p>
+     * Each entry carries the {@code messages} the controller reported over the
+     * DDI feedback channel (e.g. OTA progress or failure detail), plus the
+     * reported status code.
+     */
+    @GET
+    @Path("{id}/actions/{actionId}/status")
+    @Produces(APPLICATION_JSON)
+    @RolesAllowed({Constants.READ_ADMIN_ROLE})
+    Response getActionStatus(@BeanParam RequestParams requestParams,
+                             @QueryParam("realm") String realm,
+                             @PathParam("id") String id,
+                             @PathParam("actionId") Long actionId,
+                             @QueryParam("offset") Integer offset,
+                             @QueryParam("limit") Integer limit);
+
+    /**
      * Cancel an in-flight action on a firmware target.
      * <p>
      * {@code force=true} bypasses the cancel-confirmation handshake with the

@@ -92,6 +92,15 @@ public class TargetResourceImpl extends HawkbitWebResource implements TargetReso
     }
 
     @Override
+    public Response getActionStatus(RequestParams requestParams, String realm, String id, Long actionId,
+                                    Integer offset, Integer limit) {
+        requireHawkbitRealmAccess(realm);
+        return HawkbitResponseProxy.proxy(
+                "Failed to retrieve status for action '" + actionId + "' on firmware target '" + id + "'",
+                () -> hawkbitFirmwareService.targets().getActionStatus(id, actionId, offset, limit));
+    }
+
+    @Override
     public Response cancelAction(RequestParams requestParams, String realm, String id, Long actionId, Boolean force) {
         requireHawkbitRealmAccess(realm);
         return HawkbitResponseProxy.proxy(

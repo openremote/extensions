@@ -94,6 +94,14 @@ public interface HawkbitTargetsClient {
     @Produces(APPLICATION_HAL_JSON)
     Response getAction(@PathParam("id") String id, @PathParam("actionId") Long actionId);
 
+    @GET
+    @Path("{id}/actions/{actionId}/status")
+    @Produces(APPLICATION_HAL_JSON)
+    Response getActionStatus(@PathParam("id") String id,
+                             @PathParam("actionId") Long actionId,
+                             @QueryParam("offset") Integer offset,
+                             @QueryParam("limit") Integer limit);
+
     @DELETE
     @Path("{id}/actions/{actionId}")
     Response cancelAction(@PathParam("id") String id,
