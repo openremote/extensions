@@ -89,7 +89,7 @@ jobs:
           context: deployment/build
           platforms: linux/amd64,linux/arm64
           load: false
-          push: true
+          push: false
           tags: openremote/manager:develop
           build-args: |
             GIT_COMMIT=${{ github.sha }}
@@ -105,7 +105,7 @@ jobs:
           context: deployment/build
           platforms: linux/amd64,linux/arm64
           load: false
-          push: true
+          push: false
           tags: |
             openremote/manager:${{ github.ref_name }}
             openremote/manager:latest
