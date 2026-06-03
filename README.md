@@ -82,4 +82,3 @@ Typical extension integration points include:
 * `AssetModelProvider`
 * `ContainerService`
 * `SetupTasks`
-* `ExtensionMetadata`
