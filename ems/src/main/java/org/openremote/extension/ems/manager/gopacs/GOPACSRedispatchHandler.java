@@ -98,7 +98,7 @@ public class GOPACSRedispatchHandler {
 
     private ScheduledFuture<?> pollingFuture;
     private String lastProcessedAnnouncementId;
-    // Bounded LRU set so a long-running handler does not accumulate every announcement ID it has ever seen.
+    // Bounded set (insertion-order/FIFO eviction) so a long-running handler does not accumulate every announcement ID it has ever seen.
     private final Set<String> recordedAnnouncementIds = Collections.newSetFromMap(
             new LinkedHashMap<>(16, 0.75f, false) {
                 @Override
