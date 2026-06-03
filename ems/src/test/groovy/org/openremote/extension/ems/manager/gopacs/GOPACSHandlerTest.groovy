@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit
 
 class GOPACSHandlerTest extends Specification {
 
-    static final String CONTRACTED_EAN = "871234567890123456"
+    static final String CONTRACTED_EAN = "ean.871234567890123456"
     static final String ASSET_ID = "0abcDEFghiJKLmnoPQRstu"
     static final String AGR_DOMAIN = "agr.example.com"
     static final String DSO_DOMAIN = "dso.example.com"
@@ -69,14 +69,15 @@ class GOPACSHandlerTest extends Specification {
             }
         }
 
-        // Generate an ed25519 keypair; hex secret signs, base64 public verifies.
+        // Generate an ed25519 keypair. The handler's crypto pool (LazySodiumBase64Pool) decodes
+        // both the signing secret key and the verifying public key as base64.
         def lazySodium = new LazySodiumJava(new SodiumJava())
         KeyPair kp = lazySodium.cryptoSignKeypair()
-        String privHex = kp.secretKey.asHexString
+        String privKeyB64 = Base64.encoder.encodeToString(kp.secretKey.asBytes)
         pubB64 = Base64.encoder.encodeToString(kp.publicKey.asBytes)
 
         handler = new RecordingGOPACSHandler(CONTRACTED_EAN, "master", ASSET_ID,
-                assetProcessingService, assetPredictedDatapointService, timerService, executor, privHex)
+                assetProcessingService, assetPredictedDatapointService, timerService, executor, privKeyB64)
 
         // Pre-seed the DSO participant so signature verification never makes an HTTP call.
         handler.participants.put(DSO_DOMAIN,
@@ -88,6 +89,70 @@ class GOPACSHandlerTest extends Specification {
         handler != null
         handler.isWithinContractedScope("FlexRequest", "conv-1", CONTRACTED_EAN)
         !handler.isWithinContractedScope("FlexRequest", "conv-1", "999999999999999999")
+    }
+
+    // Signs the payload as the DSO and feeds the transport XML through the real entry point.
+    private void signAndProcess(PayloadMessageType payload) {
+        def sender = new UftpParticipant(DSO_DOMAIN, USEFRoleType.DSO)
+        String payloadXml = GOPACSHandler.serializer.toXml(payload)
+        SignedMessage signed = handler.cryptoService.signMessage(payloadXml, sender, handler.privateKey)
+        String transportXml = GOPACSHandler.serializer.toXml(signed)
+        handler.processRawMessage(transportXml)
+    }
+
+    private static void applyHeader(PayloadMessageType m) {
+        m.setVersion("3.0.0")
+        m.setSenderDomain(DSO_DOMAIN)
+        m.setRecipientDomain(AGR_DOMAIN)
+        m.setTimeStamp(OffsetDateTime.now(ZoneOffset.UTC))
+        m.setMessageID(UUID.randomUUID().toString())
+        m.setConversationID(UUID.randomUUID().toString())
+    }
+
+    private static FlexRequestISPType reqIsp(long start, long maxPower, long minPower) {
+        def isp = new FlexRequestISPType()
+        isp.setDisposition(AvailableRequestedType.REQUESTED)
+        isp.setStart(start)
+        isp.setDuration(1L)
+        isp.setMaxPower(maxPower)
+        isp.setMinPower(minPower)
+        return isp
+    }
+
+    private static FlexRequest buildFlexRequest(String congestionPoint) {
+        def fr = new FlexRequest()
+        applyHeader(fr)
+        fr.setISPDuration(Duration.ofMinutes(15))
+        fr.setTimeZone(TIME_ZONE)
+        fr.setPeriod(PERIOD)
+        fr.setCongestionPoint(congestionPoint)
+        fr.setExpirationDateTime(OffsetDateTime.now(ZoneOffset.UTC).plusHours(6))
+        fr.setRevision(1L)
+        fr.setContractID("contract-1")
+        fr.getISPS().add(reqIsp(1L, 5000L, -3000L))   // importMax 5.0, exportMax 3.0
+        fr.getISPS().add(reqIsp(2L, 6000L, -4000L))   // importMax 6.0, exportMax 4.0
+        return fr
+    }
+
+    def "FlexRequest updates the asset from request ISPs and replies with FlexRequestResponse then FlexOffer"() {
+        when: "a signed in-scope FlexRequest is processed"
+        signAndProcess(buildFlexRequest(CONTRACTED_EAN))
+
+        then: "predicted datapoints are written: max=importMax, min=exportMax"
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerMaximumFlexRequest", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [5.0d, 6.0d]
+        })
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerMinimumFlexRequest", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [3.0d, 4.0d]
+        })
+
+        and: "a FlexRequestResponse (Accepted) is sent, followed by a FlexOffer for the same congestion point"
+        handler.sent.size() == 2
+        handler.sent[0] instanceof FlexRequestResponse
+        ((FlexRequestResponse) handler.sent[0]).result == AcceptedRejectedType.ACCEPTED
+        handler.sent[1] instanceof FlexOffer
+        ((FlexOffer) handler.sent[1]).congestionPoint == CONTRACTED_EAN
+        !((FlexOffer) handler.sent[1]).offerOptions.isEmpty()
     }
 
     // ---- Test subclass: records outbound messages instead of signing/sending them ----
