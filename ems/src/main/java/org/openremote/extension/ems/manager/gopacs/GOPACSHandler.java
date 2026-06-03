@@ -211,6 +211,52 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         deploy(container);
     }
 
+    /**
+     * Test-support constructor. Wires the message-processing collaborators directly and skips
+     * remote configuration (OAuth client, private-key file) and JAX-RS deployment, so the
+     * day-ahead UFTP message flow can be exercised in isolation. Not used in production wiring.
+     */
+    protected GOPACSHandler(String contractedEAN,
+                            String realm,
+                            String electricitySupplierAssetId,
+                            AssetProcessingService assetProcessingService,
+                            AssetPredictedDatapointService assetPredictedDatapointService,
+                            TimerService timerService,
+                            ScheduledExecutorService scheduledExecutorService,
+                            String privateKey) {
+        this.devMode = false;
+        this.contractedEAN = contractedEAN;
+        this.realm = realm;
+        this.electricitySupplierAssetId = electricitySupplierAssetId;
+        this.participants = new HashMap<>();
+
+        this.assetProcessingService = assetProcessingService;
+        this.assetPredictedDatapointService = assetPredictedDatapointService;
+        this.timerService = timerService;
+        this.scheduledExecutorService = scheduledExecutorService;
+        this.webService = null;
+
+        this.gopacsBrokerUrl = "";
+        this.responseDelaySeconds = 0;
+        this.flexOfferDelaySeconds = 0;
+        this.clientId = null;
+        this.clientSecret = null;
+        this.privateKey = privateKey;
+
+        this.client = null;
+        this.gopacsAddressBookResource = null;
+        this.gopacsAuthResource = null;
+        this.gopacsServerResource = null;
+
+        this.participantResolutionService = new ParticipantResolutionService(this);
+        this.cryptoService = new UftpCryptoService(participantResolutionService, new LazySodiumFactory(), new LazySodiumBase64Pool());
+        this.uftpValidationService = new UftpValidationService(new ArrayList<>());
+        this.uftpReceivedMessageService = new UftpReceivedMessageService(uftpValidationService, this);
+        this.uftpSendMessageService = new UftpSendMessageService(serializer, cryptoService, participantResolutionService, this, uftpValidationService);
+
+        this.objectMapper = new ObjectMapper();
+    }
+
     protected static String getDeploymentName(String contractedEAN) {
         return "GOPACS: " + contractedEAN;
     }
