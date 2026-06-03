@@ -21,7 +21,7 @@ extensions/
 └── settings.gradle
 ```
 
-Subprojects are included automatically when they contain a `build.gradle` file.
+Subprojects are included automatically when they contain a `build.gradle` file, unless the directory contains a `.buildignore` file.
 
 ## Available extensions
 
