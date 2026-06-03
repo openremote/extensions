@@ -155,6 +155,30 @@ class GOPACSHandlerTest extends Specification {
         !((FlexOffer) handler.sent[1]).offerOptions.isEmpty()
     }
 
+    private static FlexOfferResponse buildFlexOfferResponse(AcceptedRejectedType result) {
+        def r = new FlexOfferResponse()
+        applyHeader(r)
+        r.setFlexOfferMessageID(UUID.randomUUID().toString())
+        r.setResult(result)
+        if (result == AcceptedRejectedType.REJECTED) {
+            r.setRejectionReason("insufficient flexibility")
+        }
+        return r
+    }
+
+    def "FlexOfferResponse (#result) is handled without mutating the asset or sending a reply"() {
+        when: "a signed FlexOfferResponse is processed"
+        signAndProcess(buildFlexOfferResponse(result))
+
+        then: "no asset mutation and no outbound message"
+        0 * assetPredictedDatapointService.updateValues(_, _, _)
+        0 * assetProcessingService.sendAttributeEvent(_, _)
+        handler.sent.isEmpty()
+
+        where:
+        result << [AcceptedRejectedType.ACCEPTED, AcceptedRejectedType.REJECTED]
+    }
+
     // ---- Test subclass: records outbound messages instead of signing/sending them ----
     static class RecordingGOPACSHandler extends GOPACSHandler {
         final List<PayloadMessageType> sent = new ArrayList<>()
