@@ -179,6 +179,69 @@ class GOPACSHandlerTest extends Specification {
         result << [AcceptedRejectedType.ACCEPTED, AcceptedRejectedType.REJECTED]
     }
 
+    private static FlexOrderISPType orderIsp(long start, long power) {
+        def isp = new FlexOrderISPType()
+        isp.setStart(start)
+        isp.setDuration(1L)
+        isp.setPower(power)
+        return isp
+    }
+
+    private static FlexOrder buildFlexOrder(String congestionPoint, List<Long> powers) {
+        def fo = new FlexOrder()
+        applyHeader(fo)
+        fo.setISPDuration(Duration.ofMinutes(15))
+        fo.setTimeZone(TIME_ZONE)
+        fo.setPeriod(PERIOD)
+        fo.setCongestionPoint(congestionPoint)
+        fo.setFlexOfferMessageID(UUID.randomUUID().toString())
+        fo.setOrderReference(UUID.randomUUID().toString())
+        fo.setContractID("contract-1")
+        fo.setCurrency("EUR")
+        fo.setPrice(new BigDecimal("0.00"))
+        long start = 1L
+        powers.each { p -> fo.getISPS().add(orderIsp(start++, p)) }
+        return fo
+    }
+
+    def "FlexOrder with offtake power updates currentPower and the max-profile and replies with FlexOrderResponse"() {
+        when: "a signed in-scope FlexOrder with positive (offtake) power is processed"
+        signAndProcess(buildFlexOrder(CONTRACTED_EAN, [4000L, 8000L]))   // 4.0, 8.0 kW
+
+        then: "current power and the offtake (max) profile are written; the feed-in (min) profile is not"
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "currentPowerFlexRequest", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [4.0d, 8.0d]
+        })
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerLimitMaximumProfileFlexOrder", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [4.0d, 8.0d]
+        })
+        0 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerLimitMinimumProfileFlexOrder", _)
+
+        and: "a FlexOrderResponse (Accepted) is sent back"
+        handler.sent.size() == 1
+        handler.sent[0] instanceof FlexOrderResponse
+        ((FlexOrderResponse) handler.sent[0]).result == AcceptedRejectedType.ACCEPTED
+    }
+
+    def "FlexOrder with feed-in power updates currentPower and the min-profile"() {
+        when: "a signed in-scope FlexOrder with negative (feed-in) power is processed"
+        signAndProcess(buildFlexOrder(CONTRACTED_EAN, [-2000L, -5000L]))  // -2.0, -5.0 kW
+
+        then: "current power and the feed-in (min) profile are written; the offtake (max) profile is not"
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "currentPowerFlexRequest", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [-2.0d, -5.0d]
+        })
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerLimitMinimumProfileFlexOrder", { List dps ->
+            dps.size() == 2 && dps.collect { it.value as double } == [-2.0d, -5.0d]
+        })
+        0 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerLimitMaximumProfileFlexOrder", _)
+
+        and: "a FlexOrderResponse (Accepted) is sent back"
+        handler.sent.size() == 1
+        handler.sent[0] instanceof FlexOrderResponse
+        ((FlexOrderResponse) handler.sent[0]).result == AcceptedRejectedType.ACCEPTED
+    }
+
     // ---- Test subclass: records outbound messages instead of signing/sending them ----
     static class RecordingGOPACSHandler extends GOPACSHandler {
         final List<PayloadMessageType> sent = new ArrayList<>()
