@@ -162,7 +162,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         this.timerService = container.getService(TimerService.class);
         this.webService = container.getService(WebService.class);
 
-        this.gopacsBrokerUrl = container.getConfig().getOrDefault(GOPACS_BROKER_URL, DEFAULT_GOPACS_BROKER_URL);
+        // Strip trailing slashes so the synthesised broker endpoint never contains a double slash
+        this.gopacsBrokerUrl = container.getConfig().getOrDefault(GOPACS_BROKER_URL, DEFAULT_GOPACS_BROKER_URL).replaceAll("/+$", "");
         this.responseDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_RESPONSE_DELAY_SECONDS, DEFAULT_GOPACS_RESPONSE_DELAY_SECONDS));
         this.flexOfferDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_FLEX_OFFER_DELAY_SECONDS, DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS));
 
@@ -296,7 +297,11 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     @Override
     public String getAuthorizationHeader(UftpParticipant uftpParticipant) {
         LOG.fine("Getting authorization header for: " + uftpParticipant);
-        return fetchBearerToken();
+        String authorization = fetchBearerToken();
+        if (authorization.isBlank()) {
+            LOG.warning("No OAuth2 bearer token available for authorization header of " + uftpParticipant);
+        }
+        return authorization;
     }
 
     protected String fetchBearerToken() {
@@ -496,6 +501,20 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         return requestIsp.getMaxPower() == 0 ? requestIsp.getMinPower() : requestIsp.getMaxPower();
     }
 
+    /**
+     * Only act on flex messages whose congestion point matches this handler's contracted EAN. Returns
+     * false (and logs a warning) for out-of-scope messages so they are dropped before any asset mutation
+     * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
+     */
+    protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
+        if (contractedEAN.equals(congestionPoint)) {
+            return true;
+        }
+        LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
+                + congestionPoint + " (contracted EAN " + contractedEAN + ")");
+        return false;
+    }
+
     protected void processRawMessage(String transportXml) {
         try {
             SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
@@ -504,6 +523,19 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                 LOG.fine("Received message:" + payloadXml);
             }
             PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
+
+            // Re-assert EAN scoping that the V2 participant lookup enforced implicitly. The V3 lookup
+            // resolves any participant domain, so a validly signed flex message from a participant outside
+            // this handler's contracted EAN would otherwise be applied to the asset. Full per-contract/role
+            // scoping via the V3 contracts endpoint is tracked in issue #28.
+            // Out-of-scope messages are intentionally dropped here: the transport call still returns 200
+            // (signed envelope accepted) but no FlexRequestResponse/FlexOffer is sent in reply.
+            if (payloadMessage instanceof FlexMessageType flexMessage
+                    && !isWithinContractedScope(payloadMessage.getClass().getSimpleName(),
+                            payloadMessage.getConversationID(), flexMessage.getCongestionPoint())) {
+                return;
+            }
+
             var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
             notifyNewIncomingMessage(incomingUftpMessage);
 
@@ -551,6 +583,10 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         }
 
         String authorization = fetchBearerToken();
+        if (authorization.isBlank()) {
+            LOG.warning("Skipping participant lookup for " + domain + ": no OAuth2 bearer token available");
+            return Optional.empty();
+        }
         try (Response response = gopacsAddressBookResource.fetchParticipantByDomain(authorization, domain)) {
             int status = response != null ? response.getStatus() : -1;
             if (status == 200) {
