@@ -242,6 +242,19 @@ class GOPACSHandlerTest extends Specification {
         ((FlexOrderResponse) handler.sent[0]).result == AcceptedRejectedType.ACCEPTED
     }
 
+    def "a validly-signed FlexRequest for a different congestion point is dropped with no mutation and no reply"() {
+        given: "a FlexRequest whose congestion point is not the contracted EAN"
+        def otherEan = "ean.999999999999999999"
+
+        when: "the signed out-of-scope FlexRequest is processed"
+        signAndProcess(buildFlexRequest(otherEan))
+
+        then: "the asset is not mutated and nothing is sent back"
+        0 * assetPredictedDatapointService.updateValues(_, _, _)
+        0 * assetProcessingService.sendAttributeEvent(_, _)
+        handler.sent.isEmpty()
+    }
+
     // ---- Test subclass: records outbound messages instead of signing/sending them ----
     static class RecordingGOPACSHandler extends GOPACSHandler {
         final List<PayloadMessageType> sent = new ArrayList<>()
