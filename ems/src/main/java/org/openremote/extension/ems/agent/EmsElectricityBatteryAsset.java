@@ -51,7 +51,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
     public static final ValueDescriptor<EmsElectricityBatteryConnectionStatusValueType> CONNECTION_STATUS_VALUE_TYPE = new ValueDescriptor<>("EmsElectricityBatteryConnectionStatusValueType", EmsElectricityBatteryConnectionStatusValueType.class);
 
     public static final AttributeDescriptor<EmsElectricityBatteryConnectionStatusValueType> CONNECTION_STATUS = new AttributeDescriptor<>("connectionStatus", CONNECTION_STATUS_VALUE_TYPE,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     );
@@ -67,7 +66,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
     ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
     public static final AttributeDescriptor<Double> ENERGY_LEVEL = new AttributeDescriptor<>("energyLevel", ValueType.POSITIVE_NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -75,7 +73,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
     ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
     public static final AttributeDescriptor<Double> ENERGY_LEVEL_PERCENTAGE = new AttributeDescriptor<>("energyLevelPercentage", ValueType.POSITIVE_NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -89,7 +86,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
     ).withUnits(UNITS_PERCENTAGE);
 
     public static final AttributeDescriptor<Double> POWER = new AttributeDescriptor<>("power", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -97,7 +93,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_SETPOINT = new AttributeDescriptor<>("powerSetpoint", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),

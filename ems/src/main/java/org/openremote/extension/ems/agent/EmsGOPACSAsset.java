@@ -42,35 +42,30 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
     );
 
     public static final AttributeDescriptor<Double> CURRENT_POWER_FLEX_REQUEST = new AttributeDescriptor<>("currentPowerFlexRequest", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MAXIMUM_PROFILE_FLEX_ORDER = new AttributeDescriptor<>("powerLimitMaximumProfileFlexOrder", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MINIMUM_PROFILE_FLEX_ORDER = new AttributeDescriptor<>("powerLimitMinimumProfileFlexOrder", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_MAXIMUM_FLEX_REQUEST = new AttributeDescriptor<>("powerMaximumFlexRequest", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_MINIMUM_FLEX_REQUEST = new AttributeDescriptor<>("powerMinimumFlexRequest", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -109,7 +104,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
     );
 
     public static final AttributeDescriptor<Double> REDISPATCH_REQUESTED_POWER = new AttributeDescriptor<>("redispatchRequestedPower", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -134,7 +128,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
     // --- Redispatch bid attributes (auto-calculated, operator-overridable) ---
 
     public static final AttributeDescriptor<Double> REDISPATCH_SUGGESTED_POWER = new AttributeDescriptor<>("redispatchSuggestedPower", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -159,13 +152,11 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
     // --- Redispatch history (stored as data points for time-series history) ---
 
     public static final AttributeDescriptor<ObjectMap> REDISPATCH_ANNOUNCEMENT_HISTORY = new AttributeDescriptor<>("redispatchAnnouncementHistory", ValueType.JSON_OBJECT,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     );
 
     public static final AttributeDescriptor<ObjectMap> REDISPATCH_BID_HISTORY = new AttributeDescriptor<>("redispatchBidHistory", ValueType.JSON_OBJECT,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     );

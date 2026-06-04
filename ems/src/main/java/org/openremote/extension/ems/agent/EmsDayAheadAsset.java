@@ -39,19 +39,16 @@ public class EmsDayAheadAsset extends Asset<EmsDayAheadAsset> {
     public static final AttributeDescriptor<String> COLLECT_TIME_FORECASTS = new AttributeDescriptor<>("collectTimeForecasts", ValueType.TEXT);
 
     public static final AttributeDescriptor<String> LAST_UPDATE_FORECASTS = new AttributeDescriptor<>("lastUpdateForecasts", ValueType.TEXT,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     );
 
     public static final AttributeDescriptor<Double> TARIFF_EXPORT_DAY_AHEAD = new AttributeDescriptor<>("tariffExportDayAheadForecast", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits("EUR", UNITS_PER, UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
     public static final AttributeDescriptor<Double> TARIFF_IMPORT_DAY_AHEAD = new AttributeDescriptor<>("tariffImportDayAheadForecast", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits("EUR", UNITS_PER, UNITS_KILO, UNITS_WATT, UNITS_HOUR);

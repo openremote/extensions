@@ -41,13 +41,11 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     public static final AttributeDescriptor<Boolean> ENABLE_DETAILED_LOGGING = new AttributeDescriptor<>("enableDetailedLogging", ValueType.BOOLEAN);
 
     public static final AttributeDescriptor<Double> ENERGY_EXPORT_TOTAL = new AttributeDescriptor<>("energyExportTotal", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
     public static final AttributeDescriptor<Double> ENERGY_IMPORT_TOTAL = new AttributeDescriptor<>("energyImportTotal", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
@@ -70,7 +68,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     );
 
     public static final AttributeDescriptor<Double> POWER_CONSUMPTION = new AttributeDescriptor<>("powerConsumption", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -78,7 +75,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_FLEXIBLE = new AttributeDescriptor<>("powerFlexible", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -86,7 +82,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_NET = new AttributeDescriptor<>("powerNet", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -94,7 +89,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_PRODUCTION = new AttributeDescriptor<>("powerProduction", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -105,7 +99,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MAXIMUM_PROFILE_MANUAL = new AttributeDescriptor<>("powerLimitMaximumProfileManual", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -116,7 +109,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     );
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MAXIMUM_PROFILE_TOTAL = new AttributeDescriptor<>("powerLimitMaximumProfileTotal", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -126,7 +118,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MINIMUM_PROFILE_MANUAL = new AttributeDescriptor<>("powerLimitMinimumProfileManual", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
@@ -137,14 +128,12 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     );
 
     public static final AttributeDescriptor<Double> POWER_LIMIT_MINIMUM_PROFILE_TOTAL = new AttributeDescriptor<>("powerLimitMinimumProfileTotal", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
     public static final AttributeDescriptor<Double> TARIFF_EXPORT = new AttributeDescriptor<>("tariffExport", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
@@ -152,7 +141,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     ).withUnits("EUR", UNITS_PER, UNITS_KILO, UNITS_WATT, UNITS_HOUR);
 
     public static final AttributeDescriptor<Double> TARIFF_IMPORT = new AttributeDescriptor<>("tariffImport", ValueType.NUMBER,
-            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
             new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
             new MetaItem<>(MetaItemType.READ_ONLY),
             new MetaItem<>(MetaItemType.RULE_STATE),
