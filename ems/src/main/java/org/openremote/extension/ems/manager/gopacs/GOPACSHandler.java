@@ -218,7 +218,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected void deploy(Container container) {
         LOG.info("Deploying JAX-RS deployment for instance : " + this);
 
-        List<Object> singletons = Stream.of(getStandardProviders(devMode, 0), Collections.<Object>singletonList(gopacsServerResource))
+        List<Object> singletons = Stream.of(getStandardProviders(devMode), Collections.<Object>singletonList(gopacsServerResource))
                 .flatMap(Collection::stream)
                 .toList();
         Application application = new WebApplication(
