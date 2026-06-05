@@ -250,6 +250,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
         }
+
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName());
     }
 
     private void startGopacsHandler(String contractedEan, String realm, String assetId) {
@@ -426,6 +431,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
         // Update power limit maximum profile manual
         if (attributeName.equals(EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT.getName())) {
+            if (!energyOptimisationAssetsMap.containsKey(assetId)) {
+                LOG.warning(String.format("%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.", logPrefix));
+                return;
+            }
+
             String powerLimitMaximumProfileManualInput = (String) attributeEvent.getValue().orElse("");
 
             if (powerLimitMaximumProfileManualInput.isBlank()) {
@@ -463,6 +473,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
         // Update power limit minimum profile manual
         if (attributeName.equals(EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL_INPUT.getName())) {
+            if (!energyOptimisationAssetsMap.containsKey(assetId)) {
+                LOG.warning(String.format("%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.", logPrefix));
+                return;
+            }
+
             String powerLimitMinimumProfileManualInput = (String) attributeEvent.getValue().orElse("");
 
             if (powerLimitMinimumProfileManualInput.isBlank()) {
