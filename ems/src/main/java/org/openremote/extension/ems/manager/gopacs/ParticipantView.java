@@ -1,5 +1,5 @@
 /*
- * Copyright 2025, OpenRemote Inc.
+ * Copyright 2026, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -19,22 +19,7 @@
  */
 package org.openremote.extension.ems.manager.gopacs;
 
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.HeaderParam;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.core.Response;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
-
-@Path("uftp-participants/v3/participants")
-public interface GOPACSAddressBookResource {
-    @GET
-    @Path("{uftpDomainName}")
-    @Produces(APPLICATION_JSON)
-    Response fetchParticipantByDomain(
-        @HeaderParam("Authorization") String authorization,
-        @PathParam("uftpDomainName") String uftpDomainName
-    );
-}
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record ParticipantView(String domain, String publicKey) {}
