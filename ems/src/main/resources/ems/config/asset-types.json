@@ -44,8 +44,8 @@
         },
         "attributes": {
           "include": [
+            "disableOptimisationService",
             "enableDetailedLogging",
-            "optimisationDisabled",
             "optimisationMethod"
           ]
         }

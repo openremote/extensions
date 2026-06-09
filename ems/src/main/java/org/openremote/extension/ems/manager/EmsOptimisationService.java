@@ -353,18 +353,18 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         String logPrefix = String.format("assetType='%s', assetId='%s', assetName='%s', attributeName='%s'", attributeEvent.getAssetType(), attributeEvent.getId(), attributeEvent.getAssetName(), attributeEvent.getName());
         String attributeName = attributeEvent.getName();
 
-        // Disable/enable optimisation
-        if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_DISABLED.getName())) {
+        // Disable/enable optimisation service
+        if (attributeName.equals(EmsEnergyOptimisationAsset.DISABLE_OPTIMISATION_SERVICE.getName())) {
             boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
             if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
                 if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
-                    LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                    LOG.info(String.format("%s; Enabled energy optimisation service", logPrefix));
                     startOptimisation(assetId);
                 }
             } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
                 stopOptimisation(assetId);
-                LOG.info(String.format("%s; Disabled energy optimisation", logPrefix));
+                LOG.info(String.format("%s; Disabled energy optimisation service", logPrefix));
             }
             return;
         }
