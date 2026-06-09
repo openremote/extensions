@@ -181,20 +181,20 @@ Every redispatch attribute on `EmsGOPACSAsset`. All status, bid-suggestion and h
 | Group | Attribute | Type | RO | Purpose |
 |---|---|---|---|---|
 | Configuration | `redispatchEnabled` | boolean | | Master switch — toggle off/on to (re)start the polling handler. |
-| Status | `redispatchAnnouncementId` | text | ✓ | ID of the currently selected announcement, if any. |
-| Status | `redispatchComplianceType` | text | ✓ | `MANDATORY` or `VOLUNTARY`. |
-| Status | `redispatchAnnouncementMessage` | text (multiline) | ✓ | Free-text description from the DSO. |
-| Status | `redispatchStartTime` | timestamp | ✓ | Start of the problem period. |
-| Status | `redispatchEndTime` | timestamp | ✓ | End of the problem period. |
-| Status | `redispatchBidValidityEnd` | timestamp | ✓ | Latest moment a bid can still be submitted for this announcement. |
-| Status | `redispatchRequestedPower` | number (kW) | ✓ | Remaining problem profile, written as predicted data points (15-min ISP grid, 7-day retention). |
-| Status | `redispatchEanEffectivity` | text | ✓ | Effectivity category in which the contracted EAN was matched (e.g. `THREE_PHASE_NETWORK_REDUCE`). |
-| Status | `redispatchRequestAreaBuy` | text | ✓ | DSO-supplied area description for buy orders. |
-| Status | `redispatchRequestAreaSell` | text | ✓ | DSO-supplied area description for sell orders. |
-| Status | `redispatchLastPoll` | timestamp | ✓ | Timestamp of the last completed poll cycle (only updated when the API responded). |
+| Announcement | `redispatchAnnouncementId` | text | ✓ | ID of the currently selected announcement, if any. |
+| Announcement | `redispatchComplianceType` | text | ✓ | `MANDATORY` or `VOLUNTARY`. |
+| Announcement | `redispatchAnnouncementMessage` | text (multiline) | ✓ | Free-text description from the DSO. |
+| Announcement | `redispatchStartTime` | timestamp | ✓ | Start of the problem period. |
+| Announcement | `redispatchEndTime` | timestamp | ✓ | End of the problem period. |
+| Announcement | `redispatchBidValidityEnd` | timestamp | ✓ | Latest moment a bid can still be submitted for this announcement. |
+| Announcement | `redispatchRequestedPower` | number (kW) | ✓ | Remaining problem profile, written as predicted data points (15-min ISP grid, 7-day retention). |
+| Announcement | `redispatchEanEffectivity` | text | ✓ | Effectivity category in which the contracted EAN was matched (e.g. `THREE_PHASE_NETWORK_REDUCE`). |
+| Announcement | `redispatchRequestAreaBuy` | text | ✓ | DSO-supplied area description for buy orders. |
+| Announcement | `redispatchRequestAreaSell` | text | ✓ | DSO-supplied area description for sell orders. |
+| Announcement | `redispatchLastPoll` | timestamp | ✓ | Timestamp of the last completed poll cycle (only updated when the API responded). |
+| Bid | `redispatchBidPrice` | number (EUR/MWh) | | Operator-supplied bid price. |
 | Bid | `redispatchSuggestedPower` | number (kW) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
 | Bid | `redispatchSuggestedVolume` | number (kWh) | ✓ | _Not yet populated — pending bid pricing strategy follow-up._ |
-| Bid | `redispatchBidPrice` | number (EUR/MWh) | | Operator-supplied bid price. |
 | Workflow | `redispatchConfirmBid` | boolean | | Operator toggles to `true` to confirm the active bid; handler resets it after processing. |
 | Workflow | `redispatchBidStatus` | text | ✓ | State machine — see below. |
 | History | `redispatchAnnouncementHistory` | JSON object | ✓ | One data point on first sight of each polled announcement, plus a richer entry (with effectivity details) when one is selected (90-day retention). |
