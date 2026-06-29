@@ -63,6 +63,8 @@ class GOPACSHandlerTest extends Specification {
     TimerService timerService
     ScheduledExecutorService executor
     RecordingGOPACSHandler handler
+    String privKeyB64
+    String pubB64
 
     def setup() {
         assetProcessingService = Mock(AssetProcessingService)
@@ -82,15 +84,20 @@ class GOPACSHandlerTest extends Specification {
         // signing secret key and the verifying public key as base64.
         def lazySodium = new LazySodiumJava(new SodiumJava())
         KeyPair kp = lazySodium.cryptoSignKeypair()
-        String privKeyB64 = Base64.encoder.encodeToString(kp.secretKey.asBytes)
-        String pubB64 = Base64.encoder.encodeToString(kp.publicKey.asBytes)
+        privKeyB64 = Base64.encoder.encodeToString(kp.secretKey.asBytes)
+        pubB64 = Base64.encoder.encodeToString(kp.publicKey.asBytes)
 
-        handler = new RecordingGOPACSHandler(CONTRACTED_EAN, "master", ASSET_ID,
+        handler = newHandler(CONTRACTED_EAN)
+    }
+
+    // Builds a handler for the given contracted EAN and pre-seeds the DSO participant so inbound
+    // signature verification never makes an HTTP call.
+    private RecordingGOPACSHandler newHandler(String contractedEan) {
+        def h = new RecordingGOPACSHandler(contractedEan, "master", ASSET_ID,
                 assetProcessingService, assetPredictedDatapointService, timerService, executor, privKeyB64)
-
-        // Pre-seed the DSO participant so inbound signature verification never makes an HTTP call.
-        handler.participants.put(DSO_DOMAIN,
+        h.participants.put(DSO_DOMAIN,
                 new UftpParticipantInformation(DSO_DOMAIN, pubB64, "https://nilsgrid.net/shapeshifter/api/v3/message", true))
+        return h
     }
 
     def "FlexRequest updates the asset from request ISPs and replies with FlexRequestResponse then FlexOffer"() {
@@ -184,6 +191,40 @@ class GOPACSHandlerTest extends Specification {
         0 * assetPredictedDatapointService.updateValues(_, _, _)
         0 * assetProcessingService.sendAttributeEvent(_, _)
         handler.sent.isEmpty()
+    }
+
+    def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
+        expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
+        GOPACSHandler.toCongestionPoint(input) == expected
+
+        where:
+        input                        || expected
+        "ean.265987182507322951"     || "ean.265987182507322951"
+        "265987182507322951"         || "ean.265987182507322951"
+        "EAN.265987182507322951"     || "ean.265987182507322951"
+        "Ean.265987182507322951"     || "ean.265987182507322951"
+        "  ean.265987182507322951  " || "ean.265987182507322951"
+        "  265987182507322951  "     || "ean.265987182507322951"
+        ""                           || "ean."
+        null                         || null
+    }
+
+    def "FlexRequest is in scope when the contracted EAN is configured without the ean. prefix"() {
+        given: "a handler whose contracted EAN omits the ean. prefix, and a standard prefixed FlexRequest"
+        def bareEan = CONTRACTED_EAN.substring(GOPACSHandler.EAN_PREFIX.length())
+        def bareHandler = newHandler(bareEan)
+        def sender = new UftpParticipant(DSO_DOMAIN, USEFRoleType.DSO)
+        def signed = bareHandler.cryptoService.signMessage(flexRequestXml(CONTRACTED_EAN), sender, bareHandler.privateKey)
+
+        when: "the signed FlexRequest is processed"
+        bareHandler.processRawMessage(GOPACSHandler.serializer.toXml(signed))
+
+        then: "it is treated as in scope: the asset is updated and both replies are sent"
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerMaximumFlexRequest", _)
+        1 * assetPredictedDatapointService.updateValues(ASSET_ID, "powerMinimumFlexRequest", _)
+        bareHandler.sent.size() == 2
+        bareHandler.sent[0] instanceof FlexRequestResponse
+        bareHandler.sent[1] instanceof FlexOffer
     }
 
     // ---- Embedded UFTP payload fixtures (attribute-style XML, matching the example message format) ----
