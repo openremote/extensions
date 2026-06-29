@@ -100,6 +100,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public static final String GOPACS_FLEX_OFFER_DELAY_SECONDS = "GOPACS_FLEX_OFFER_DELAY_SECONDS";
     public static final String DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS = "30";
     public static final String DEPLOYMENT_PATH = "/gopacs";
+    /** Scheme prefix GOPACS uses on congestion-point identifiers, e.g. "ean.265987182507322951". */
+    public static final String EAN_PREFIX = "ean.";
 
 
     protected static final UftpSerializer serializer = new UftpSerializer(new XmlSerializer(), new XsdValidator(new XsdSchemaProvider(new XsdFactory(new XsdSchemaFactoryPool()))));
@@ -507,12 +509,29 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
      * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
      */
     protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
-        if (contractedEAN.equals(congestionPoint)) {
+        if (Objects.equals(normaliseEan(contractedEAN), normaliseEan(congestionPoint))) {
             return true;
         }
         LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
                 + congestionPoint + " (contracted EAN " + contractedEAN + ")");
         return false;
+    }
+
+    /**
+     * Normalises an EAN / congestion-point identifier for comparison by stripping the optional "ean."
+     * scheme prefix. GOPACS flex messages carry the congestion point as "ean.&lt;code&gt;" (for example
+     * "ean.265987182507322951"), whereas the contracted EAN may be configured with or without the prefix.
+     * Comparing the normalised forms keeps the scope check agnostic to whether either side includes it.
+     */
+    protected static String normaliseEan(String ean) {
+        if (ean == null) {
+            return null;
+        }
+        String trimmed = ean.trim();
+        if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
+            return trimmed.substring(EAN_PREFIX.length());
+        }
+        return trimmed;
     }
 
     protected void processRawMessage(String transportXml) {
