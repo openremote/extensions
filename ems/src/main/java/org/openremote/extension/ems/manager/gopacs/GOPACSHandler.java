@@ -509,7 +509,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
      * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
      */
     protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
-        if (Objects.equals(normaliseEan(contractedEAN), normaliseEan(congestionPoint))) {
+        if (Objects.equals(toCongestionPoint(contractedEAN), toCongestionPoint(congestionPoint))) {
             return true;
         }
         LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
@@ -518,20 +518,21 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     }
 
     /**
-     * Normalises an EAN / congestion-point identifier for comparison by stripping the optional "ean."
-     * scheme prefix. GOPACS flex messages carry the congestion point as "ean.&lt;code&gt;" (for example
-     * "ean.265987182507322951"), whereas the contracted EAN may be configured with or without the prefix.
-     * Comparing the normalised forms keeps the scope check agnostic to whether either side includes it.
+     * Converts an EAN / congestion-point identifier to the canonical GOPACS congestion-point format
+     * "ean.&lt;code&gt;" (for example "ean.265987182507322951"). GOPACS flex messages always carry the
+     * congestion point with the "ean." prefix, whereas the contracted EAN may be configured with or
+     * without it; canonicalising both sides keeps the scope check correct either way.
      */
-    protected static String normaliseEan(String ean) {
+    protected static String toCongestionPoint(String ean) {
         if (ean == null) {
             return null;
         }
         String trimmed = ean.trim();
         if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
-            return trimmed.substring(EAN_PREFIX.length());
+            // Already prefixed (any case) — normalise the prefix to its canonical lower-case form.
+            return EAN_PREFIX + trimmed.substring(EAN_PREFIX.length());
         }
-        return trimmed;
+        return EAN_PREFIX + trimmed;
     }
 
     protected void processRawMessage(String transportXml) {
