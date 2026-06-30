@@ -14,6 +14,10 @@ dependencies {
     api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
     implementation "org.lfenergy.shapeshifter:shapeshifter-core:$shapeshifterVersion"
     testImplementation "io.openremote:openremote-test:$openremoteVersion"
+    // Standalone (shaded) WireMock so its embedded Jetty/Jackson don't clash with the manager's web stack;
+    // used to mock the GOPACS broker / OAuth2 / address-book HTTP endpoints (the broker send goes through
+    // java.net.http.HttpClient, which a JAX-RS ClientRequestFilter cannot intercept).
+    testImplementation "org.wiremock:wiremock-standalone:$wiremockVersion"
 }
 
 jar {

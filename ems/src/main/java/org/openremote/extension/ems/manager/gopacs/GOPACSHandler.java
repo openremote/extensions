@@ -100,6 +100,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public static final String GOPACS_FLEX_OFFER_DELAY_SECONDS = "GOPACS_FLEX_OFFER_DELAY_SECONDS";
     public static final String DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS = "30";
     public static final String DEPLOYMENT_PATH = "/gopacs";
+    /** Scheme prefix GOPACS uses on congestion-point identifiers, e.g. "ean.265987182507322951". */
+    public static final String EAN_PREFIX = "ean.";
 
 
     protected static final UftpSerializer serializer = new UftpSerializer(new XmlSerializer(), new XsdValidator(new XsdSchemaProvider(new XsdFactory(new XsdSchemaFactoryPool()))));
@@ -209,6 +211,52 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
         deploy(container);
+    }
+
+    /**
+     * Test-support constructor. Wires the message-processing collaborators directly and skips
+     * remote configuration (OAuth client, private-key file) and JAX-RS deployment, so the
+     * day-ahead UFTP message flow can be exercised in isolation. Not used in production wiring.
+     */
+    protected GOPACSHandler(String contractedEAN,
+                            String realm,
+                            String electricitySupplierAssetId,
+                            AssetProcessingService assetProcessingService,
+                            AssetPredictedDatapointService assetPredictedDatapointService,
+                            TimerService timerService,
+                            ScheduledExecutorService scheduledExecutorService,
+                            String privateKey) {
+        this.devMode = false;
+        this.contractedEAN = contractedEAN;
+        this.realm = realm;
+        this.electricitySupplierAssetId = electricitySupplierAssetId;
+        this.participants = new HashMap<>();
+
+        this.assetProcessingService = assetProcessingService;
+        this.assetPredictedDatapointService = assetPredictedDatapointService;
+        this.timerService = timerService;
+        this.scheduledExecutorService = scheduledExecutorService;
+        this.webService = null;
+
+        this.gopacsBrokerUrl = "";
+        this.responseDelaySeconds = 0;
+        this.flexOfferDelaySeconds = 0;
+        this.clientId = null;
+        this.clientSecret = null;
+        this.privateKey = privateKey;
+
+        this.client = null;
+        this.gopacsAddressBookResource = null;
+        this.gopacsAuthResource = null;
+        this.gopacsServerResource = null;
+
+        this.participantResolutionService = new ParticipantResolutionService(this);
+        this.cryptoService = new UftpCryptoService(participantResolutionService, new LazySodiumFactory(), new LazySodiumBase64Pool());
+        this.uftpValidationService = new UftpValidationService(new ArrayList<>());
+        this.uftpReceivedMessageService = new UftpReceivedMessageService(uftpValidationService, this);
+        this.uftpSendMessageService = new UftpSendMessageService(serializer, cryptoService, participantResolutionService, this, uftpValidationService);
+
+        this.objectMapper = new ObjectMapper();
     }
 
     protected static String getDeploymentName(String contractedEAN) {
@@ -507,12 +555,30 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
      * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
      */
     protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
-        if (contractedEAN.equals(congestionPoint)) {
+        if (Objects.equals(toCongestionPoint(contractedEAN), toCongestionPoint(congestionPoint))) {
             return true;
         }
         LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
                 + congestionPoint + " (contracted EAN " + contractedEAN + ")");
         return false;
+    }
+
+    /**
+     * Converts an EAN / congestion-point identifier to the canonical GOPACS congestion-point format
+     * "ean.&lt;code&gt;" (for example "ean.265987182507322951"). GOPACS flex messages always carry the
+     * congestion point with the "ean." prefix, whereas the contracted EAN may be configured with or
+     * without it; canonicalising both sides keeps the scope check correct either way.
+     */
+    protected static String toCongestionPoint(String ean) {
+        if (ean == null) {
+            return null;
+        }
+        String trimmed = ean.trim();
+        if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
+            // Already prefixed (any case) — normalise the prefix to its canonical lower-case form.
+            return EAN_PREFIX + trimmed.substring(EAN_PREFIX.length());
+        }
+        return EAN_PREFIX + trimmed;
     }
 
     protected void processRawMessage(String transportXml) {
