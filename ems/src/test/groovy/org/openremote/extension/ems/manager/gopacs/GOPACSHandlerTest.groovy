@@ -183,14 +183,41 @@ class GOPACSHandlerTest extends Specification {
         ((FlexOrderResponse) handler.sent[0]).result == AcceptedRejectedType.ACCEPTED
     }
 
-    def "a validly-signed FlexRequest for a different congestion point is dropped with no mutation and no reply"() {
+    def "a validly-signed FlexRequest for a different congestion point is rejected without mutation or FlexOffer"() {
         when: "a signed out-of-scope FlexRequest (different EAN) is processed"
         signAndProcess(flexRequestXml("ean.999999999999999999"))
 
-        then: "the asset is not mutated and nothing is sent back"
+        then: "the asset is not mutated"
         0 * assetPredictedDatapointService.updateValues(_, _, _)
         0 * assetProcessingService.sendAttributeEvent(_, _)
-        handler.sent.isEmpty()
+
+        and: "only a rejected FlexRequestResponse is sent back, no FlexOffer"
+        handler.sent.size() == 1
+        handler.sent[0] instanceof FlexRequestResponse
+        def response = (FlexRequestResponse) handler.sent[0]
+        response.result == AcceptedRejectedType.REJECTED
+        !response.rejectionReason.isBlank()
+        response.flexRequestMessageID == FLEX_REQUEST_MESSAGE_ID
+        response.conversationID == CONVERSATION_ID
+        response.senderDomain == AGR_DOMAIN
+        response.recipientDomain == DSO_DOMAIN
+    }
+
+    def "a validly-signed FlexOrder for a different congestion point is rejected without mutation"() {
+        when: "a signed out-of-scope FlexOrder (different EAN) is processed"
+        signAndProcess(flexOrderXml("ean.999999999999999999", [4000, 8000]))
+
+        then: "the asset is not mutated"
+        0 * assetPredictedDatapointService.updateValues(_, _, _)
+        0 * assetProcessingService.sendAttributeEvent(_, _)
+
+        and: "only a rejected FlexOrderResponse is sent back"
+        handler.sent.size() == 1
+        handler.sent[0] instanceof FlexOrderResponse
+        def response = (FlexOrderResponse) handler.sent[0]
+        response.result == AcceptedRejectedType.REJECTED
+        !response.rejectionReason.isBlank()
+        response.conversationID == CONVERSATION_ID
     }
 
     def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
