@@ -224,7 +224,10 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
         }
     }
 
-    def "a validly-signed FlexRequest for a different congestion point is accepted but produces no broker delivery"() {
+    def "a validly-signed FlexRequest for a different congestion point is rejected via the broker without a FlexOffer"() {
+        given: "polling for the asynchronous outbound delivery"
+        def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+
         when: "a signed out-of-scope FlexRequest (different EAN) is POSTed"
         Response response = postSignedAsDso(flexRequestXml("ean.999999999999999999"))
 
@@ -232,10 +235,22 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
         response.statusInfo.family == Response.Status.Family.SUCCESSFUL
         response.close()
 
-        and: "no message is ever delivered to the broker"
-        // The drop happens before any reply is scheduled; allow the (zero-delay) scheduler to run first.
+        and: "a rejected FlexRequestResponse with a reason is delivered to the broker as signed XML"
+        conditions.eventually {
+            wireMock.verify(postRequestedFor(urlPathEqualTo(BROKER_PATH))
+                    .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+                    .withRequestBody(containing("SignedMessage")))
+            assert decodedBrokerPayloads().any {
+                it.contains("FlexRequestResponse") && it.contains('Result="Rejected"') && it.contains("RejectionReason=")
+            }
+        }
+
+        and: "no FlexOffer is ever delivered"
+        // Replies are scheduled with zero delay in this test; give any (erroneous) FlexOffer time to arrive.
         Thread.sleep(1000)
-        wireMock.verify(0, postRequestedFor(urlPathEqualTo(BROKER_PATH)))
+        def payloads = decodedBrokerPayloads()
+        payloads.size() == 1
+        !payloads.any { it.contains("FlexOffer") }
     }
 
     def "malformed transport XML is rejected with 400"() {
