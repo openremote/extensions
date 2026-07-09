@@ -1,0 +1,5 @@
+[versions]
+
+[libraries]
+camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
+resteasyClientApi = { module = "org.jboss.resteasy:resteasy-client-api", version.ref = "resteasy" }
