@@ -11,10 +11,10 @@ dependencies {
     api libs.camelCoreModel
     api libs.resteasyClientApi
 
-    api resolveProject(":manager")
-    api resolveProject(":model")
+    api "io.openremote:openremote-manager:$openremoteVersion"
+    api "io.openremote:openremote-model:$openremoteVersion"
 
-    testImplementation resolveProject(":test")
+    testImplementation "io.openremote:openremote-test:$openremoteVersion"
 }
 
 test {}
