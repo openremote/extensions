@@ -8,13 +8,16 @@ base {
 }
 
 dependencies {
-    api "org.apache.camel:camel-core-model:$camelVersion"
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
+    api libs.camelCoreModel
+    api libs.resteasyClientApi
 
-    api "io.openremote:openremote-manager:$openremoteVersion"
-    api "io.openremote:openremote-model:$openremoteVersion"
-    testImplementation "io.openremote:openremote-test:$openremoteVersion"
+    api resolveProject(":manager")
+    api resolveProject(":model")
+
+    testImplementation resolveProject(":test")
 }
+
+test {}
 
 jar {
     from sourceSets.main.allJava
@@ -83,4 +86,13 @@ signing {
         useInMemoryPgpKeys(signingKey, signingPassword)
         sign publishing.publications.maven
     }
+}
+
+tasks.register("copyExtension", Copy) {
+    from jar.archiveFile
+    into project(":deployment").layout.buildDirectory.dir("extensions")
+}
+
+tasks.named('build') {
+    dependsOn('copyExtension')
 }

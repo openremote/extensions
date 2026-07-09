@@ -3,11 +3,12 @@ apply plugin: "maven-publish"
 apply plugin: "signing"
 
 base {
-    archivesName = "openremote-${project.name}"
+    archivesName = "openremote-${project.name}-extension"
 }
 
 dependencies {
     api "io.openremote:openremote-manager:$openremoteVersion"
+    implementation project(":energy")
 
     implementation project(":energy")
 }
@@ -29,7 +30,7 @@ publishing {
     publications {
         maven(MavenPublication) {
             group = "io.openremote.extension"
-            artifactId = "openremote-${project.name}"
+            artifactId = "openremote-${project.name}-extension"
             from components.java
             pom {
                 name = 'OpenRemote Demo setup'
@@ -79,4 +80,13 @@ signing {
         useInMemoryPgpKeys(signingKey, signingPassword)
         sign publishing.publications.maven
     }
+}
+
+tasks.register("copyExtension", Copy) {
+    from jar.archiveFile
+    into project(":deployment").layout.buildDirectory.dir("extensions")
+}
+
+tasks.named('build') {
+    dependsOn('copyExtension')
 }
