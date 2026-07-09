@@ -1,4 +1,6 @@
 [versions]
+camel = "4.20.0"
+resteasy = "6.2.16.Final"
 
 [libraries]
 camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
