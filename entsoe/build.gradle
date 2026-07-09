@@ -88,7 +88,8 @@ signing {
 
 
 tasks.register("copyExtension", Copy) {
-    from jar.archiveFile
+    dependsOn jar
+    from(jar.archiveFile)
     into project(":deployment").layout.buildDirectory.dir("extensions")
 }
 

@@ -16,6 +16,10 @@ on:
   # Manual trigger
   workflow_dispatch:
 
+  # Release
+  release:
+    types: [ published ]
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -55,10 +59,10 @@ jobs:
           fi
 
       - name: Update openremoteVersion in gradle.properties
-        if: ${{ github.ref_name == 'tag' }}
+        if: ${{ github.event_name == 'release' }}
         run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $RELEASED_VERSION/" gradle.properties
         env:
-          RELEASED_VERSION: ${{ github.ref_name }}
+          RELEASED_VERSION: ${{ github.event.release.tag_name }}
 
       - name: Run build
         timeout-minutes: 20
@@ -80,11 +84,13 @@ jobs:
           password: ${{ secrets._TEMP_DOCKERHUB_PASSWORD }}
 
       - name: Install QEMU
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
         with:
           platforms: linux/amd64,linux/arm64
 
       - name: Install Buildx
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build develop image
@@ -95,7 +101,7 @@ jobs:
           context: deployment/build
           platforms: linux/amd64,linux/arm64
           load: false
-          push: false
+          push: true
           tags: openremote/manager:develop
           build-args: |
             GIT_COMMIT=${{ github.sha }}
@@ -111,9 +117,9 @@ jobs:
           context: deployment/build
           platforms: linux/amd64,linux/arm64
           load: false
-          push: false
+          push: true
           tags: |
-            openremote/manager:${{ github.ref_name }}
+            openremote/manager:${{ github.event.release.tag_name }}
             openremote/manager:latest
           build-args: |
             GIT_COMMIT=${{ github.sha }}
