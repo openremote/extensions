@@ -27,13 +27,17 @@ import org.openremote.model.value.AttributeDescriptor;
 import org.openremote.model.value.MetaItemType;
 import org.openremote.model.value.ValueType;
 
+import org.openremote.model.value.ValueType.ObjectMap;
+
 import java.util.Optional;
 
-import static org.openremote.model.Constants.UNITS_KILO;
-import static org.openremote.model.Constants.UNITS_WATT;
+import static org.openremote.model.Constants.*;
 
 @Entity
 public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
+
+    // --- UFTP / Day-Ahead attributes ---
+
     public static final AttributeDescriptor<String> CONTRACTED_EAN = new AttributeDescriptor<>("contractedEAN", ValueType.TEXT
     );
 
@@ -72,6 +76,99 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
             new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
     ).withUnits(UNITS_KILO, UNITS_WATT);
 
+    // --- Redispatch configuration attributes ---
+
+    public static final AttributeDescriptor<Boolean> REDISPATCH_ENABLED = new AttributeDescriptor<>("redispatchEnabled", ValueType.BOOLEAN
+    );
+
+    // --- Redispatch status attributes (read-only, system-updated) ---
+
+    public static final AttributeDescriptor<String> REDISPATCH_ANNOUNCEMENT_ID = new AttributeDescriptor<>("redispatchAnnouncementId", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<String> REDISPATCH_COMPLIANCE_TYPE = new AttributeDescriptor<>("redispatchComplianceType", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<String> REDISPATCH_ANNOUNCEMENT_MESSAGE = new AttributeDescriptor<>("redispatchAnnouncementMessage", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.MULTILINE),
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Long> REDISPATCH_START_TIME = new AttributeDescriptor<>("redispatchStartTime", ValueType.TIMESTAMP,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Long> REDISPATCH_END_TIME = new AttributeDescriptor<>("redispatchEndTime", ValueType.TIMESTAMP,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Long> REDISPATCH_BID_VALIDITY_END = new AttributeDescriptor<>("redispatchBidValidityEnd", ValueType.TIMESTAMP,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Double> REDISPATCH_REQUESTED_POWER = new AttributeDescriptor<>("redispatchRequestedPower", ValueType.NUMBER,
+            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
+            new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
+            new MetaItem<>(MetaItemType.READ_ONLY),
+            new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
+    ).withUnits(UNITS_KILO, UNITS_WATT);
+
+    public static final AttributeDescriptor<String> REDISPATCH_EAN_EFFECTIVITY = new AttributeDescriptor<>("redispatchEanEffectivity", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<String> REDISPATCH_REQUEST_AREA_BUY = new AttributeDescriptor<>("redispatchRequestAreaBuy", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<String> REDISPATCH_REQUEST_AREA_SELL = new AttributeDescriptor<>("redispatchRequestAreaSell", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    public static final AttributeDescriptor<Long> REDISPATCH_LAST_POLL = new AttributeDescriptor<>("redispatchLastPoll", ValueType.TIMESTAMP,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    // --- Redispatch bid attributes (auto-calculated, operator-overridable) ---
+
+    public static final AttributeDescriptor<Double> REDISPATCH_SUGGESTED_POWER = new AttributeDescriptor<>("redispatchSuggestedPower", ValueType.NUMBER,
+            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
+            new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
+            new MetaItem<>(MetaItemType.READ_ONLY),
+            new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
+    ).withUnits(UNITS_KILO, UNITS_WATT);
+
+    public static final AttributeDescriptor<Double> REDISPATCH_SUGGESTED_VOLUME = new AttributeDescriptor<>("redispatchSuggestedVolume", ValueType.NUMBER,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    ).withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
+
+    public static final AttributeDescriptor<Double> REDISPATCH_BID_PRICE = new AttributeDescriptor<>("redispatchBidPrice", ValueType.NUMBER
+    ).withUnits("EUR", UNITS_PER, UNITS_MEGA, UNITS_WATT, UNITS_HOUR);
+
+    // --- Redispatch confirmation workflow ---
+
+    public static final AttributeDescriptor<Boolean> REDISPATCH_CONFIRM_BID = new AttributeDescriptor<>("redispatchConfirmBid", ValueType.BOOLEAN
+    );
+
+    public static final AttributeDescriptor<String> REDISPATCH_BID_STATUS = new AttributeDescriptor<>("redispatchBidStatus", ValueType.TEXT,
+            new MetaItem<>(MetaItemType.READ_ONLY)
+    );
+
+    // --- Redispatch history (stored as data points for time-series history) ---
+
+    public static final AttributeDescriptor<ObjectMap> REDISPATCH_ANNOUNCEMENT_HISTORY = new AttributeDescriptor<>("redispatchAnnouncementHistory", ValueType.JSON_OBJECT,
+            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
+            new MetaItem<>(MetaItemType.READ_ONLY),
+            new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
+    );
+
+    public static final AttributeDescriptor<ObjectMap> REDISPATCH_BID_HISTORY = new AttributeDescriptor<>("redispatchBidHistory", ValueType.JSON_OBJECT,
+            new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
+            new MetaItem<>(MetaItemType.READ_ONLY),
+            new MetaItem<>(MetaItemType.STORE_DATA_POINTS)
+    );
 
     public static final AssetDescriptor<EmsGOPACSAsset> DESCRIPTOR = new AssetDescriptor<>("transmission-tower", null, EmsGOPACSAsset.class);
 
@@ -82,7 +179,43 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
         super(name);
     }
 
+    // --- UFTP getters ---
+
     public Optional<String> getContractedEan() {
         return getAttributes().getValue(CONTRACTED_EAN);
+    }
+
+    // --- Redispatch getters ---
+
+    public Optional<Boolean> getRedispatchEnabled() {
+        return getAttributes().getValue(REDISPATCH_ENABLED);
+    }
+
+    public Optional<String> getRedispatchAnnouncementId() {
+        return getAttributes().getValue(REDISPATCH_ANNOUNCEMENT_ID);
+    }
+
+    public Optional<String> getRedispatchBidStatus() {
+        return getAttributes().getValue(REDISPATCH_BID_STATUS);
+    }
+
+    public Optional<Double> getRedispatchBidPrice() {
+        return getAttributes().getValue(REDISPATCH_BID_PRICE);
+    }
+
+    public Optional<Boolean> getRedispatchConfirmBid() {
+        return getAttributes().getValue(REDISPATCH_CONFIRM_BID);
+    }
+
+    // --- Redispatch setters ---
+
+    public EmsGOPACSAsset setRedispatchEnabled(Boolean enabled) {
+        getAttributes().getOrCreate(REDISPATCH_ENABLED).setValue(enabled);
+        return this;
+    }
+
+    public EmsGOPACSAsset setRedispatchBidPrice(Double bidPrice) {
+        getAttributes().getOrCreate(REDISPATCH_BID_PRICE).setValue(bidPrice);
+        return this;
     }
 }

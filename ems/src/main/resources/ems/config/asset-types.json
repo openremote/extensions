@@ -132,5 +132,81 @@
         "column": 1
       }
     ]
+  },
+  "EmsGOPACSAsset": {
+    "viewerStyles": {},
+    "panels": [
+      {
+        "type": "info",
+        "title": "Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "contractedEAN",
+            "redispatchEnabled"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "UFTP / Day-Ahead",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "currentPowerFlexRequest",
+            "powerMaximumFlexRequest",
+            "powerMinimumFlexRequest",
+            "powerLimitMaximumProfileFlexOrder",
+            "powerLimitMinimumProfileFlexOrder"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch Status",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "redispatchAnnouncementId",
+            "redispatchComplianceType",
+            "redispatchAnnouncementMessage",
+            "redispatchStartTime",
+            "redispatchEndTime",
+            "redispatchBidValidityEnd",
+            "redispatchRequestedPower",
+            "redispatchEanEffectivity",
+            "redispatchRequestAreaBuy",
+            "redispatchRequestAreaSell",
+            "redispatchLastPoll"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch Bid",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "redispatchSuggestedPower",
+            "redispatchSuggestedVolume",
+            "redispatchBidPrice",
+            "redispatchBidStatus",
+            "redispatchConfirmBid"
+          ]
+        }
+      },
+      {
+        "type": "history",
+        "column": 1
+      }
+    ]
   }
 }

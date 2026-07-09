@@ -26,6 +26,7 @@ import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset;
 import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
+import org.openremote.extension.ems.manager.gopacs.GOPACSRedispatchHandler;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.asset.AssetStorageService;
 import org.openremote.manager.datapoint.AssetDatapointService;
@@ -51,6 +52,7 @@ import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -66,10 +68,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     protected Services services;
 
     protected GOPACSHandler.Factory gopacsHandlerFactory;
+    protected GOPACSRedispatchHandler.Factory gopacsRedispatchHandlerFactory;
 
-    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new HashMap<>();
+    private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap = new ConcurrentHashMap<>();
     private final Map<String, Long> energyOptimisationTimersMap = new HashMap<>();
     private final Map<String, GOPACSHandler> gopacsHandlerMap = new HashMap<>();
+    private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap = new HashMap<>();
 
 
     @SuppressWarnings("unchecked")
@@ -97,6 +101,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 .build();
 
         gopacsHandlerFactory = new GOPACSHandler.Factory(container);
+        gopacsRedispatchHandlerFactory = new GOPACSRedispatchHandler.Factory(container);
     }
 
     @Override
@@ -115,6 +120,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         if (!energyOptimisationAssets.isEmpty()) {
             List<String> enabledEnergyOptimisationAssetIds = energyOptimisationAssets
                     .stream()
+                    .filter(energyOptimisationAsset -> services.getGatewayService().getLocallyRegisteredGatewayId(energyOptimisationAsset.getId(), null) == null)
                     .filter(energyOptimisationAsset -> !energyOptimisationAsset.getOptimisationDisabled().orElse(false))
                     .map(Asset::getId)
                     .toList();
@@ -129,7 +135,14 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 .findAll(new AssetQuery().types(EmsGOPACSAsset.class).attributeName(EmsGOPACSAsset.CONTRACTED_EAN.getName()))
                 .stream()
                 .map(asset -> (EmsGOPACSAsset) asset)
-                .forEach(gopacsAsset -> startGopacsHandler(gopacsAsset.getContractedEan().orElse(""), gopacsAsset.getRealm(), gopacsAsset.getId()));
+                .forEach(gopacsAsset -> {
+                    startGopacsHandler(gopacsAsset.getContractedEan().orElse(""), gopacsAsset.getRealm(), gopacsAsset.getId());
+
+                    // Start redispatch handler if enabled
+                    if (gopacsAsset.getRedispatchEnabled().orElse(false)) {
+                        startRedispatchHandler(gopacsAsset.getContractedEan().orElse(""), gopacsAsset.getRealm(), gopacsAsset.getId());
+                    }
+                });
 
 
         // List of asset types that are part of the core EMS service
@@ -148,6 +161,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     @Override
     public void stop(Container container) throws Exception {
+        gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
+        gopacsRedispatchHandlerMap.clear();
         energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
         energyOptimisationTimersMap.clear();
     }
@@ -259,6 +274,26 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         }
     }
 
+    private void startRedispatchHandler(String contractedEan, String realm, String assetId) {
+        if (contractedEan.isBlank()) {
+            LOG.warning("Unable to start redispatch handler because EAN is blank");
+            return;
+        }
+        LOG.fine("Starting redispatch handler for EAN: " + contractedEan);
+        GOPACSRedispatchHandler handler = gopacsRedispatchHandlerFactory.createHandler(contractedEan, realm, assetId);
+        gopacsRedispatchHandlerMap.put(contractedEan, handler);
+        handler.startPolling();
+        LOG.fine("Started redispatch handler for EAN: " + contractedEan);
+    }
+
+    private void stopRedispatchHandler(String contractedEan) {
+        GOPACSRedispatchHandler existing = gopacsRedispatchHandlerMap.get(contractedEan);
+        if (existing != null) {
+            existing.stopPolling();
+            gopacsRedispatchHandlerMap.remove(contractedEan);
+        }
+    }
+
     protected void processAssetChange(PersistenceEvent<?> persistenceEvent) {
         if (persistenceEvent.getEntity() instanceof EmsEnergyOptimisationAsset emsEnergyOptimisationAsset) {
             if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
@@ -268,13 +303,18 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             emsGOPACSAsset.getContractedEan().ifPresent(contractedEan -> {
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
                     stopGopacsHandler(contractedEan);
+                    stopRedispatchHandler(contractedEan);
                 }
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
                     startGopacsHandler(contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
+                    if (emsGOPACSAsset.getRedispatchEnabled().orElse(false)) {
+                        startRedispatchHandler(contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
+                    }
                 }
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
                     stopGopacsHandler(contractedEan);
                     startGopacsHandler(contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
+                    // Redispatch handler is managed via attribute events (redispatchEnabled)
                 }
             });
         }
@@ -313,15 +353,16 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
             if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
-                startOptimisation(assetId);
-                LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
+                    LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                    startOptimisation(assetId);
+                }
             } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
                 stopOptimisation(assetId);
                 LOG.info(String.format("%s; Disabled energy optimisation", logPrefix));
             }
             return;
         }
-
 
         // Generate power maximum profile manual input
         if (attributeName.equals(EmsEnergyOptimisationAsset.GENERATE_POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT.getName())) {
@@ -460,9 +501,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         // Run selected optimisation method
         if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_METHOD.getName())) {
             if (energyOptimisationAssetsMap.containsKey(assetId)) {
+                // Reset advanced settings attributes field
+                services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES, null), getClass().getSimpleName());
+
                 String optimisationMethodName = attributeEvent.getValue().orElse(EmsEnergyOptimisationAsset.OptimisationMethodValueType.None).toString();
                 OptimisationMethodsLoader optimisationMethodsLoader = new OptimisationMethodsLoader();
-                optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services);
+                services.getScheduledExecutorService().schedule(() -> optimisationMethodsLoader.runOptimisationMethod(optimisationMethodName, assetId, services), 1, TimeUnit.SECONDS);
             }
         }
     }
@@ -481,8 +525,48 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         String attributeName = attributeEvent.getName();
 
         if (attributeName.equals(EmsGOPACSAsset.CONTRACTED_EAN.getName())) {
-            attributeEvent.getOldValue(String.class).ifPresent(this::stopGopacsHandler);
-            attributeEvent.getValue(String.class).ifPresent(contractedEan -> startGopacsHandler(contractedEan, attributeEvent.getRealm(), attributeEvent.getId()));
+            attributeEvent.getOldValue(String.class).ifPresent(oldEan -> {
+                stopGopacsHandler(oldEan);
+                stopRedispatchHandler(oldEan);
+            });
+            attributeEvent.getValue(String.class).ifPresent(contractedEan -> {
+                startGopacsHandler(contractedEan, attributeEvent.getRealm(), attributeEvent.getId());
+                if (gopacsAsset.getRedispatchEnabled().orElse(false)) {
+                    startRedispatchHandler(contractedEan, attributeEvent.getRealm(), attributeEvent.getId());
+                }
+            });
+        }
+
+        // Handle redispatch enabled/disabled toggle
+        if (attributeName.equals(EmsGOPACSAsset.REDISPATCH_ENABLED.getName())) {
+            gopacsAsset.getContractedEan().ifPresent(contractedEan -> {
+                boolean enabled = (Boolean) attributeEvent.getValue().orElse(false);
+                if (enabled) {
+                    stopRedispatchHandler(contractedEan); // Stop existing if any
+                    startRedispatchHandler(contractedEan, gopacsAsset.getRealm(), gopacsAsset.getId());
+                } else {
+                    stopRedispatchHandler(contractedEan);
+                }
+            });
+        }
+
+        // Handle bid confirmation
+        if (attributeName.equals(EmsGOPACSAsset.REDISPATCH_CONFIRM_BID.getName())) {
+            boolean confirmed = (Boolean) attributeEvent.getValue().orElse(false);
+            if (confirmed) {
+                gopacsAsset.getContractedEan().ifPresent(contractedEan -> {
+                    GOPACSRedispatchHandler handler = gopacsRedispatchHandlerMap.get(contractedEan);
+                    if (handler != null) {
+                        handler.handleConfirmation();
+                    } else {
+                        LOG.warning("No redispatch handler running for EAN '" + contractedEan
+                                + "' while processing bid confirmation for asset '" + gopacsAsset.getId() + "'");
+                        services.getAssetProcessingService().sendAttributeEvent(
+                                new AttributeEvent(gopacsAsset.getId(), EmsGOPACSAsset.REDISPATCH_CONFIRM_BID.getName(), false),
+                                getClass().getSimpleName());
+                    }
+                });
+            }
         }
     }
 

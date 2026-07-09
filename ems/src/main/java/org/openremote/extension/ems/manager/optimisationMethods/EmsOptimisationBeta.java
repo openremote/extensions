@@ -25,11 +25,13 @@ import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset;
 import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.extension.ems.manager.Services;
 import org.openremote.model.asset.Asset;
+import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
 import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointAllQuery;
 import org.openremote.model.query.AssetQuery;
 import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.value.ValueType;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -49,17 +51,22 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     // Maximum interval between data-points send by the device to be considered connected
     private final int ACTIVE_PERIOD_MINUTES = 5;
 
-    // EMS power limits settings
-    private final int POWER_LIMIT_MAXIMUM_SAFETY_MARGIN_PERCENTAGE = 5;
-    private final int POWER_LIMIT_MINIMUM_SAFETY_MARGIN_PERCENTAGE = 5;
-    private final int POWER_LIMIT_MAXIMUM_BATTERIES_MARGIN_PERCENTAGE = 10;
-    private final int POWER_LIMIT_MINIMUM_BATTERIES_MARGIN_PERCENTAGE = 10;
+    // Default EMS power limit settings
+    private final int POWER_LIMIT_FLUCTUATION_MARGIN_PERCENTAGE_DEFAULT = 10;
 
-    // Battery settings
+    // Default battery settings
     private final int BATTERY_ENERGY_LEVEL_PERCENTAGE_DEFAULT = 50;
-    private final int BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL = 3;
-    private final int BATTERY_EFFICIENCY_BUFFER_PERCENTAGE = 3;
+    private final double BATTERY_POWER_SETPOINT_RESPONSIVENESS_DEFAULT = 0.5;
+    private final int BATTERY_TARIFF_OPTIMISATION_WINDOW_DEFAULT = 8;
 
+    // Advanced settings attribute names
+    private final String POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME = "powerLimitMaximumFluctuationMargin";
+    private final String POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME = "powerLimitMinimumFluctuationMargin";
+
+    private final String[][] advancedSettingsAttributesInfo = {
+            {POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()},
+            {POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()}
+    };
 
     @Override
     public void execute(String energyOptimisationAssetId, Services services) {
@@ -74,6 +81,22 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             return;
         }
 
+        // Update Advanced settings attributes info
+        String advancedSettingsAttributes = energyOptimisationAsset.getAdvancedSettingsAttributes().orElse("");
+
+        if (advancedSettingsAttributes.isBlank()) {
+            StringBuilder advancedSettingsAttributesBody = new StringBuilder();
+
+            String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
+            advancedSettingsAttributesBody.append(firstRow);
+
+            for (String[] row : advancedSettingsAttributesInfo) {
+                advancedSettingsAttributesBody.append(String.join(",", row)).append("\n");
+            }
+
+            services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(energyOptimisationAssetId, EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES, advancedSettingsAttributesBody.toString()), getClass().getSimpleName());
+        }
+
         String logPrefixEnergyOptimisation = String.format("assetType='%s', assetId='%s', assetName='%s'", energyOptimisationAsset.getAssetType(), energyOptimisationAssetId, energyOptimisationAsset.getAssetName());
 
         // Get all battery assets
@@ -82,8 +105,6 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                 .stream()
                 .map(asset -> (EmsElectricityBatteryAsset) asset)
                 .toList();
-
-        // TODO: Add order to battery assets from longest to smallest discharge duration
 
         if (energyOptimisationAsset.getEnableDetailedLogging().orElse(false)) {
             int allowChargingSize = electricityBatteryAssets
@@ -141,17 +162,52 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             return;
         }
 
+        // Order battery assets
+        electricityBatteryAssets = batteryOrder(electricityBatteryAssets);
+
         // Check connection status of battery assets
         batteryCheckConnection(electricityBatteryAssets, services);
 
         // Check if all required attributes are connected/set and create log messages
         batteryCheckSetup(electricityBatteryAssets);
 
-        // Calculate new battery power set-points
-        Map<String, Double> powerSetpointsNew = batteryCalculatePowerSetpoints(energyOptimisationAsset, electricityBatteryAssets, services, logPrefixEnergyOptimisation);
+        // Find latest power set-point update across all batteries
+        long powerSetpointTimestampLatestMillis = batteriesLatestPowerSetpointUpdate(electricityBatteryAssets);
+
+        // Calculate battery energy level percentage targets
+        int intervalPeriodMinutes = 15;
+        int currentMinute = LocalDateTime.now().getMinute();
+        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
+        long forecastUpdateTimeMillis = currentTimeMillis - currentTimeMillis % (intervalPeriodMinutes * 60 * 1000);
+
+        Map<String, Integer> batteryEnergyLevelPercentageTargets;
+
+        if ((currentMinute % intervalPeriodMinutes) == 0 || powerSetpointTimestampLatestMillis < forecastUpdateTimeMillis) {
+            batteryEnergyLevelPercentageTargets = batteryCalculateForecasts(electricityBatteryAssets, energyOptimisationAsset, services);
+        } else {
+            batteryEnergyLevelPercentageTargets = batteryGetEnergyLevelPercentageTargetsCurrent(electricityBatteryAssets, services);
+        }
+
+        // Calculate battery power set-points
+        Map<String, Double> powerSetpointsNew = batteryCalculatePowerSetpoints(energyOptimisationAsset, electricityBatteryAssets, powerSetpointTimestampLatestMillis, batteryEnergyLevelPercentageTargets, services, logPrefixEnergyOptimisation);
 
         // Update battery power set-points
         batteryUpdatePowerSetpoints(electricityBatteryAssets, powerSetpointsNew, services);
+    }
+
+    private long batteriesLatestPowerSetpointUpdate(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
+        // Find latest power set-point update across all batteries
+        long powerSetpointTimestampLatestMillis = 0L;
+
+        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
+            long powerSetpointTimestampMillis = electricityBatteryAsset.getPowerSetpointTimestamp().orElse(0L);
+
+            if (powerSetpointTimestampMillis > powerSetpointTimestampLatestMillis) {
+                powerSetpointTimestampLatestMillis = powerSetpointTimestampMillis;
+            }
+        }
+
+        return powerSetpointTimestampLatestMillis;
     }
 
     private int batteryCalculateEnergyLevelPercentageDefault(Integer energyLevelPercentageMaximumBattery, Integer energyLevelPercentageMinimumBattery, EmsEnergyOptimisationAsset energyOptimisationAsset) {
@@ -169,7 +225,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         } else if (powerLimitMaximumProfileTotal != null && powerLimitMinimumProfileTotal == null) {
             energyLevelPercentageDefault = energyLevelPercentageMaximumBattery;
         } else {
-            energyLevelPercentageDefault = (int) Math.round((double) (energyLevelPercentageMaximumBattery - energyLevelPercentageMinimumBattery) / 2 + energyLevelPercentageMinimumBattery);
+            energyLevelPercentageDefault = (int) Math.round((double) (energyLevelPercentageMaximumBattery + energyLevelPercentageMinimumBattery) / 2);
         }
 
         return energyLevelPercentageDefault;
@@ -178,14 +234,17 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     private Map<String, Integer> batteryCalculateForecasts(List<EmsElectricityBatteryAsset> electricityBatteryAssets, EmsEnergyOptimisationAsset energyOptimisationAsset, Services services) {
         Map<String, Integer> batteryEnergyLevelPercentageTargets = new HashMap<>();
 
+        StringBuilder infoStr = new StringBuilder();
+        infoStr.append("EMS forecast:\n");
+
         // Get power consumption forecast for 1 week
         long intervalMillis = 15 * 60000;
         long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long startTimeMillis = currentTimeMillis - currentTimeMillis % intervalMillis;
-        long endTimeMillis = startTimeMillis + 7 * 24 * 60 * 60000;
+        long startTimeForecastPeriodMillis = currentTimeMillis - currentTimeMillis % intervalMillis;
+        long endTimeForecastPeriodMillis = startTimeForecastPeriodMillis - startTimeForecastPeriodMillis % (24 * 60 * 60000) + (8 * 24 * 60 * 60000);
 
         String energyOptimisationAssetId = energyOptimisationAsset.getId();
-        AssetDatapointAllQuery assetDatapointQueryConsumptionPredicted = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
+        AssetDatapointAllQuery assetDatapointQueryConsumptionPredicted = new AssetDatapointAllQuery(startTimeForecastPeriodMillis, endTimeForecastPeriodMillis);
         List<ValueDatapoint<?>> energyOptimisationPowerConsumptionPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_CONSUMPTION.getName(), assetDatapointQueryConsumptionPredicted);
 
 //        System.out.println("energyOptimisationPowerConsumptionPredicted = " + energyOptimisationPowerConsumptionPredicted);
@@ -200,11 +259,11 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
 //        System.out.println("totalPowerConsumptionAveraged = " + totalPowerConsumptionAveraged);
 
-        long startTimestampMillis = totalPowerConsumptionAveraged.getFirst().getTimestamp();
-        long endTimestampMillis = totalPowerConsumptionAveraged.getLast().getTimestamp();
+        long startTimeForecastDataMillis = totalPowerConsumptionAveraged.getFirst().getTimestamp();
+        long endTimeForecastDataMillis = totalPowerConsumptionAveraged.getLast().getTimestamp();
 
         // Interpolate power average values for each 15-minute interval
-        List<ValueDatapoint<?>> totalPowerConsumptionInterpolated = intervalInterpolate(totalPowerConsumptionAveraged, startTimestampMillis, endTimestampMillis, intervalMillis);
+        List<ValueDatapoint<?>> totalPowerConsumptionInterpolated = intervalInterpolate(totalPowerConsumptionAveraged, startTimeForecastDataMillis, endTimeForecastDataMillis, intervalMillis);
 
         List<Long> timestampsMillisList = new ArrayList<>();
         List<Double> totalPowerConsumptionList = new ArrayList<>();
@@ -217,14 +276,17 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             totalPowerConsumptionList.add(value);
         }
 
-//        System.out.println("timestampsMillisList = " + timestampsMillisList);
-//        System.out.println("totalPowerConsumptionList = " + totalPowerConsumptionList);
+        int numberOfTimestamps = timestampsMillisList.size();
+
+        infoStr.append(String.format("numberOfTimestamps = %s \n", numberOfTimestamps));
+        infoStr.append(String.format("timestampsMillisList = %s \n", timestampsMillisList));
+        infoStr.append(String.format("totalPowerConsumptionList = %s \n", totalPowerConsumptionList));
 
         if (totalPowerConsumptionList.isEmpty()) {
             return batteryEnergyLevelPercentageTargets;
         }
 
-        AssetDatapointAllQuery assetDatapointQueryPeriodPredicted = new AssetDatapointAllQuery(startTimestampMillis, endTimestampMillis);
+        AssetDatapointAllQuery assetDatapointQueryPeriodPredicted = new AssetDatapointAllQuery(startTimeForecastDataMillis, endTimeForecastDataMillis);
         List<ValueDatapoint<?>> energyOptimisationPowerProductionPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_PRODUCTION.getName(), assetDatapointQueryPeriodPredicted);
 
 //        System.out.println("energyOptimisationPowerProductionPredicted = " + energyOptimisationPowerProductionPredicted);
@@ -242,26 +304,25 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             totalPowerProductionMap = totalPowerProductionInterpolated.stream().collect(Collectors.toMap(ValueDatapoint::getTimestamp, dp -> ((Double) dp.getValue())));
         }
 
-        // List to store the sum of total power consumption, production and flexible power
-        List<Double> totalPowerConsumptionProductionFlexList = new ArrayList<>();
+        // List to store the sum of total power consumption, production and flexible
+        List<Double> totalPowerConsumptionProductionFlexibleList = new ArrayList<>();
 
         // Sum total power consumption and production
-        for (int i = 0; i < timestampsMillisList.size(); i++) {
+        for (int i = 0; i < numberOfTimestamps; i++) {
             Double powerConsumption = totalPowerConsumptionList.get(i);
             Double powerProduction = totalPowerProductionMap.get(timestampsMillisList.get(i));
 
             if (powerProduction != null) {
                 double sum = powerConsumption + powerProduction;
-                totalPowerConsumptionProductionFlexList.add(sum);
+                totalPowerConsumptionProductionFlexibleList.add(sum);
             } else {
-                totalPowerConsumptionProductionFlexList.add(powerConsumption);
+                totalPowerConsumptionProductionFlexibleList.add(powerConsumption);
             }
         }
 
-//        System.out.println("totalPowerConsumptionProductionFlexList = " + totalPowerConsumptionProductionFlexList);
-//        System.out.println();
+        infoStr.append(String.format("totalPowerConsumptionProductionFlexibleList = %s \n", totalPowerConsumptionProductionFlexibleList));
 
-        // Get power limits forecasts
+        // Get power limit forecasts
         List<ValueDatapoint<?>> energyOptimisationPowerLimitMaximumPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName(), assetDatapointQueryPeriodPredicted);
         List<ValueDatapoint<?>> energyOptimisationPowerLimitMinimumPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName(), assetDatapointQueryPeriodPredicted);
 
@@ -279,11 +340,12 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         List<Double> chargePowerAvailableTotalList = new ArrayList<>();
         List<Double> dischargePowerAvailableTotalList = new ArrayList<>();
 
-        // Add current available charge and discharge power
+        // Add current available charge and discharge power which is 0
         chargePowerAvailableTotalList.add(0.0);
         dischargePowerAvailableTotalList.add(0.0);
 
-        double intervalHour = (double) intervalMillis / (60 * 60000);
+        double intervalHour = round((double) intervalMillis / (60 * 60000), 5);
+        int batteryPercentageRoundingPrecision = 5;
 
         // Calculate forecast for each battery
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
@@ -303,28 +365,40 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             }
 
             // Check if the energy level percentage maximum and minimum are valid
-            if ((energyLevelPercentageMaximumBattery - energyLevelPercentageMinimumBattery) < BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL) {
+            if (energyLevelPercentageMaximumBattery <= energyLevelPercentageMinimumBattery) {
                 continue;
             }
 
+            // Check if the charge and discharge efficiency are valid
+            if (chargeEfficiencyBattery <= 0 || dischargeEfficiencyBattery <= 0) {
+                continue;
+            }
+
+            List<Double> powerLimitMaximumVirtualList = new ArrayList<>();
+            List<Double> powerLimitMinimumVirtualList = new ArrayList<>();
+
             // Calculate total available charge and discharge power
-            for (int i = 0; i < timestampsMillisList.size(); i++) {
+            for (int i = 0; i < numberOfTimestamps; i++) {
                 long timestampMillis = timestampsMillisList.get(i);
-                double totalPower = totalPowerConsumptionProductionFlexList.get(i);
+                double totalPower = totalPowerConsumptionProductionFlexibleList.get(i);
 
                 Double powerLimitMaximum = powerLimitMaximumMap.getOrDefault(timestampMillis, null);
                 Double powerLimitMinimum = powerLimitMinimumMap.getOrDefault(timestampMillis, null);
 
-                if (powerLimitMaximum != null) {
-                    double powerLimitMaximumVirtual = powerLimitMaximum * (1 - POWER_LIMIT_MAXIMUM_SAFETY_MARGIN_PERCENTAGE * 0.01);
+                Double powerLimitMaximumVirtual = calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximum, "max");
+                Double powerLimitMinimumVirtual = calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMinimum, "min");
+
+                powerLimitMaximumVirtualList.add(powerLimitMaximumVirtual);
+                powerLimitMinimumVirtualList.add(powerLimitMinimumVirtual);
+
+                if (powerLimitMaximumVirtual != null) {
                     double chargePowerTotalAvailable = powerLimitMaximumVirtual - totalPower;
                     chargePowerAvailableTotalList.add(chargePowerTotalAvailable);
                 } else {
                     chargePowerAvailableTotalList.add(Double.POSITIVE_INFINITY);
                 }
 
-                if (powerLimitMinimum != null) {
-                    double powerLimitMinimumVirtual = powerLimitMinimum * (1 - POWER_LIMIT_MINIMUM_SAFETY_MARGIN_PERCENTAGE * 0.01);
+                if (powerLimitMinimumVirtual != null) {
                     double dischargePowerTotalAvailable = powerLimitMinimumVirtual - totalPower;
                     dischargePowerAvailableTotalList.add(dischargePowerTotalAvailable);
                 } else {
@@ -334,7 +408,10 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
             int numberOfDataPoints = chargePowerAvailableTotalList.size();
 
-//            System.out.println("numberOfDataPoints = " + numberOfDataPoints);
+            infoStr.append(String.format("powerLimitMaximumVirtualList = %s \n", powerLimitMaximumVirtualList));
+            infoStr.append(String.format("powerLimitMinimumVirtualList = %s \n", powerLimitMinimumVirtualList));
+            infoStr.append("\n");
+
 //            System.out.println("chargePowerAvailableTotalList = " + chargePowerAvailableTotalList);
 //            System.out.println("dischargePowerAvailableTotalList = " + dischargePowerAvailableTotalList);
 
@@ -355,14 +432,11 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             List<Double> chargePercentageNeededTotalList = new ArrayList<>();
             List<Double> dischargePercentageNeededTotalList = new ArrayList<>();
 
-            chargeEfficiencyBattery = chargeEfficiencyBattery - BATTERY_EFFICIENCY_BUFFER_PERCENTAGE;
-            dischargeEfficiencyBattery = dischargeEfficiencyBattery - BATTERY_EFFICIENCY_BUFFER_PERCENTAGE;
-
             for (int i = 0; i < numberOfDataPoints; i++) {
                 double c = intervalHour * chargeNeededTotalList.get(i) * chargeEfficiencyBattery / energyCapacityBattery;
                 double d = 10000 * intervalHour * dischargeNeededTotalList.get(i) / (energyCapacityBattery * dischargeEfficiencyBattery);
-                chargePercentageNeededTotalList.add(c);
-                dischargePercentageNeededTotalList.add(d);
+                chargePercentageNeededTotalList.add(round(c, batteryPercentageRoundingPrecision));
+                dischargePercentageNeededTotalList.add(round(d, batteryPercentageRoundingPrecision));
             }
 
 //            System.out.println("chargePercentageNeededTotalList = " + chargePercentageNeededTotalList);
@@ -374,8 +448,8 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             for (int i = 0; i < numberOfDataPoints; i++) {
                 double c = intervalHour * chargePowerAvailableBatteryList.get(i) * chargeEfficiencyBattery / energyCapacityBattery;
                 double d = 10000 * intervalHour * dischargePowerAvailableBatteryList.get(i) / (energyCapacityBattery * dischargeEfficiencyBattery);
-                chargePercentageAvailableBatteryList.add(c);
-                dischargePercentageAvailableBatteryList.add(d);
+                chargePercentageAvailableBatteryList.add(round(c, batteryPercentageRoundingPrecision));
+                dischargePercentageAvailableBatteryList.add(round(d, batteryPercentageRoundingPrecision));
             }
 
 //            System.out.println("chargePercentageAvailableBatteryList = " + chargePercentageAvailableBatteryList);
@@ -394,14 +468,14 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     double dischargePercentageNeeded = energyLevelPercentageMaximumBattery - getToLimitPercentage;
                     double dischargePercentageAvailable = Math.max(dischargePercentageAvailableBatteryList.get(i), dischargePercentageNeeded);
                     getToLimitPercentage = getToLimitPercentage + dischargePercentageAvailable;
-                    dischargePercentageAvailableBatteryList.set(i, dischargePercentageAvailableBatteryList.get(i) - dischargePercentageAvailable);
-                    getToLimitPercentageList.add(getToLimitPercentage);
+                    dischargePercentageAvailableBatteryList.set(i, round(dischargePercentageAvailableBatteryList.get(i) - dischargePercentageAvailable, batteryPercentageRoundingPrecision));
+                    getToLimitPercentageList.add(round(getToLimitPercentage, batteryPercentageRoundingPrecision));
                 } else if (getToLimitPercentage < energyLevelPercentageMinimumBattery) {
                     double chargePercentageNeeded = energyLevelPercentageMinimumBattery - getToLimitPercentage;
                     double chargePercentageAvailable = Math.min(chargePercentageAvailableBatteryList.get(i), chargePercentageNeeded);
                     getToLimitPercentage = getToLimitPercentage + chargePercentageAvailable;
-                    chargePercentageAvailableBatteryList.set(i, chargePercentageAvailableBatteryList.get(i) - chargePercentageAvailable);
-                    getToLimitPercentageList.add(getToLimitPercentage);
+                    chargePercentageAvailableBatteryList.set(i, round(chargePercentageAvailableBatteryList.get(i) - chargePercentageAvailable, batteryPercentageRoundingPrecision));
+                    getToLimitPercentageList.add(round(getToLimitPercentage, batteryPercentageRoundingPrecision));
                 } else {
                     break;
                 }
@@ -410,13 +484,13 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 //            System.out.println("getToLimitIndex = " + getToLimitIndex);
 //            System.out.println("getToLimitPercentage = " + getToLimitPercentage);
 //            System.out.println("getToLimitPercentageList = " + getToLimitPercentageList);
-//            System.out.println("chargePercentageAvailableBatteryList = " + chargePercentageAvailableBatteryList);
-//            System.out.println("dischargePercentageAvailableBatteryList = " + dischargePercentageAvailableBatteryList);
+//            System.out.println("chargePercentageAvailableBatteryList2 = " + chargePercentageAvailableBatteryList);
+//            System.out.println("dischargePercentageAvailableBatteryList2 = " + dischargePercentageAvailableBatteryList);
 
             List<Double> energyLevelPredictionList = new ArrayList<>();
 
             if (getToLimitPercentage > energyLevelPercentageMaximumBattery || getToLimitPercentage < energyLevelPercentageMinimumBattery) {
-                // Energy level percentage forecast when whole forecast is outside of battery percentage limits
+                // Energy level percentage forecast when entire forecast is outside of battery percentage limits
                 energyLevelPredictionList = getToLimitPercentageList;
             } else {
                 // Calculate energy level percentage forecast starting from value within battery percentage limits
@@ -434,7 +508,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                 List<Double> chargeAndDischargePercentageWantBatteryList = new ArrayList<>();
 
                 for (int i = 0; i < numberOfDataPoints; i++) {
-                    chargeAndDischargePercentageWantBatteryList.add(chargePercentageWantBatteryList.get(i) + dischargePercentageWantBatteryList.get(i));
+                    chargeAndDischargePercentageWantBatteryList.add(round(chargePercentageWantBatteryList.get(i) + dischargePercentageWantBatteryList.get(i), batteryPercentageRoundingPrecision));
                 }
 
 //                System.out.println("chargeAndDischargePercentageWantBatteryList = " + chargeAndDischargePercentageWantBatteryList);
@@ -447,7 +521,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
                 for (int i = startRunningSumIndex; i < numberOfDataPoints; i++) {
                     sum = sum + chargeAndDischargePercentageWantBatteryList.get(i);
-                    runningSumList.add(sum);
+                    runningSumList.add(round(sum, batteryPercentageRoundingPrecision));
                 }
 
 //                System.out.println("getToLimitPercentageList = " + getToLimitPercentageList);
@@ -459,13 +533,13 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     energyLevelPredictionList.addAll(getToLimitPercentageList.subList(0, getToLimitPercentageList.size() - 1));
                 }
                 energyLevelPredictionList.addAll(runningSumList);
+                int energyLevelPredictionListSize = energyLevelPredictionList.size();
 
-//                System.out.println("energyLevelPredictionList = " + energyLevelPredictionList);
-//                System.out.println();
+                infoStr.append(String.format("energyLevelPredictionListOriginal = %s \n", energyLevelPredictionList));
 
                 // Calculate forecast starting within battery percentage limits
-                double energyLevelPredictionMaximum = Collections.max(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionList.size()));
-                double energyLevelPredictionMinimum = Collections.min(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionList.size()));
+                double energyLevelPredictionMaximum = Collections.max(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionListSize));
+                double energyLevelPredictionMinimum = Collections.min(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionListSize));
 
                 long dtStart = services.getTimerService().getCurrentTimeMillis();
                 long dt = 0;
@@ -478,7 +552,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     String chargeOrDischarge = "";
                     int intervalStartIndex = startRunningSumIndex;
 
-                    for (int i = intervalEndIndex; i < energyLevelPredictionList.size(); i++) {
+                    for (int i = intervalEndIndex; i < energyLevelPredictionListSize; i++) {
                         predictionListIndex = i;
 
                         if (energyLevelPredictionList.get(i) < energyLevelPercentageMinimumBattery) {
@@ -523,7 +597,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
                     if (chargeOrDischarge.equals("charge")) {
                         double chargeAvailable = 0;
-                        double chargeAvailableInterval = energyLevelPercentageMaximumBattery - Collections.max(energyLevelPredictionList.subList(intervalStartIndex, intervalEndIndex));
+                        double chargeAvailableInterval = round(energyLevelPercentageMaximumBattery - Collections.max(energyLevelPredictionList.subList(intervalStartIndex, intervalEndIndex)), batteryPercentageRoundingPrecision);
 
                         if (chargeAvailableInterval > 0) {
                             for (int i = intervalEndIndex - 1; i >= intervalStartIndex; i--) {
@@ -535,7 +609,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
                                 if (dischargePercentageWantBatteryList.get(i) >= 0) {
                                     double chargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                    chargeAvailableLeft = chargePercentageAvailableBatteryList.get(i) - chargeInUse;
+                                    chargeAvailableLeft = round(chargePercentageAvailableBatteryList.get(i) - chargeInUse, batteryPercentageRoundingPrecision);
                                 }
 
                                 if (chargeAvailableLeft > 0) {
@@ -554,12 +628,12 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                             changeValue = chargeNeeded;
                         }
 
-                        for (int i = changeIndex; i < energyLevelPredictionList.size(); i++) {
-                            energyLevelPredictionList.set(i, energyLevelPredictionList.get(i) + changeValue);
+                        for (int i = changeIndex; i < energyLevelPredictionListSize; i++) {
+                            energyLevelPredictionList.set(i, round(energyLevelPredictionList.get(i) + changeValue, batteryPercentageRoundingPrecision));
                         }
                     } else if (chargeOrDischarge.equals("discharge")) {
                         double dischargeAvailable = 0;
-                        double dischargeAvailableInterval = energyLevelPercentageMinimumBattery - Collections.min(energyLevelPredictionList.subList(intervalStartIndex, intervalEndIndex));
+                        double dischargeAvailableInterval = round(energyLevelPercentageMinimumBattery - Collections.min(energyLevelPredictionList.subList(intervalStartIndex, intervalEndIndex)), batteryPercentageRoundingPrecision);
 
                         if (dischargeAvailableInterval > 0) {
                             for (int i = intervalEndIndex - 1; i >= intervalStartIndex; i--) {
@@ -571,7 +645,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
                                 if (chargePercentageWantBatteryList.get(i) <= 0) {
                                     double dischargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                    dischargeAvailableLeft = dischargePercentageAvailableBatteryList.get(i) - dischargeInUse;
+                                    dischargeAvailableLeft = round(dischargePercentageAvailableBatteryList.get(i) - dischargeInUse, batteryPercentageRoundingPrecision);
                                 }
                                 if (dischargeAvailableLeft < 0) {
                                     changeIndex = i;
@@ -589,27 +663,29 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                             changeValue = dischargeNeeded;
                         }
 
-                        for (int i = changeIndex; i < energyLevelPredictionList.size(); i++) {
-                            energyLevelPredictionList.set(i, energyLevelPredictionList.get(i) + changeValue);
+                        for (int i = changeIndex; i < energyLevelPredictionListSize; i++) {
+                            energyLevelPredictionList.set(i, round(energyLevelPredictionList.get(i) + changeValue, batteryPercentageRoundingPrecision));
                         }
                     }
 
                     if (energyLevelPredictionValueBefore == energyLevelPredictionList.get(intervalEndIndex)) {
-                        LOG.warning(String.format("Battery energy level percentage calculation error at index = %s", predictionListIndex));
-//                        System.out.println("ERROR: calculation error at index = " + predictionListIndex);
+                        infoStr.insert(0, String.format("Battery energy level percentage calculation error at timestamp = %s", timestampsMillisList.get(predictionListIndex)));
+                        infoStr.append(String.format("energyLevelPredictionListOptimised = %s \n", energyLevelPredictionList));
+                        LOG.warning(infoStr.toString());
                         break;
                     } else if (dt > timeoutMillis) {
-                        LOG.warning(String.format("Battery energy level percentage calculation timed out at index = %s", predictionListIndex));
-//                        System.out.println("ERROR: calculation timeout at index = " + predictionListIndex);
+                        infoStr.insert(0, String.format("Battery energy level percentage calculation timed out during power limit optimisation at timestamp = %s", timestampsMillisList.get(predictionListIndex)));
+                        infoStr.append(String.format("energyLevelPredictionListOptimised = %s \n", energyLevelPredictionList));
+                        LOG.warning(infoStr.toString());
                         break;
                     }
 
-                    energyLevelPredictionMaximum = Collections.max(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionList.size()));
-                    energyLevelPredictionMinimum = Collections.min(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionList.size()));
+                    energyLevelPredictionMaximum = Collections.max(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionListSize));
+                    energyLevelPredictionMinimum = Collections.min(energyLevelPredictionList.subList(startRunningSumIndex, energyLevelPredictionListSize));
                     dt = services.getTimerService().getCurrentTimeMillis() - dtStart;
                 }
 
-//                System.out.println("After limits: energyLevelPredictionList = " + energyLevelPredictionList + "\n");
+//                System.out.println("energyLevelPredictionListOptimisedLimits = " + energyLevelPredictionList + "\n");
 
                 // Get day ahead asset
                 EmsDayAheadAsset dayAheadAsset = getDayAheadAsset(energyOptimisationAsset, services);
@@ -619,7 +695,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     useDayAheadTariffs = dayAheadAsset.getUseTariffDayAheadForecasts().orElse(false);
                 }
 
-                // Get the tariff forecasts from energy optimisation asset for 1 week
+                // Get the tariff forecasts from energy optimisation asset for 1 week, timestamps are ordered from newest to oldest (descending order)
                 List<ValueDatapoint<?>> tariffExportDatapoints = getTariffDatapoints(energyOptimisationAsset, EmsEnergyOptimisationAsset.TARIFF_EXPORT.getName(), services);
                 List<ValueDatapoint<?>> tariffImportDatapoints = getTariffDatapoints(energyOptimisationAsset, EmsEnergyOptimisationAsset.TARIFF_IMPORT.getName(), services);
 
@@ -661,15 +737,11 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                     }
                 }
 
-                // Calculate battery energy level percentage default
-                double energyLevelPercentageDefault = batteryCalculateEnergyLevelPercentageDefault(energyLevelPercentageMaximumBattery, energyLevelPercentageMinimumBattery, energyOptimisationAsset);
-
-                // TODO: make window dynamic based on time needed to reach energyLevelPercentageDefault
                 // Calculate optimal charge and discharge zone for each day based on tariffs
-                Map<Long, Integer> chargeAndDischargeZonesMap = calculateTariffChargeAndDischargeZones(tariffImportDatapoints, tariffExportDatapoints, 4);
+                Map<Long, Integer> chargeAndDischargeZonesMap = calculateTariffChargeAndDischargeZones(tariffImportDatapoints, tariffExportDatapoints, BATTERY_TARIFF_OPTIMISATION_WINDOW_DEFAULT);
 
                 // Charge zone = 1, discharge zone = -1
-                List<Integer> chargeAndDischargeZonesList = new ArrayList<>(Collections.nCopies(energyLevelPredictionList.size(), 0));
+                List<Integer> chargeAndDischargeZonesList = new ArrayList<>(Collections.nCopies(energyLevelPredictionListSize, 0));
 
                 for (Map.Entry<Long, Integer> entry : chargeAndDischargeZonesMap.entrySet()) {
                     long timestampMillis = entry.getKey();
@@ -685,10 +757,11 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
 //                System.out.println("chargeAndDischargeZonesList = " + chargeAndDischargeZonesList);
 
-                // Default energy level percentage for each interval
-                List<Double> energyLevelPercentageDefaultList = new ArrayList<>(Collections.nCopies(chargeAndDischargeZonesList.size(), energyLevelPercentageDefault));
+                // Calculate battery energy level percentage default list
+                double energyLevelPercentageDefault = batteryCalculateEnergyLevelPercentageDefault(energyLevelPercentageMaximumBattery, energyLevelPercentageMinimumBattery, energyOptimisationAsset);
+                List<Double> energyLevelPercentageDefaultList = new ArrayList<>(Collections.nCopies(energyLevelPredictionListSize, energyLevelPercentageDefault));
 
-                for (int i = 0; i < chargeAndDischargeZonesList.size(); i++) {
+                for (int i = 0; i < energyLevelPredictionListSize; i++) {
                     if (chargeAndDischargeZonesList.get(i) == 1) {
                         energyLevelPercentageDefaultList.set(i, Double.valueOf(energyLevelPercentageMaximumBattery));
                     } else if (chargeAndDischargeZonesList.get(i) == -1) {
@@ -698,135 +771,151 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
 //                System.out.println("energyLevelPercentageDefaultList = " + energyLevelPercentageDefaultList);
 
-                // TODO: handle debounce interval in forecast
-                // Optimise forecast based on optimal tariffs
-                for (int i = 1; i < chargeAndDischargeZonesList.size() && i < energyLevelPredictionList.size(); i++) {
-                    // Only adjust forecast if predicted energy level percentage is outside battery debounce interval
-                    if (Math.abs(energyLevelPredictionList.get(i) - energyLevelPercentageDefaultList.get(i)) <= BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL) {
-                        continue;
-                    }
-
+                // Optimise forecast based on tariffs
+                for (int i = 1; i < chargeAndDischargeZonesList.size() && i < energyLevelPredictionListSize; i++) {
                     if (chargeAndDischargeZonesList.get(i) == 1 && energyLevelPredictionList.get(i) < energyLevelPercentageDefaultList.get(i)) {
-                        Double energyLevelIntervalMaximum = Collections.max(energyLevelPredictionList.subList(i, energyLevelPredictionList.size()));
+                        // Interval from charge zone index till end of forecast
+                        Double energyLevelIntervalMaximum = Collections.max(energyLevelPredictionList.subList(i, energyLevelPredictionListSize));
+                        double chargeSpaceOverall = round(energyLevelPercentageMaximumBattery - energyLevelIntervalMaximum, batteryPercentageRoundingPrecision);
 
-                        double chargeSpaceLeft = energyLevelPercentageMaximumBattery - energyLevelIntervalMaximum;
-
-                        if (chargeSpaceLeft > 0) {
-                            double chargeNeeded = energyLevelPercentageDefaultList.get(i) - energyLevelPredictionList.get(i);
+                        if (chargeSpaceOverall > 0) {
+                            double chargeNeeded = round(energyLevelPercentageDefaultList.get(i) - energyLevelPredictionList.get(i), batteryPercentageRoundingPrecision);
                             double chargeAvailableLeft = 0;
 
                             if (dischargePercentageWantBatteryList.get(i) >= 0) {
                                 double chargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                chargeAvailableLeft = chargePercentageAvailableBatteryList.get(i) - chargeInUse;
+                                chargeAvailableLeft = round(chargePercentageAvailableBatteryList.get(i) - chargeInUse, batteryPercentageRoundingPrecision);
                             }
 
                             if (chargeAvailableLeft > 0) {
-                                chargeAvailableLeft = Math.min(Math.min(chargeSpaceLeft, chargeAvailableLeft), chargeNeeded);
+                                chargeAvailableLeft = Math.min(Math.min(chargeSpaceOverall, chargeAvailableLeft), chargeNeeded);
+                                chargeSpaceOverall = round(chargeSpaceOverall - chargeAvailableLeft, batteryPercentageRoundingPrecision);
 
-                                for (int j = i; j < energyLevelPredictionList.size(); j++) {
-                                    energyLevelPredictionList.set(j, energyLevelPredictionList.get(j) + chargeAvailableLeft);
-                                }
-                            }
-                        } else {
-                            double chargeZoneEnergyLevel = energyLevelPredictionList.get(i);
-
-                            int energyLevelIntervalMaximumIndex = energyLevelPredictionList.size();
-
-                            if (energyLevelIntervalMaximum >= energyLevelPercentageMaximumBattery) {
-                                energyLevelIntervalMaximumIndex = energyLevelPredictionList.indexOf(energyLevelIntervalMaximum);
-                            }
-
-                            for (int k = i; k <= energyLevelIntervalMaximumIndex; k++) {
-                                double chargeNeeded = energyLevelPredictionList.get(k) - chargeZoneEnergyLevel;
-
-                                if (chargeNeeded > 0 && chargePercentageWantBatteryList.get(k) == 0) {
-                                    double chargeAvailableLeft = 0;
-
-                                    if (dischargePercentageWantBatteryList.get(i) >= 0) {
-                                        double chargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                        chargeAvailableLeft = chargePercentageAvailableBatteryList.get(i) - chargeInUse;
-                                    }
-
-                                    if (chargeAvailableLeft > 0) {
-                                        double energyLevelIntervalMaximum2 = Collections.max(energyLevelPredictionList.subList(i, k - 1));
-                                        double chargeSpaceInterval = energyLevelPercentageMaximumBattery - energyLevelIntervalMaximum2;
-
-                                        if (chargeSpaceInterval > 0) {
-                                            chargeAvailableLeft = Math.min(Math.min(chargeAvailableLeft, chargeNeeded), chargeSpaceInterval);
-
-                                            for (int j = i; j < k; j++) {
-                                                energyLevelPredictionList.set(j, energyLevelPredictionList.get(j) + chargeAvailableLeft);
-                                            }
-                                        }
-                                    }
-
-                                    break;
+                                for (int j = i; j < energyLevelPredictionListSize; j++) {
+                                    energyLevelPredictionList.set(j, round(energyLevelPredictionList.get(j) + chargeAvailableLeft, batteryPercentageRoundingPrecision));
                                 }
                             }
                         }
+
+                        // Get the index of the first maximum
+                        energyLevelIntervalMaximum = Collections.max(energyLevelPredictionList.subList(i, energyLevelPredictionListSize));
+                        int energyLevelIntervalMaximumIndex = energyLevelPredictionList.indexOf(energyLevelIntervalMaximum);
+
+                        if (chargeSpaceOverall <= 0 && i < energyLevelIntervalMaximumIndex) {
+                            double chargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
+                            double chargeAvailableLeft = round(chargePercentageAvailableBatteryList.get(i) - chargeInUse, batteryPercentageRoundingPrecision);
+
+                            int energyLevelIntervalIndex = 0;
+                            dt = 0;
+                            dtStart = services.getTimerService().getCurrentTimeMillis();
+
+                            while (chargeAvailableLeft > 0 && energyLevelIntervalIndex < energyLevelIntervalMaximumIndex) {
+
+                                for (int k = i + 1; k <= energyLevelIntervalMaximumIndex; k++) {
+                                    energyLevelIntervalIndex = k;
+                                    double chargeNeeded = round(energyLevelPredictionList.get(k) - energyLevelPredictionList.get(i), batteryPercentageRoundingPrecision);
+
+                                    // Only allow moving charging moment into charge zone if no charge is wanted at index k
+                                    if (chargeNeeded > 0 && chargePercentageWantBatteryList.get(k) == 0) {
+                                        double energyLevelIntervalMaximum2 = Collections.max(energyLevelPredictionList.subList(i, k));
+                                        double chargeSpaceInterval = round(energyLevelPercentageMaximumBattery - energyLevelIntervalMaximum2, batteryPercentageRoundingPrecision);
+
+                                        if (chargeSpaceInterval > 0) {
+                                            double chargeChange = Math.min(Math.min(chargeAvailableLeft, chargeNeeded), chargeSpaceInterval);
+                                            chargeAvailableLeft = round(chargeAvailableLeft - chargeChange, batteryPercentageRoundingPrecision);
+
+                                            for (int j = i; j < k; j++) {
+                                                energyLevelPredictionList.set(j, round(energyLevelPredictionList.get(j) + chargeChange, batteryPercentageRoundingPrecision));
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (dt > timeoutMillis) {
+                                    infoStr.insert(0, String.format("Battery energy level percentage calculation timed out during tariff charge optimisation at timestamp = %s", timestampsMillisList.get(i)));
+                                    infoStr.append(String.format("energyLevelPredictionListOptimised = %s \n", energyLevelPredictionList));
+                                    LOG.warning(infoStr.toString());
+                                    break;
+                                }
+
+                                dt = services.getTimerService().getCurrentTimeMillis() - dtStart;
+                            }
+                        }
                     } else if (chargeAndDischargeZonesList.get(i) == -1 && energyLevelPredictionList.get(i) > energyLevelPercentageDefaultList.get(i)) {
-                        Double energyLevelIntervalMinimum = Collections.min(energyLevelPredictionList.subList(i, energyLevelPredictionList.size()));
+                        // Interval from discharge zone index till end of forecast
+                        Double energyLevelIntervalMinimum = Collections.min(energyLevelPredictionList.subList(i, energyLevelPredictionListSize));
+                        double dischargeSpaceOverall = round(energyLevelPercentageMinimumBattery - energyLevelIntervalMinimum, batteryPercentageRoundingPrecision);
 
-                        double dischargeSpaceLeft = energyLevelPercentageMinimumBattery - energyLevelIntervalMinimum;
-
-                        if (dischargeSpaceLeft < 0) {
-                            double dischargeNeeded = energyLevelPercentageDefaultList.get(i) - energyLevelPredictionList.get(i);
+                        if (dischargeSpaceOverall < 0) {
+                            double dischargeNeeded = round(energyLevelPercentageDefaultList.get(i) - energyLevelPredictionList.get(i), batteryPercentageRoundingPrecision);
                             double dischargeAvailableLeft = 0;
 
                             if (chargePercentageWantBatteryList.get(i) <= 0) {
                                 double dischargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                dischargeAvailableLeft = dischargePercentageAvailableBatteryList.get(i) - dischargeInUse;
+                                dischargeAvailableLeft = round(dischargePercentageAvailableBatteryList.get(i) - dischargeInUse, batteryPercentageRoundingPrecision);
                             }
 
                             if (dischargeAvailableLeft < 0) {
-                                dischargeAvailableLeft = Math.max(Math.max(dischargeSpaceLeft, dischargeAvailableLeft), dischargeNeeded);
+                                dischargeAvailableLeft = Math.max(Math.max(dischargeSpaceOverall, dischargeAvailableLeft), dischargeNeeded);
+                                dischargeSpaceOverall = round(dischargeSpaceOverall - dischargeAvailableLeft, batteryPercentageRoundingPrecision);
 
-                                for (int j = i; j < energyLevelPredictionList.size(); j++) {
-                                    energyLevelPredictionList.set(j, energyLevelPredictionList.get(j) + dischargeAvailableLeft);
+                                for (int j = i; j < energyLevelPredictionListSize; j++) {
+                                    energyLevelPredictionList.set(j, round(energyLevelPredictionList.get(j) + dischargeAvailableLeft, batteryPercentageRoundingPrecision));
                                 }
                             }
-                        } else {
-                            double dischargeZoneEnergyLevel = energyLevelPredictionList.get(i);
+                        }
 
-                            int energyLevelIntervalMinimumIndex = energyLevelPredictionList.size();
+                        // Get the index of the first minimum
+                        energyLevelIntervalMinimum = Collections.min(energyLevelPredictionList.subList(i, energyLevelPredictionListSize));
+                        int energyLevelIntervalMinimumIndex = energyLevelPredictionList.indexOf(energyLevelIntervalMinimum);
 
-                            if (energyLevelIntervalMinimum <= energyLevelPercentageMinimumBattery) {
-                                energyLevelIntervalMinimumIndex = energyLevelPredictionList.indexOf(energyLevelIntervalMinimum);
-                            }
+                        if (dischargeSpaceOverall >= 0 && i < energyLevelIntervalMinimumIndex) {
+                            double dischargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
+                            double dischargeAvailableLeft = round(dischargePercentageAvailableBatteryList.get(i) - dischargeInUse, batteryPercentageRoundingPrecision);
 
-                            for (int k = i; k <= energyLevelIntervalMinimumIndex; k++) {
-                                double dischargeNeeded = energyLevelPredictionList.get(k) - dischargeZoneEnergyLevel;
+                            int energyLevelIntervalIndex = 0;
+                            dt = 0;
+                            dtStart = services.getTimerService().getCurrentTimeMillis();
 
-                                if (dischargeNeeded < 0 && dischargePercentageWantBatteryList.get(k) == 0) {
-                                    double dischargeAvailableLeft = 0;
+                            while (dischargeAvailableLeft < 0 && energyLevelIntervalIndex < energyLevelIntervalMinimumIndex) {
 
-                                    if (chargePercentageWantBatteryList.get(i) <= 0) {
-                                        double dischargeInUse = energyLevelPredictionList.get(i) - energyLevelPredictionList.get(i - 1);
-                                        dischargeAvailableLeft = dischargePercentageAvailableBatteryList.get(i) - dischargeInUse;
-                                    }
+                                for (int k = i + 1; k <= energyLevelIntervalMinimumIndex; k++) {
+                                    energyLevelIntervalIndex = k;
+                                    double dischargeNeeded = round(energyLevelPredictionList.get(k) - energyLevelPredictionList.get(i), batteryPercentageRoundingPrecision);
 
-                                    if (dischargeAvailableLeft < 0) {
-                                        double energyLevelIntervalMinimum2 = Collections.min(energyLevelPredictionList.subList(i, k - 1));
-                                        double dischargeSpaceInterval = energyLevelPercentageMinimumBattery - energyLevelIntervalMinimum2;
+                                    // Only allow moving discharging moment into discharge zone if no discharge is wanted at index k
+                                    if (dischargeNeeded < 0 && dischargePercentageWantBatteryList.get(k) == 0) {
+                                        double energyLevelIntervalMinimum2 = Collections.min(energyLevelPredictionList.subList(i, k));
+                                        double dischargeSpaceInterval = round(energyLevelPercentageMinimumBattery - energyLevelIntervalMinimum2, batteryPercentageRoundingPrecision);
 
                                         if (dischargeSpaceInterval < 0) {
-                                            dischargeAvailableLeft = Math.max(Math.max(dischargeAvailableLeft, dischargeNeeded), dischargeSpaceInterval);
+                                            double dischargeChange = Math.max(Math.max(dischargeAvailableLeft, dischargeNeeded), dischargeSpaceInterval);
+                                            dischargeAvailableLeft = round(dischargeAvailableLeft - dischargeChange, batteryPercentageRoundingPrecision);
 
                                             for (int j = i; j < k; j++) {
-                                                energyLevelPredictionList.set(j, energyLevelPredictionList.get(j) + dischargeAvailableLeft);
+                                                energyLevelPredictionList.set(j, round(energyLevelPredictionList.get(j) + dischargeChange, batteryPercentageRoundingPrecision));
                                             }
+                                            break;
                                         }
                                     }
+                                }
 
+                                if (dt > timeoutMillis) {
+                                    infoStr.insert(0, String.format("Battery energy level percentage calculation timed out during tariff discharge optimisation at timestamp = %s", timestampsMillisList.get(i)));
+                                    infoStr.append(String.format("energyLevelPredictionListOptimised = %s \n", energyLevelPredictionList));
+                                    LOG.warning(infoStr.toString());
                                     break;
                                 }
+
+                                dt = services.getTimerService().getCurrentTimeMillis() - dtStart;
                             }
                         }
                     }
                 }
             }
 
-//            System.out.println("After Tariffs: energyLevelPredictionList = " + energyLevelPredictionList + "\n");
+//            System.out.println("energyLevelPredictionListOptimisedLimitsAndTariffs = " + energyLevelPredictionList + "\n");
 
             // Get the current energy level percentage target
             int batteryEnergyLevelPercentageTarget = (int) Math.round(energyLevelPredictionList.get(1));
@@ -859,36 +948,35 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
 //            System.out.println("powerChangeTotalList = " + powerChangeTotalList);
 
+            // Update list with power flexible changes
             for (int i = 0; i < powerChangeTotalList.size() - 1; i++) {
-                totalPowerConsumptionProductionFlexList.set(i, totalPowerConsumptionProductionFlexList.get(i) - powerChangeTotalList.get(i));
+                totalPowerConsumptionProductionFlexibleList.set(i, totalPowerConsumptionProductionFlexibleList.get(i) - powerChangeTotalList.get(i));
             }
 
-//            System.out.println("totalPowerConsumptionProductionFlexList = " + totalPowerConsumptionProductionFlexList);
+//            System.out.println("totalPowerConsumptionProductionFlexibleList = " + totalPowerConsumptionProductionFlexibleList);
 
             List<ValueDatapoint<?>> energyLevelPercentageForecast = new ArrayList<>();
             List<ValueDatapoint<?>> powerSetpointForecast = new ArrayList<>();
 
             // Update energy level percentage forecast starting after current time
-            for (int i = 1; i < timestampsMillisList.size(); i++) {
+            for (int i = 1; i < numberOfTimestamps; i++) {
                 energyLevelPercentageForecast.add(new ValueDatapoint<>(timestampsMillisList.get(i), (int) Math.round(energyLevelPredictionList.get(i))));
             }
 
             // Update power set-point starting from current power limit
-            for (int i = 0; i < timestampsMillisList.size(); i++) {
+            for (int i = 0; i < numberOfTimestamps; i++) {
                 powerSetpointForecast.add(new ValueDatapoint<>(timestampsMillisList.get(i), powerChangeTotalList.get(i)));
             }
 
             services.getAssetPredictedDatapointService().updateValues(batteryAssetId, EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE.getName(), energyLevelPercentageForecast);
             services.getAssetPredictedDatapointService().updateValues(batteryAssetId, EmsElectricityBatteryAsset.POWER_SETPOINT.getName(), powerSetpointForecast);
-
-//            System.out.println("UPDATED forecasts");
         }
 
         return batteryEnergyLevelPercentageTargets;
     }
 
-    private Map<String, double[]> batteryCalculatePowerFlexibleAvailable(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
-        HashMap<String, double[]> powerFlexibleAvailable = new HashMap<>();
+    private Map<String, ChargeDischarge> batteryCalculatePowerFlexibleAvailable(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
+        Map<String, ChargeDischarge> powerFlexibleAvailable = new HashMap<>();
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
             boolean allowCharging = electricityBatteryAsset.getAllowCharging().orElse(false);
@@ -912,28 +1000,17 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                 dischargePowerMaximum = 0.0;
             }
 
-            powerFlexibleAvailable.put(electricityBatteryAsset.getId(), new double[]{chargePowerMaximum, dischargePowerMaximum});
+            powerFlexibleAvailable.put(electricityBatteryAsset.getId(), new ChargeDischarge(chargePowerMaximum, dischargePowerMaximum));
         }
 
         return powerFlexibleAvailable;
     }
 
-    private Map<String, Double> batteryCalculatePowerSetpoints(EmsEnergyOptimisationAsset energyOptimisationAsset, List<EmsElectricityBatteryAsset> electricityBatteryAssets, Services services, String logPrefix) {
-        Map<String, double[]> powerFlexibleAvailable = batteryCalculatePowerFlexibleAvailable(electricityBatteryAssets);
+    private Map<String, Double> batteryCalculatePowerSetpoints(EmsEnergyOptimisationAsset energyOptimisationAsset, List<EmsElectricityBatteryAsset> electricityBatteryAssets, long powerSetpointTimestampMillisLatest, Map<String, Integer> batteryEnergyLevelPercentageTargets, Services services, String logPrefixEnergyOptimisation) {
+        Map<String, ChargeDischarge> powerFlexibleAvailable = batteryCalculatePowerFlexibleAvailable(electricityBatteryAssets);
         Map<String, Double> powerSetpointsNew;
 
-        // Get latest power set-point across all batteries
-        long powerSetpointTimestampMillisLatest = 0L;
-
-        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-            long powerSetpointTimestampMillis = electricityBatteryAsset.getPowerSetpointTimestamp().orElse(0L);
-
-            if (powerSetpointTimestampMillis > powerSetpointTimestampMillisLatest) {
-                powerSetpointTimestampMillisLatest = powerSetpointTimestampMillis;
-            }
-        }
-
-        // Check if power net is updated since last battery power set-points update
+        // Check if power net updated since last batteries power set-point update
         Double powerNet = energyOptimisationAsset.getPowerNet().orElse(null);
         long powerNetTimestampMillis = energyOptimisationAsset.getPowerNetTimestamp().orElse(0L);
 
@@ -943,113 +1020,180 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             return powerSetpointsNew;
         }
 
-        // Check if power limits are present and calculate additional power limits
+        // Check if power limits are present
         Double powerLimitMaximumProfileTotal = energyOptimisationAsset.getPowerLimitMaximumProfileTotal().orElse(null);
         Double powerLimitMinimumProfileTotal = energyOptimisationAsset.getPowerLimitMinimumProfileTotal().orElse(null);
 
-        Double powerLimitMaximumBatteries = null;
+        // Calculate debounce power limits
+        Double powerLimitMaximumVirtual = calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximumProfileTotal, "max");
+        Double powerLimitMinimumVirtual = calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMinimumProfileTotal, "min");
 
-        if (powerLimitMaximumProfileTotal != null) {
-            powerLimitMaximumBatteries = round(powerLimitMaximumProfileTotal * (1 - POWER_LIMIT_MAXIMUM_BATTERIES_MARGIN_PERCENTAGE * 0.01), 3);
-        }
+        // Send warning LOG message when too large fluctuation margins are set
+        if (powerLimitMaximumProfileTotal != null && powerLimitMinimumProfileTotal != null && powerLimitMaximumVirtual != null && powerLimitMinimumVirtual != null && powerLimitMaximumVirtual < powerLimitMinimumVirtual) {
+            double diffPowerLimit = powerLimitMaximumProfileTotal - powerLimitMinimumProfileTotal;
+            double fluctuationMarginSum = Math.abs(powerLimitMaximumProfileTotal - powerLimitMaximumVirtual) + Math.abs(powerLimitMinimumProfileTotal - powerLimitMinimumVirtual);
 
-        Double powerLimitMinimumBatteries = null;
+            Long powerLimitMaximumProfileTimestampMillis = energyOptimisationAsset.getPowerLimitMaximumProfileTotalTimestamp().orElse(null);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+            String powerLimitMaximumProfileDateTime = "";
 
-        if (powerLimitMinimumProfileTotal != null) {
-            powerLimitMinimumBatteries = round(powerLimitMinimumProfileTotal * (1 - POWER_LIMIT_MINIMUM_BATTERIES_MARGIN_PERCENTAGE * 0.01), 3);
-        }
+            if (powerLimitMaximumProfileTimestampMillis != null) {
+                powerLimitMaximumProfileDateTime = formatter.format(Instant.ofEpochMilli(powerLimitMaximumProfileTimestampMillis));
+            }
 
-        // TODO: add battery limits cross-over warning
-        // TODO: add advanced settings
-
-        int currentMinute = LocalDateTime.now().getMinute();
-        Map<String, Integer> batteryEnergyLevelPercentageTargets = batteryGetEnergyLevelPercentageTargetsCurrent(electricityBatteryAssets, services);
-
-        // Calculate battery energy level forecast
-        // TODO: add 15 minute skip protection with forecast update timestamp for robust forecast updating
-        if ((currentMinute % 15) == 0) {
-            batteryEnergyLevelPercentageTargets = batteryCalculateForecasts(electricityBatteryAssets, energyOptimisationAsset, services);
+            LOG.warning(String.format("%s; Failed to perform '%s' energy optimisation method. The difference between '%s' - %s = %s kW is smaller than the fluctuation margin sum = %s kW for timestamp='%s'",
+                    logPrefixEnergyOptimisation, optimisationMethodName, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName(),
+                    EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName(), diffPowerLimit, fluctuationMarginSum, powerLimitMaximumProfileDateTime));
         }
 
         // Calculate virtual power consumption
         Map<String, Double> powerSetpointsCurrent = new HashMap<>();
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-            String electricityBatteryAssetId = electricityBatteryAsset.getId();
             double powerSetpoint = electricityBatteryAsset.getPowerSetpoint().orElse(0.0);
-            powerSetpointsCurrent.put(electricityBatteryAssetId, powerSetpoint);
+            powerSetpointsCurrent.put(electricityBatteryAsset.getId(), powerSetpoint);
         }
 
         double powerSetpointsCurrentSum = powerSetpointsCurrent.values().stream().mapToDouble(Double::doubleValue).sum();
         double powerConsumptionVirtual = powerNet - powerSetpointsCurrentSum;
 
-        // Calculate new power set-points
-        if (powerLimitMaximumProfileTotal != null && powerConsumptionVirtual > powerLimitMaximumProfileTotal) {
-            Double powerLimitMaximumVirtual = round(powerLimitMaximumProfileTotal * (1 - POWER_LIMIT_MAXIMUM_SAFETY_MARGIN_PERCENTAGE * 0.01), 3);
-            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerFlexibleAvailable, powerConsumptionVirtual, powerLimitMaximumVirtual, "max");
-        } else if (powerLimitMinimumProfileTotal != null && powerConsumptionVirtual < powerLimitMinimumProfileTotal) {
-            Double powerLimitMinimumVirtual = round(powerLimitMinimumProfileTotal * (1 - POWER_LIMIT_MINIMUM_SAFETY_MARGIN_PERCENTAGE * 0.01), 3);
-            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerFlexibleAvailable, powerConsumptionVirtual, powerLimitMinimumVirtual, "min");
+        // Calculate new power set-points without limits
+        Map<String, Double> powerSetpointsNewWithoutLimits = batteryCalculatePowerSetpointsWithoutLimits(electricityBatteryAssets, batteryEnergyLevelPercentageTargets, energyOptimisationAsset, powerFlexibleAvailable, services);
+
+        // Apply power limits and adjust new power set-points
+        double powerSetpointsNewWithoutLimitsSum = powerSetpointsNewWithoutLimits.values().stream().mapToDouble(Double::doubleValue).sum();
+        double powerNetVirtualNew = powerConsumptionVirtual + powerSetpointsNewWithoutLimitsSum;
+
+        double powerLimitMaximumFluctuation = calculatePowerFluctuationMargin(energyOptimisationAsset, powerLimitMaximumProfileTotal, "max");
+        double powerLimitMinimumFluctuation = calculatePowerFluctuationMargin(energyOptimisationAsset, powerLimitMinimumProfileTotal, "min");
+
+        if (powerLimitMaximumVirtual != null && (powerNetVirtualNew + powerLimitMaximumFluctuation) > powerLimitMaximumVirtual) {
+            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMaximumVirtual, electricityBatteryAssets, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
+        } else if (powerLimitMinimumVirtual != null && (powerNetVirtualNew - powerLimitMinimumFluctuation) < powerLimitMinimumVirtual) {
+            powerSetpointsNew = batteryCalculatePowerSetpointsOnLimitBreach(powerNetVirtualNew, powerLimitMinimumVirtual, electricityBatteryAssets, powerFlexibleAvailable, powerSetpointsNewWithoutLimits);
         } else {
-            powerSetpointsNew = batteryRestoreEnergyLevels(energyOptimisationAsset, electricityBatteryAssets, powerFlexibleAvailable, powerNet, powerSetpointsCurrentSum, powerLimitMinimumBatteries, powerLimitMaximumBatteries, batteryEnergyLevelPercentageTargets);
+            powerSetpointsNew = powerSetpointsNewWithoutLimits;
         }
 
-        // Create log messages on power limit breach
+        // Send warning LOG message on power limit breach
         double powerSetpointsNewSum = powerSetpointsNew.values().stream().mapToDouble(Double::doubleValue).sum();
         double powerNetNewVirtual = powerConsumptionVirtual + powerSetpointsNewSum;
 
-        if (powerLimitMaximumProfileTotal != null && powerNet > powerLimitMaximumProfileTotal) {
-            double powerExceededAmount = round((powerNet - powerLimitMaximumProfileTotal), 3);
-            LOG.warning(String.format("%s; Power net is %s kW above power limit maximum", logPrefix, powerExceededAmount));
-
-            if (powerNetNewVirtual > powerLimitMaximumProfileTotal) {
-                double powerReductionShortage = round((powerNetNewVirtual - powerLimitMaximumProfileTotal), 3);
-                LOG.warning(String.format("%s; Not enough flexible power to get below power limit maximum; Shortage of %s kW", logPrefix, powerReductionShortage));
-            }
-        } else if (powerLimitMinimumProfileTotal != null && powerNet < powerLimitMinimumProfileTotal) {
-            double powerExceededAmount = round((powerNet - powerLimitMinimumProfileTotal), 3);
-            LOG.warning(String.format("%s; Power net is %s kW below power limit minimum", logPrefix, powerExceededAmount));
-
-            if (powerNetNewVirtual < powerLimitMinimumProfileTotal) {
-                double powerReductionShortage = round((powerNetNewVirtual - powerLimitMinimumProfileTotal), 3);
-                LOG.warning(String.format("%s; Not enough flexible power to get above power limit minimum; Shortage of %s kW", logPrefix, powerReductionShortage));
-            }
+        if (powerLimitMaximumProfileTotal != null && powerNetNewVirtual > powerLimitMaximumProfileTotal) {
+            double powerReductionShortage = round((powerNetNewVirtual - powerLimitMaximumProfileTotal), 3);
+            LOG.warning(String.format("%s; Not enough flexible power to get below power limit maximum; Shortage of %s kW", logPrefixEnergyOptimisation, powerReductionShortage));
+        } else if (powerLimitMinimumProfileTotal != null && powerNetNewVirtual < powerLimitMinimumProfileTotal) {
+            double powerReductionShortage = round((powerNetNewVirtual - powerLimitMinimumProfileTotal), 3);
+            LOG.warning(String.format("%s; Not enough flexible power to get above power limit minimum; Shortage of %s kW", logPrefixEnergyOptimisation, powerReductionShortage));
         }
 
         return powerSetpointsNew;
     }
 
-    private Map<String, Double> batteryCalculatePowerSetpointsOnLimitBreach(Map<String, double[]> powerFlexibleAvailable, Double powerConsumptionVirtual, Double powerLimitVirtual, String maxOrMin) {
+    private Map<String, Double> batteryCalculatePowerSetpointsOnLimitBreach(double power, double powerLimitVirtual, List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, ChargeDischarge> powerFlexibleAvailable, Map<String, Double> powerSetpointsNewWithoutLimits) {
         Map<String, Double> powerSetpointsNew = new HashMap<>();
-        boolean isMin = "min".equals(maxOrMin);
+        double powerChangeNeeded = round(power - powerLimitVirtual, 3);
 
-        // Calculate the total power adjustment needed
-        double powerReduction = powerConsumptionVirtual - powerLimitVirtual;
+        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
+            String electricityBatteryAssetId = electricityBatteryAsset.getId();
 
-        if (isMin) {
-            powerReduction = -powerReduction;
+            double chargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).charge;
+            double dischargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).discharge;
+            double powerSetpointNewWithoutLimits = powerSetpointsNewWithoutLimits.getOrDefault(electricityBatteryAssetId, 0.0);
+            double chargePowerAvailableTotal = chargePowerAvailable - powerSetpointNewWithoutLimits;
+            double dischargePowerAvailableTotal = dischargePowerAvailable - powerSetpointNewWithoutLimits;
+
+            double powerSetpointChange = 0.0;
+
+            if (powerChangeNeeded > 0) {
+                powerSetpointChange = Math.max(-powerChangeNeeded, dischargePowerAvailableTotal);
+            } else if (powerChangeNeeded < 0) {
+                powerSetpointChange = Math.min(-powerChangeNeeded, chargePowerAvailableTotal);
+            }
+
+            powerChangeNeeded = round(powerChangeNeeded + powerSetpointChange, 3);
+
+            double powerSetpointNew = round(powerSetpointNewWithoutLimits + powerSetpointChange, 3);
+            powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
         }
 
-        // Iterate over each battery asset
-        for (Map.Entry<String, double[]> entry : powerFlexibleAvailable.entrySet()) {
-            String electricityBatteryAssetId = entry.getKey();
-            double[] powerBatteryAvailableChargeDischarge = entry.getValue();
+        return powerSetpointsNew;
+    }
 
-            // Choose available power based on breach type
-            double powerBatteryAvailable = isMin ? -powerBatteryAvailableChargeDischarge[0] : powerBatteryAvailableChargeDischarge[1];
+    private Map<String, Double> batteryCalculatePowerSetpointsWithoutLimits(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, Integer> batteryEnergyLevelPercentageTargets, EmsEnergyOptimisationAsset energyOptimisationAsset, Map<String, ChargeDischarge> powerFlexibleAvailable, Services services) {
+        // Find battery power set-points for a system without power limits
+        Map<String, Double> powerSetpointsNew = new HashMap<>();
 
-            if (powerReduction > 0) {
-                // Limit the power set-point to available battery power or remaining reduction needed
-                double setpoint = round(Math.max(-powerReduction, powerBatteryAvailable), 3);
+        long intervalMillis = 15 * 60000;
+        long endTimeMillis = services.getTimerService().getCurrentTimeMillis();
+        long startTimeMillis = endTimeMillis - endTimeMillis % intervalMillis;
 
-                if (isMin) {
-                    setpoint = -setpoint;
+        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
+            String electricityBatteryAssetId = electricityBatteryAsset.getId();
+            Double energyLevelPercentage = electricityBatteryAsset.getEnergyLevelPercentage().orElse(null);
+
+            // Set initial power set-point of 0
+            powerSetpointsNew.put(electricityBatteryAssetId, 0.0);
+
+            if (energyLevelPercentage == null) {
+                continue;
+            }
+
+            double energyCapacity = electricityBatteryAsset.getEnergyCapacity().orElse(0.0);
+            double powerSetpointCurrent = electricityBatteryAsset.getPowerSetpoint().orElse(0.0);
+
+            // Get battery energy level percentage target
+            Integer energyLevelPercentageTarget = batteryEnergyLevelPercentageTargets.get(electricityBatteryAssetId);
+
+            if (energyLevelPercentageTarget == null) {
+                Integer energyLevelPercentageMaximum = electricityBatteryAsset.getEnergyLevelPercentageMaximum().orElse(null);
+                Integer energyLevelPercentageMinimum = electricityBatteryAsset.getEnergyLevelPercentageMinimum().orElse(null);
+                energyLevelPercentageTarget = batteryCalculateEnergyLevelPercentageDefault(energyLevelPercentageMaximum, energyLevelPercentageMinimum, energyOptimisationAsset);
+            }
+
+            // Get battery power set-point target
+            AssetDatapointAllQuery assetDatapointQueryPredicted = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
+            List<ValueDatapoint<?>> powerSetpointForecastList = services.getAssetPredictedDatapointService().queryDatapoints(electricityBatteryAssetId, EmsElectricityBatteryAsset.POWER_SETPOINT.getName(), assetDatapointQueryPredicted);
+
+            // Calculate battery power set-point target
+            double energyLevelPercentageRounded = round(energyLevelPercentage, 1);
+            double powerNeeded = round((energyLevelPercentageTarget - energyLevelPercentageRounded) * 0.01 * energyCapacity, 3);
+            double powerSetpointNeeded = round(powerNeeded * 60 * BATTERY_POWER_SETPOINT_RESPONSIVENESS_DEFAULT, 3);
+
+            if (energyLevelPercentageRounded < energyLevelPercentageTarget || (powerSetpointCurrent > 0.0 && energyLevelPercentageRounded < energyLevelPercentageTarget)) {
+                // Start charging or continue charging
+                int chargeEfficiencyPercentage = electricityBatteryAsset.getChargeEfficiency().orElse(100);
+
+                double chargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).charge;
+                double powerSetpointEfficiency = round(powerSetpointNeeded / (chargeEfficiencyPercentage * 0.01), 3);
+                double powerSetpointNew = Math.min(powerSetpointEfficiency, chargePowerAvailable);
+
+                if (!powerSetpointForecastList.isEmpty()) {
+                    Double powerSetpointForecast = (Double) powerSetpointForecastList.getLast().getValue();
+
+                    if (powerSetpointForecast != null && powerSetpointForecast > 0) {
+                        powerSetpointNew = Math.min(powerSetpointNew, powerSetpointForecast);
+                    }
                 }
 
-                powerSetpointsNew.put(electricityBatteryAssetId, setpoint);
-                powerReduction += setpoint;
-            } else {
-                powerSetpointsNew.put(electricityBatteryAssetId, 0.0);
+                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
+            } else if (energyLevelPercentageRounded > energyLevelPercentageTarget || (powerSetpointCurrent < 0.0 && energyLevelPercentageRounded > energyLevelPercentageTarget)) {
+                // Start discharging or continue discharging
+                int dischargeEfficiencyPercentage = electricityBatteryAsset.getDischargeEfficiency().orElse(100);
+
+                double dischargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).discharge;
+                double powerSetpointEfficiency = round(powerSetpointNeeded / (dischargeEfficiencyPercentage * 0.01), 3);
+                double powerSetpointNew = Math.max(powerSetpointEfficiency, dischargePowerAvailable);
+
+                if (!powerSetpointForecastList.isEmpty()) {
+                    Double powerSetpointForecast = (Double) powerSetpointForecastList.getLast().getValue();
+
+                    if (powerSetpointForecast != null && powerSetpointForecast < 0) {
+                        powerSetpointNew = Math.max(powerSetpointNew, powerSetpointForecast);
+                    }
+                }
+
+                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
             }
         }
 
@@ -1057,7 +1201,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     }
 
     private void batteryCheckConnection(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Services services) {
-        // This method checks if a battery is connected based on if the power and energyLevelPercentage attributes update within the active time interval
+        // This method checks if a battery is connected based on if the 'power' and 'energyLevelPercentage' attributes update within the active time interval
         String connected = EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType.connected.toString();
         String disconnected = EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType.disconnected.toString();
 
@@ -1100,75 +1244,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         }
     }
 
-    private void batteryCheckSetup(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
-        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-            // Check if the battery is enabled
-            boolean allowCharging = electricityBatteryAsset.getAllowDischarging().orElse(false);
-            boolean allowDischarging = electricityBatteryAsset.getAllowCharging().orElse(false);
-
-            if (!allowCharging && !allowDischarging) {
-                continue;
-            }
-
-            String logPrefixBattery = String.format("assetType='%s', assetId='%s', assetName='%s'", electricityBatteryAsset.getAssetType(), electricityBatteryAsset.getId(), electricityBatteryAsset.getAssetName());
-
-            // Check if the following attributes are connected
-            Double energyLevelPercentage = electricityBatteryAsset.getEnergyLevelPercentage().orElse(null);
-            Double power = electricityBatteryAsset.getPower().orElse(null);
-            StringBuilder logMessageBatteryConnect = new StringBuilder();
-
-            if (energyLevelPercentage == null) {
-                logMessageBatteryConnect.append(String.format(" '%s',", EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE.getName()));
-            }
-
-            if (power == null) {
-                logMessageBatteryConnect.append(String.format(" '%s',", EmsElectricityBatteryAsset.POWER.getName()));
-            }
-
-            if (!logMessageBatteryConnect.isEmpty()) {
-                logMessageBatteryConnect.setLength(logMessageBatteryConnect.length() - 1);
-                logMessageBatteryConnect.insert(0, String.format("%s; Can't use battery for flexible power. The following attributes are not connected:", logPrefixBattery));
-                LOG.warning(logMessageBatteryConnect.toString());
-            }
-
-            // Check if the following attributes are set
-            Double chargePowerMaximum = electricityBatteryAsset.getChargePowerMaximum().orElse(null);
-            Double dischargePowerMaximum = electricityBatteryAsset.getDischargePowerMaximum().orElse(null);
-            Integer energyLevelPercentageMaximum = electricityBatteryAsset.getEnergyLevelPercentageMaximum().orElse(null);
-            Integer energyLevelPercentageMinimum = electricityBatteryAsset.getEnergyLevelPercentageMinimum().orElse(null);
-            StringBuilder logMessageBatterySet = new StringBuilder();
-
-            if (chargePowerMaximum == null) {
-                logMessageBatterySet.append(String.format(" '%s',", EmsElectricityBatteryAsset.CHARGE_POWER_MAXIMUM.getName()));
-            }
-
-            if (dischargePowerMaximum == null) {
-                logMessageBatterySet.append(String.format(" '%s',", EmsElectricityBatteryAsset.DISCHARGE_POWER_MAXIMUM.getName()));
-            }
-
-            if (energyLevelPercentageMaximum == null) {
-                logMessageBatterySet.append(String.format(" '%s',", EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MAXIMUM.getName()));
-            }
-
-            if (energyLevelPercentageMinimum == null) {
-                logMessageBatterySet.append(String.format(" '%s',", EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MINIMUM.getName()));
-            }
-
-            if (!logMessageBatterySet.isEmpty()) {
-                logMessageBatterySet.setLength(logMessageBatterySet.length() - 1);
-                logMessageBatterySet.insert(0, String.format("%s; Can't use battery for flexible power. The following attributes are not set:", logPrefixBattery));
-                LOG.warning(logMessageBatterySet.toString());
-            }
-
-            if (energyLevelPercentageMaximum != null && energyLevelPercentageMinimum != null && (energyLevelPercentageMaximum - energyLevelPercentageMinimum) < BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL) {
-                int diff = energyLevelPercentageMaximum - energyLevelPercentageMinimum;
-                LOG.warning(String.format("%s; Can't use battery for flexible power. %s - %s = %s - %s = %s < %s%%)", logPrefixBattery, EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MAXIMUM.getName(), EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MINIMUM.getName(),
-                        energyLevelPercentageMaximum, energyLevelPercentageMinimum, diff, BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL));
-            }
-        }
-    }
-
-    private Map<String, Double> batteryCheckPowerSetpointsCurrent(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, double[]> powerFlexibleAvailable) {
+    private Map<String, Double> batteryCheckPowerSetpointsCurrent(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, ChargeDischarge> powerFlexibleAvailable) {
         Map<String, Double> powerSetpointsNew = new HashMap<>();
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
@@ -1181,8 +1257,8 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             }
 
             double powerSetpointCurrent = electricityBatteryAsset.getPowerSetpoint().orElse(0.0);
-            double chargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId)[0];
-            double dischargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId)[1];
+            double chargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).charge;
+            double dischargePowerAvailable = powerFlexibleAvailable.get(electricityBatteryAssetId).discharge;
 
             // Set initial power set-point new
             double powerSetpointNew = 0.0;
@@ -1200,11 +1276,86 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         return powerSetpointsNew;
     }
 
+    private void batteryCheckSetup(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
+        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
+            // Check if the battery is enabled
+            boolean allowCharging = electricityBatteryAsset.getAllowDischarging().orElse(false);
+            boolean allowDischarging = electricityBatteryAsset.getAllowCharging().orElse(false);
+
+            if (!allowCharging && !allowDischarging) {
+                continue;
+            }
+
+            String logPrefixBattery = String.format("assetType='%s', assetId='%s', assetName='%s'", electricityBatteryAsset.getAssetType(), electricityBatteryAsset.getId(), electricityBatteryAsset.getAssetName());
+
+            // Check if the following attributes are connected
+            Map<String, Object> requiredFieldsConnection = new HashMap<>();
+
+            requiredFieldsConnection.put(EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE.getName(), electricityBatteryAsset.getEnergyLevelPercentage().orElse(null));
+            requiredFieldsConnection.put(EmsElectricityBatteryAsset.POWER.getName(), electricityBatteryAsset.getPower().orElse(null));
+
+            List<String> missingFieldsConnection = requiredFieldsConnection.entrySet().stream()
+                    .filter(entry -> entry.getValue() == null)
+                    .map(Map.Entry::getKey)
+                    .toList();
+
+            if (!missingFieldsConnection.isEmpty()) {
+                LOG.warning(String.format("%s; Can't use battery for flexible power. The following attributes are not connected: %s",
+                        logPrefixBattery,
+                        String.join(", ", missingFieldsConnection.stream().map(attr -> "'" + attr + "'").toList())
+                ));
+            }
+
+            // Check if the following attributes are set
+            Map<String, Object> requiredFieldsSetup = new HashMap<>();
+
+            Integer energyLevelPercentageMaximum = electricityBatteryAsset.getEnergyLevelPercentageMaximum().orElse(null);
+            Integer energyLevelPercentageMinimum = electricityBatteryAsset.getEnergyLevelPercentageMinimum().orElse(null);
+            Integer chargeEfficiency = electricityBatteryAsset.getChargeEfficiency().orElse(null);
+            Integer dischargeEfficiency = electricityBatteryAsset.getDischargeEfficiency().orElse(null);
+
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.CHARGE_EFFICIENCY.getName(), chargeEfficiency);
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.CHARGE_POWER_MAXIMUM.getName(), electricityBatteryAsset.getChargePowerMaximum().orElse(null));
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.DISCHARGE_EFFICIENCY.getName(), dischargeEfficiency);
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.DISCHARGE_POWER_MAXIMUM.getName(), electricityBatteryAsset.getDischargePowerMaximum().orElse(null));
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.ENERGY_CAPACITY.getName(), electricityBatteryAsset.getEnergyCapacity().orElse(null));
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MAXIMUM.getName(), energyLevelPercentageMaximum);
+            requiredFieldsSetup.put(EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MINIMUM.getName(), energyLevelPercentageMinimum);
+
+            List<String> missingFieldsSetup = requiredFieldsSetup.entrySet().stream()
+                    .filter(entry -> entry.getValue() == null)
+                    .map(Map.Entry::getKey)
+                    .toList();
+
+            if (!missingFieldsSetup.isEmpty()) {
+                LOG.warning(String.format("%s; Can't use battery for flexible power. The following attributes are not set: %s",
+                        logPrefixBattery,
+                        String.join(", ", missingFieldsSetup.stream().map(attr -> "'" + attr + "'").toList())
+                ));
+            }
+
+            // Check if the following attributes are set correctly
+            if (energyLevelPercentageMaximum != null && energyLevelPercentageMinimum != null && energyLevelPercentageMaximum <= energyLevelPercentageMinimum) {
+                LOG.warning(String.format("%s; Can't use battery for flexible power. '%s' = %s%% is smaller than or equal to '%s'= %s%%)", logPrefixBattery,
+                        EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MAXIMUM.getName(), energyLevelPercentageMaximum, EmsElectricityBatteryAsset.ENERGY_LEVEL_PERCENTAGE_MINIMUM.getName(), energyLevelPercentageMinimum));
+            }
+
+            if (chargeEfficiency != null && chargeEfficiency <= 0) {
+                LOG.warning(String.format("The charge efficiency = %s%% is smaller than or equal to 0", chargeEfficiency));
+            }
+
+            if (dischargeEfficiency != null && dischargeEfficiency <= 0) {
+                LOG.warning(String.format("The discharge efficiency = %s%% is smaller than or equal to 0", dischargeEfficiency));
+            }
+        }
+    }
+
     private Map<String, Integer> batteryGetEnergyLevelPercentageTargetsCurrent(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Services services) {
         Map<String, Integer> batteryEnergyLevelPercentageTargetsCurrent = new HashMap<>();
 
+        long intervalMillis = 15 * 60000;
         long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        long endTimeMillis = currentTimeMillis - currentTimeMillis % (15 * 60000) + (15 * 60000);
+        long endTimeMillis = currentTimeMillis - currentTimeMillis % intervalMillis + intervalMillis;
 
         for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
             String batteryAssetId = electricityBatteryAsset.getId();
@@ -1224,112 +1375,21 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         return batteryEnergyLevelPercentageTargetsCurrent;
     }
 
-    private Map<String, Double> batteryRestoreEnergyLevels(EmsEnergyOptimisationAsset energyOptimisationAsset, List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, double[]> powerFlexibleAvailable, Double powerNet,
-                                                           Double powerSetpointsCurrentSum, Double powerLimitMinimumBatteries, Double powerLimitMaximumBatteries, Map<String, Integer> batteryEnergyLevelPercentageTargets) {
-        Map<String, Double> powerSetpointsNew = new HashMap<>();
+    private List<EmsElectricityBatteryAsset> batteryOrder(List<EmsElectricityBatteryAsset> electricityBatteryAssets) {
+        List<EmsElectricityBatteryAsset> sorted = new ArrayList<>(electricityBatteryAssets);
 
-        // Find battery power set-points for a system without power limits
-        for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-            String electricityBatteryAssetId = electricityBatteryAsset.getId();
-            Double energyLevelPercentage = electricityBatteryAsset.getEnergyLevelPercentage().orElse(null);
+        sorted.sort(Comparator
+                .comparing((EmsElectricityBatteryAsset b) -> b.getEnergyCapacity().isPresent() && b.getDischargePowerMaximum().orElse(0.0) != 0.0)
+                .reversed()
+                .thenComparing(b -> b.getDischargePowerMaximum().orElse(0.0) == 0
+                                ? null
+                                : round(b.getEnergyCapacity().orElse(0.0) / b.getDischargePowerMaximum().orElse(0.0), 2),
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                )
+                .thenComparing(EmsElectricityBatteryAsset::getId)
+        );
 
-            // Set initial power set-point of 0
-            powerSetpointsNew.put(electricityBatteryAssetId, 0.0);
-
-            if (energyLevelPercentage == null) {
-                continue;
-            }
-
-            double powerSetpointCurrent = electricityBatteryAsset.getPowerSetpoint().orElse(0.0);
-
-            // Get battery energy level target
-            Integer energyLevelPercentageTarget = batteryEnergyLevelPercentageTargets.get(electricityBatteryAssetId);
-
-            if (energyLevelPercentageTarget == null) {
-                Integer energyLevelPercentageMaximum = electricityBatteryAsset.getEnergyLevelPercentageMaximum().orElse(null);
-                Integer energyLevelPercentageMinimum = electricityBatteryAsset.getEnergyLevelPercentageMinimum().orElse(null);
-                energyLevelPercentageTarget = batteryCalculateEnergyLevelPercentageDefault(energyLevelPercentageMaximum, energyLevelPercentageMinimum, energyOptimisationAsset);
-            }
-
-            if (energyLevelPercentage < (energyLevelPercentageTarget - BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL)) {
-                // Start charging
-                double powerSetpointNew = powerFlexibleAvailable.get(electricityBatteryAssetId)[0];
-                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
-            } else if (energyLevelPercentage > (energyLevelPercentageTarget + BATTERY_ENERGY_LEVEL_PERCENTAGE_DEBOUNCE_INTERVAL)) {
-                // Start discharging
-                double powerSetpointNew = powerFlexibleAvailable.get(electricityBatteryAssetId)[1];
-                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
-            } else if (powerSetpointCurrent > 0.0 && energyLevelPercentage < energyLevelPercentageTarget) {
-                // Continue charging
-                double powerSetpointNew = powerFlexibleAvailable.get(electricityBatteryAssetId)[0];
-                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
-            } else if (powerSetpointCurrent < 0.0 && energyLevelPercentage > energyLevelPercentageTarget) {
-                // Continue discharging
-                double powerSetpointNew = powerFlexibleAvailable.get(electricityBatteryAssetId)[1];
-                powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointNew);
-            }
-        }
-
-        // Adjust battery power set-points in a system with power limits
-        double powerSetpointsNewSum = powerSetpointsNew.values().stream().mapToDouble(Double::doubleValue).sum();
-        double powerConsumptionVirtual = powerNet - powerSetpointsCurrentSum;
-
-        Double chargingSpace = null;
-        Double dischargingSpace = null;
-
-        if (powerLimitMaximumBatteries != null) {
-            chargingSpace = powerLimitMaximumBatteries - powerConsumptionVirtual;
-        }
-
-        if (powerLimitMinimumBatteries != null) {
-            dischargingSpace = powerLimitMinimumBatteries - powerConsumptionVirtual;
-        }
-
-        if (chargingSpace != null && powerSetpointsNewSum > chargingSpace) {
-            // Adjust battery power set-points in case of charging space shortage
-            double powerReduction = powerSetpointsNewSum - chargingSpace;
-
-            for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-                String electricityBatteryAssetId = electricityBatteryAsset.getId();
-                double powerSetpointNew = powerSetpointsNew.getOrDefault(electricityBatteryAssetId, 0.0);
-
-                // Only adjust battery power set-point for charging batteries
-                if (powerSetpointNew > 0.0) {
-                    powerReduction = powerReduction - powerSetpointNew;
-
-                    if (powerReduction >= 0.0) {
-                        powerSetpointsNew.put(electricityBatteryAssetId, 0.0);
-                    } else {
-                        double powerSetpointAdjusted = round(Math.min(-powerReduction, powerSetpointNew), 3);
-                        powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointAdjusted);
-                        break;
-                    }
-                }
-            }
-        } else if (dischargingSpace != null && powerSetpointsNewSum < dischargingSpace) {
-            // Adjust battery power set-points in case of discharging space shortage
-            double powerReduction = powerSetpointsNewSum - dischargingSpace;
-
-            for (EmsElectricityBatteryAsset electricityBatteryAsset : electricityBatteryAssets) {
-                String electricityBatteryAssetId = electricityBatteryAsset.getId();
-                double powerSetpointNew = powerSetpointsNew.getOrDefault(electricityBatteryAssetId, 0.0);
-
-                // Only adjust battery power set-point for discharging batteries
-                if (powerSetpointNew < 0.0) {
-                    powerReduction = powerReduction - powerSetpointNew;
-
-                    if (powerReduction <= 0.0) {
-                        powerSetpointsNew.put(electricityBatteryAssetId, 0.0);
-                    } else {
-                        double powerSetpointAdjusted = Math.max(-powerReduction, powerSetpointNew);
-                        powerSetpointsNew.put(electricityBatteryAssetId, powerSetpointAdjusted);
-                        break;
-                    }
-                }
-            }
-        }
-
-        return powerSetpointsNew;
+        return sorted;
     }
 
     private void batteryUpdatePowerSetpoints(List<EmsElectricityBatteryAsset> electricityBatteryAssets, Map<String, Double> powerSetpointsNew, Services services) {
@@ -1341,6 +1401,48 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         }
     }
 
+    private double calculatePowerFluctuationMargin(EmsEnergyOptimisationAsset energyOptimisationAsset, Double powerLimitProfileTotal, String maxOrMin) {
+        if (powerLimitProfileTotal == null) {
+            return 0.0;
+        }
+
+        boolean isMin = "min".equals(maxOrMin);
+        String fluctuationMarginAttributeName = POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME;
+
+        if (isMin) {
+            fluctuationMarginAttributeName = POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME;
+        }
+
+        Double powerLimitFluctuationMargin = (Double) energyOptimisationAsset.getAttribute(fluctuationMarginAttributeName)
+                .flatMap(Attribute::getValue)
+                .orElse(null);
+
+        if (powerLimitFluctuationMargin == null) {
+            powerLimitFluctuationMargin = powerLimitProfileTotal * POWER_LIMIT_FLUCTUATION_MARGIN_PERCENTAGE_DEFAULT * 0.01;
+        }
+
+        return round(Math.abs(powerLimitFluctuationMargin), 3);
+    }
+
+    private Double calculatePowerLimitVirtual(EmsEnergyOptimisationAsset energyOptimisationAsset, Double powerLimitProfileTotal, String maxOrMin) {
+        if (powerLimitProfileTotal == null) {
+            return null;
+        }
+
+        double powerLimitFluctuationMargin = calculatePowerFluctuationMargin(energyOptimisationAsset, powerLimitProfileTotal, maxOrMin);
+        boolean isMin = "min".equals(maxOrMin);
+
+        double powerLimitVirtual;
+
+        if (isMin) {
+            powerLimitVirtual = powerLimitProfileTotal + powerLimitFluctuationMargin;
+        } else {
+            powerLimitVirtual = powerLimitProfileTotal - powerLimitFluctuationMargin;
+        }
+
+        return round(powerLimitVirtual, 3);
+    }
+
     private Map<Long, Integer> calculateTariffChargeAndDischargeZones(List<ValueDatapoint<?>> tariffImportDatapoints, List<ValueDatapoint<?>> tariffExportDatapoints, int window) {
         Map<Long, Integer> chargeAndDischargeZonesMap = new HashMap<>();
 
@@ -1349,11 +1451,11 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             return chargeAndDischargeZonesMap;
         }
 
-        // Find the best import price for each day
-        ZoneId zoneId = ZoneId.systemDefault();
-
+        // Find the best import/export tariff window for each day
         List<ValueDatapoint<?>> tariffImportMovingAverage = movingAverage(tariffImportDatapoints, window);
         List<ValueDatapoint<?>> tariffExportMovingAverage = movingAverage(tariffExportDatapoints, window);
+
+        ZoneId zoneId = ZoneId.systemDefault();
 
         Map<LocalDate, IndexedDatapoint> tariffImportDailyMinimumMap =
                 IntStream.range(0, tariffImportMovingAverage.size())
@@ -1437,22 +1539,6 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         return asset;
     }
 
-    private List<ValueDatapoint<?>> getTariffDayAheadDatapoints(Asset<?> asset, String attributeName, Services services) {
-        // Get the start of the day (00:00) in milliseconds
-        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
-        ZoneId zoneId = ZoneId.systemDefault();
-        LocalDate date = Instant.ofEpochMilli(currentTimeMillis).atZone(zoneId).toLocalDate();
-        long startOfCurrentDayMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli();
-
-        // Get tariff data-points of yesterday, today and tomorrow
-        long startTimeMillis = startOfCurrentDayMillis - 24 * 60 * 60000;
-        long endTimeMillis = startOfCurrentDayMillis + 2 * 24 * 60 * 60000;
-        AssetDatapointAllQuery assetDatapointQueryHistoric = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
-        List<ValueDatapoint<?>> tariffHistoric = services.getAssetDatapointService().queryDatapoints(asset.getId(), attributeName, assetDatapointQueryHistoric);
-
-        return tariffHistoric;
-    }
-
     private List<ValueDatapoint<?>> getTariffDatapoints(EmsEnergyOptimisationAsset energyOptimisationAsset, String attributeName, Services services) {
         // Get the start of the day (00:00) in milliseconds
         long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
@@ -1468,11 +1554,27 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         List<ValueDatapoint<?>> tariffHistoric = services.getAssetDatapointService().queryDatapoints(energyOptimisationAsset.getId(), attributeName, assetDatapointQueryHistoric);
         List<ValueDatapoint<?>> tariffPredicted = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), attributeName, assetDatapointQueryPredicted);
 
-        // Combine historic and predicted data-points into one list
-        List<ValueDatapoint<?>> tariffCombined = new ArrayList<>(tariffHistoric);
-        tariffCombined.addAll(tariffPredicted);
+        // Combine historic and predicted data-points, timestamps are ordered from newest to oldest (descending order)
+        List<ValueDatapoint<?>> tariffCombined = new ArrayList<>(tariffPredicted);
+        tariffCombined.addAll(tariffHistoric);
 
         return tariffCombined;
+    }
+
+    private List<ValueDatapoint<?>> getTariffDayAheadDatapoints(Asset<?> asset, String attributeName, Services services) {
+        // Get the start of the day (00:00) in milliseconds
+        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
+        ZoneId zoneId = ZoneId.systemDefault();
+        LocalDate date = Instant.ofEpochMilli(currentTimeMillis).atZone(zoneId).toLocalDate();
+        long startOfCurrentDayMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli();
+
+        // Get tariff data-points of yesterday, today and tomorrow
+        long startTimeMillis = startOfCurrentDayMillis - 24 * 60 * 60000;
+        long endTimeMillis = startOfCurrentDayMillis + 2 * 24 * 60 * 60000;
+        AssetDatapointAllQuery assetDatapointQueryHistoric = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
+        List<ValueDatapoint<?>> tariffHistoric = services.getAssetDatapointService().queryDatapoints(asset.getId(), attributeName, assetDatapointQueryHistoric);
+
+        return tariffHistoric;
     }
 
     public static List<ValueDatapoint<?>> intervalAverage(List<ValueDatapoint<?>> dataPoints, long intervalMillis) {
@@ -1545,7 +1647,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         return interpolatedList;
     }
 
-    public static List<ValueDatapoint<?>> movingAverage(List<ValueDatapoint<?>> dataPoints, int window) {
+    public List<ValueDatapoint<?>> movingAverage(List<ValueDatapoint<?>> dataPoints, int window) {
         List<ValueDatapoint<?>> result = new ArrayList<>();
         if (window <= 0 || dataPoints.size() < window) {
             return result;
@@ -1554,25 +1656,20 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         double sum = 0.0;
 
         for (int i = 0; i < dataPoints.size(); i++) {
-            // Extract numeric value
-            Number value = (Number) dataPoints.get(i).getValue();
-            sum += value.doubleValue();
+            Double value = (Double) dataPoints.get(i).getValue();
+            sum += value;
 
-            // Remove value exiting the sliding window
             if (i >= window) {
-                Number oldValue = (Number) dataPoints.get(i - window).getValue();
-                sum -= oldValue.doubleValue();
+                Double valueOld = (Double) dataPoints.get(i - window).getValue();
+                sum -= valueOld;
             }
 
-            // When the window is "full", generate output datapoint
             if (i >= window - 1) {
                 double avg = sum / window;
 
-                // Use the timestamp of the window end (index i)
                 ValueDatapoint<?> original = dataPoints.get(i);
-                ValueDatapoint<Double> averaged =
-                        new ValueDatapoint<>(original.getTimestamp(), avg);
 
+                ValueDatapoint<Double> averaged = new ValueDatapoint<>(original.getTimestamp(), round(avg, 7));
                 result.add(averaged);
             }
         }
@@ -1606,57 +1703,60 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             }
         }
 
+        Long lastUpdateForecastsTimestamp = dayAheadAsset.getLastUpdateForecastsTimestamp().orElse(null);
+
+        if (collectTime == null || lastUpdateForecastsTimestamp == null) {
+            return;
+        }
+
+        // Calculate the 15-minute interval for collecting the day ahead tariff forecasts
+        LocalDate currentDate = LocalDate.now();
+        LocalDateTime currentCollectDateTime = LocalDateTime.of(currentDate, collectTime);
+        long collectTimeStartMillis = currentCollectDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long collectTimeEndMillis = collectTimeStartMillis + 15 * 60000;
+        long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
+
+        String lastUpdateForecasts = dayAheadAsset.getLastUpdateForecasts().orElse("");
+        LocalDateTime lastUpdateDateTime = currentCollectDateTime.plusDays(-1);
+
+        if (!lastUpdateForecasts.isEmpty()) {
+            lastUpdateDateTime = LocalDateTime.parse(lastUpdateForecasts);
+        }
+
+        LocalDate nextUpdateDate = lastUpdateDateTime.plusDays(1).toLocalDate();
+
         // Collect the day ahead tariff forecasts at the desired collect time
-        if (collectTime != null) {
-            // Calculate the 15-minute interval for collecting the day ahead tariff forecasts
-            LocalDate currentDate = LocalDate.now();
-            LocalDateTime collectDateTime = LocalDateTime.of(currentDate, collectTime);
-            long collectTimeMillisStart = collectDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-            long collectTimeMillisEnd = collectTimeMillisStart + 15 * 60000;
-            long currentTimeMillis = services.getTimerService().getCurrentTimeMillis();
+        if (currentTimeMillis >= collectTimeStartMillis && currentTimeMillis < collectTimeEndMillis && collectTimeStartMillis > lastUpdateForecastsTimestamp && currentDate.isEqual(nextUpdateDate)) {
+            // Create asset datapoint query
+            LocalDateTime startOfNextDay = currentDate.plusDays(1).atStartOfDay();
+            long startTimeMillis = startOfNextDay.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            long endTimeMillis = startTimeMillis + 24 * 60 * 60000 - 60000;
+            AssetDatapointAllQuery assetDatapointQuery = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
 
-            if (currentTimeMillis >= collectTimeMillisStart && currentTimeMillis < collectTimeMillisEnd) {
-                // Create asset datapoint query
-                LocalDate tomorrowDate = currentDate.plusDays(1);
-                LocalDateTime startOfNextDay = tomorrowDate.atStartOfDay();
-                long startTimeMillis = startOfNextDay.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                long endTimeMillis = startTimeMillis + 24 * 60 * 60000 - 60000;
-                AssetDatapointAllQuery assetDatapointQuery = new AssetDatapointAllQuery(startTimeMillis, endTimeMillis);
+            // Get the tariffs number of data-points from day ahead asset
+            int tariffExportDayAheadSize = services.getAssetDatapointService().queryDatapoints(dayAheadAssetId, EmsDayAheadAsset.TARIFF_EXPORT_DAY_AHEAD.getName(), assetDatapointQuery).size();
+            int tariffImportDayAheadSize = services.getAssetDatapointService().queryDatapoints(dayAheadAssetId, EmsDayAheadAsset.TARIFF_IMPORT_DAY_AHEAD.getName(), assetDatapointQuery).size();
 
-                // Get the tariffs number of data-points from day ahead asset
-                int tariffExportDayAheadSize = services.getAssetDatapointService().queryDatapoints(dayAheadAssetId, EmsDayAheadAsset.TARIFF_EXPORT_DAY_AHEAD.getName(), assetDatapointQuery).size();
-                int tariffImportDayAheadSize = services.getAssetDatapointService().queryDatapoints(dayAheadAssetId, EmsDayAheadAsset.TARIFF_IMPORT_DAY_AHEAD.getName(), assetDatapointQuery).size();
-
-                // Only update the historic datapoint table if there are no day ahead tariffs present
-                if (tariffExportDayAheadSize == 0) {
-                    List<ValueDatapoint<?>> tariffExport = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.TARIFF_EXPORT.getName(), assetDatapointQuery);
-                    services.getAssetDatapointService().upsertValues(dayAheadAssetId, EmsDayAheadAsset.TARIFF_EXPORT_DAY_AHEAD.getName(), tariffExport);
-                }
-
-                if (tariffImportDayAheadSize == 0) {
-                    List<ValueDatapoint<?>> tariffImport = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.TARIFF_IMPORT.getName(), assetDatapointQuery);
-                    services.getAssetDatapointService().upsertValues(dayAheadAssetId, EmsDayAheadAsset.TARIFF_IMPORT_DAY_AHEAD.getName(), tariffImport);
-                }
-
-                // Update the last update forecasts datetime field
-                String lastUpdateForecasts = dayAheadAsset.getLastUpdateForecasts().orElse("");
-                String lastUpdateForecastsNew = collectDateTime.toString();
-
-                LocalDateTime lastUpdateDateTime = collectDateTime.plusDays(-1);
-
-                if (!lastUpdateForecasts.isEmpty()) {
-                    lastUpdateDateTime = LocalDateTime.parse(lastUpdateForecasts);
-                }
-
-                LocalDate nextUpdateDate = lastUpdateDateTime.plusDays(1).toLocalDate();
-
-                if (nextUpdateDate.isEqual(currentDate)) {
-                    services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(dayAheadAssetId, EmsDayAheadAsset.LAST_UPDATE_FORECASTS.getName(), lastUpdateForecastsNew, collectTimeMillisStart));
-                }
+            // Only update the historic data-point table if there are no day ahead tariffs present in the historic data-point table for current interval
+            if (tariffExportDayAheadSize == 0) {
+                List<ValueDatapoint<?>> tariffExport = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.TARIFF_EXPORT.getName(), assetDatapointQuery);
+                services.getAssetDatapointService().upsertValues(dayAheadAssetId, EmsDayAheadAsset.TARIFF_EXPORT_DAY_AHEAD.getName(), tariffExport);
             }
+
+            if (tariffImportDayAheadSize == 0) {
+                List<ValueDatapoint<?>> tariffImport = services.getAssetPredictedDatapointService().queryDatapoints(energyOptimisationAsset.getId(), EmsEnergyOptimisationAsset.TARIFF_IMPORT.getName(), assetDatapointQuery);
+                services.getAssetDatapointService().upsertValues(dayAheadAssetId, EmsDayAheadAsset.TARIFF_IMPORT_DAY_AHEAD.getName(), tariffImport);
+            }
+
+            // Update the 'last update forecasts' datetime field with current update datetime
+            String lastUpdateForecastsNew = currentCollectDateTime.toString();
+            services.getAssetProcessingService().sendAttributeEvent(new AttributeEvent(dayAheadAssetId, EmsDayAheadAsset.LAST_UPDATE_FORECASTS.getName(), lastUpdateForecastsNew, collectTimeStartMillis));
         }
     }
 
-    record IndexedDatapoint(long timestamp, double value, int index) {
+    private record ChargeDischarge(double charge, double discharge) {
+    }
+
+    private record IndexedDatapoint(long timestamp, double value, int index) {
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025, OpenRemote Inc.
+ * Copyright 2026, OpenRemote Inc.
  *
  * See the CONTRIBUTORS.txt file in the distribution for a
  * full listing of individual contributors.
@@ -22,11 +22,10 @@ package org.openremote.extension.ems.manager.gopacs;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Application;
-import jakarta.ws.rs.core.GenericType;
 import jakarta.ws.rs.core.Response;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.lfenergy.shapeshifter.api.*;
 import org.lfenergy.shapeshifter.api.model.UftpParticipantInformation;
@@ -45,14 +44,16 @@ import org.lfenergy.shapeshifter.core.service.crypto.UftpCryptoService;
 import org.lfenergy.shapeshifter.core.service.handler.UftpPayloadHandler;
 import org.lfenergy.shapeshifter.core.service.participant.ParticipantResolutionService;
 import org.lfenergy.shapeshifter.core.service.receiving.UftpReceivedMessageService;
+import org.lfenergy.shapeshifter.core.service.receiving.response.UftpValidationResponseCreator;
 import org.lfenergy.shapeshifter.core.service.sending.UftpSendMessageService;
 import org.lfenergy.shapeshifter.core.service.serialization.UftpSerializer;
 import org.lfenergy.shapeshifter.core.service.validation.UftpValidationService;
-import org.openremote.extension.ems.agent.EmsGOPACSAsset;
+import org.lfenergy.shapeshifter.core.service.validation.model.ValidationResult;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.CORSConfig;
 import org.openremote.container.web.WebApplication;
 import org.openremote.container.web.WebService;
+import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.datapoint.AssetPredictedDatapointService;
 import org.openremote.model.Container;
@@ -77,7 +78,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
-import static org.openremote.container.web.WebService.*;
+import static org.openremote.container.web.WebService.getStandardProviders;
 import static org.openremote.container.web.WebTargetBuilder.createClient;
 import static org.openremote.model.syslog.SyslogCategory.API;
 
@@ -88,8 +89,10 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     private static final Logger LOG = SyslogCategory.getLogger(API, GOPACSHandler.class);
     public static final String GOPACS_PRIVATE_KEY_FILE = "GOPACS_PRIVATE_KEY_FILE";
+    public static final String GOPACS_BROKER_URL = "GOPACS_BROKER_URL";
+    public static final String DEFAULT_GOPACS_BROKER_URL = "https://clc-message-broker.gopacs-services.eu";
     public static final String GOPACS_PARTICIPANT_URL = "GOPACS_PARTICIPANT_URL";
-    public static final String DEFAULT_GOPACS_PARTICIPANT_URL = "https://clc-message-broker.gopacs-services.eu";
+    public static final String DEFAULT_GOPACS_PARTICIPANT_URL = "https://api.gopacs-services.eu";
     public static final String GOPACS_OAUTH2_URL = "GOPACS_OAUTH2_URL";
     public static final String DEFAULT_GOPACS_OAUTH2_URL = "https://auth.gopacs-services.eu/realms/gopacs/protocol/openid-connect/token";
     public static final String GOPACS_CLIENT_ID = "GOPACS_CLIENT_ID";
@@ -99,6 +102,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public static final String GOPACS_FLEX_OFFER_DELAY_SECONDS = "GOPACS_FLEX_OFFER_DELAY_SECONDS";
     public static final String DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS = "30";
     public static final String DEPLOYMENT_PATH = "/gopacs";
+    /** Scheme prefix GOPACS uses on congestion-point identifiers, e.g. "ean.265987182507322951". */
+    public static final String EAN_PREFIX = "ean.";
 
 
     protected static final UftpSerializer serializer = new UftpSerializer(new XmlSerializer(), new XsdValidator(new XsdSchemaProvider(new XsdFactory(new XsdSchemaFactoryPool()))));
@@ -107,6 +112,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected final String contractedEAN;
     protected final String electricitySupplierAssetId;
     protected final String realm;
+    protected final String gopacsBrokerUrl;
     protected final Map<String, UftpParticipantInformation> participants;
 
     protected final AssetProcessingService assetProcessingService;
@@ -160,6 +166,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         this.timerService = container.getService(TimerService.class);
         this.webService = container.getService(WebService.class);
 
+        // Strip trailing slashes so the synthesised broker endpoint never contains a double slash
+        this.gopacsBrokerUrl = container.getConfig().getOrDefault(GOPACS_BROKER_URL, DEFAULT_GOPACS_BROKER_URL).replaceAll("/+$", "");
         this.responseDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_RESPONSE_DELAY_SECONDS, DEFAULT_GOPACS_RESPONSE_DELAY_SECONDS));
         this.flexOfferDelaySeconds = Integer.parseInt(container.getConfig().getOrDefault(GOPACS_FLEX_OFFER_DELAY_SECONDS, DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS));
 
@@ -207,6 +215,52 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         deploy(container);
     }
 
+    /**
+     * Test-support constructor. Wires the message-processing collaborators directly and skips
+     * remote configuration (OAuth client, private-key file) and JAX-RS deployment, so the
+     * day-ahead UFTP message flow can be exercised in isolation. Not used in production wiring.
+     */
+    protected GOPACSHandler(String contractedEAN,
+                            String realm,
+                            String electricitySupplierAssetId,
+                            AssetProcessingService assetProcessingService,
+                            AssetPredictedDatapointService assetPredictedDatapointService,
+                            TimerService timerService,
+                            ScheduledExecutorService scheduledExecutorService,
+                            String privateKey) {
+        this.devMode = false;
+        this.contractedEAN = contractedEAN;
+        this.realm = realm;
+        this.electricitySupplierAssetId = electricitySupplierAssetId;
+        this.participants = new HashMap<>();
+
+        this.assetProcessingService = assetProcessingService;
+        this.assetPredictedDatapointService = assetPredictedDatapointService;
+        this.timerService = timerService;
+        this.scheduledExecutorService = scheduledExecutorService;
+        this.webService = null;
+
+        this.gopacsBrokerUrl = "";
+        this.responseDelaySeconds = 0;
+        this.flexOfferDelaySeconds = 0;
+        this.clientId = null;
+        this.clientSecret = null;
+        this.privateKey = privateKey;
+
+        this.client = null;
+        this.gopacsAddressBookResource = null;
+        this.gopacsAuthResource = null;
+        this.gopacsServerResource = null;
+
+        this.participantResolutionService = new ParticipantResolutionService(this);
+        this.cryptoService = new UftpCryptoService(participantResolutionService, new LazySodiumFactory(), new LazySodiumBase64Pool());
+        this.uftpValidationService = new UftpValidationService(new ArrayList<>());
+        this.uftpReceivedMessageService = new UftpReceivedMessageService(uftpValidationService, this);
+        this.uftpSendMessageService = new UftpSendMessageService(serializer, cryptoService, participantResolutionService, this, uftpValidationService);
+
+        this.objectMapper = new ObjectMapper();
+    }
+
     protected static String getDeploymentName(String contractedEAN) {
         return "GOPACS: " + contractedEAN;
     }
@@ -214,7 +268,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected void deploy(Container container) {
         LOG.info("Deploying JAX-RS deployment for instance : " + this);
 
-        List<Object> singletons = Stream.of(getStandardProviders(devMode, 0), Collections.<Object>singletonList(gopacsServerResource))
+        List<Object> singletons = Stream.of(getStandardProviders(devMode), Collections.<Object>singletonList(gopacsServerResource))
                 .flatMap(Collection::stream)
                 .toList();
         Application application = new WebApplication(
@@ -238,35 +292,41 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     @Override
     public void notifyNewIncomingMessage(IncomingUftpMessage<? extends PayloadMessageType> message) {
-        LOG.fine("Received message: " + message);
+        LOG.info("Received message with conversation ID: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
         var messageType = message.payloadMessage().getClass();
 
         if (FlexRequest.class.isAssignableFrom(messageType)) {
             var flexRequest = (FlexRequest) message.payloadMessage();
-            LOG.fine("Processing FlexRequest: " + flexRequest);
+            LOG.fine("Processing FlexRequest: " + flexRequest.getConversationID());
             handleFlexRequestMessage(message.sender(), flexRequest);
-            LOG.fine("Finished processing FlexRequest: " + flexRequest);
+            LOG.fine("Finished processing FlexRequest: " + flexRequest.getConversationID());
         } else if (FlexOfferResponse.class.isAssignableFrom(messageType)) {
             var flexOfferResponse = (FlexOfferResponse) message.payloadMessage();
-            LOG.fine("Processing FlexOfferResponse: " + flexOfferResponse);
+            LOG.fine("Processing FlexOfferResponse: " + flexOfferResponse.getConversationID());
             handleFlexOfferResponseMessage(message.sender(), flexOfferResponse);
-            LOG.fine("Finished processing FlexOfferResponse: " + flexOfferResponse);
+            LOG.fine("Finished processing FlexOfferResponse: " + flexOfferResponse.getConversationID());
         } else if (FlexOrder.class.isAssignableFrom(messageType)) {
             var flexOrder = (FlexOrder) message.payloadMessage();
-            LOG.fine("Processing FlexOrder: " + flexOrder);
+            LOG.fine("Processing FlexOrder: " + flexOrder.getConversationID());
             handleFlexOrderMessage(message.sender(), flexOrder);
-            LOG.fine("Finished processing FlexOrder: " + flexOrder);
+            LOG.fine("Finished processing FlexOrder: " + flexOrder.getConversationID());
+        } else {
+            LOG.warning("Received unknown message type: " + messageType.getSimpleName());
         }
+        LOG.info("Finished processing message with conversation ID: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
     }
 
     @Override
     public void notifyNewOutgoingMessage(OutgoingUftpMessage<? extends PayloadMessageType> message) {
-        LOG.fine("Notifying message: " + message);
+        LOG.info("Sending message: " + message.payloadMessage().getConversationID() + " type " + message.payloadMessage().getClass().getSimpleName());
         try {
-            LOG.fine("Sending message: " + message);
             if (message.payloadMessage() instanceof FlexRequestResponse ||
                     message.payloadMessage() instanceof FlexOffer ||
                     message.payloadMessage() instanceof FlexOrderResponse) {
+
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine("Content to send: " + serializer.toXml(message.payloadMessage()));
+                }
 
                 String recipientDomain = message.payloadMessage().getRecipientDomain();
                 uftpSendMessageService.attemptToSendMessage(
@@ -278,7 +338,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                         )
                 );
             }
-            LOG.fine("Finished sending message: " + message);
+            LOG.fine("Finished sending message: " + message.payloadMessage().getConversationID());
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to send message", e);
         }
@@ -287,8 +347,15 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     @Override
     public String getAuthorizationHeader(UftpParticipant uftpParticipant) {
         LOG.fine("Getting authorization header for: " + uftpParticipant);
+        String authorization = fetchBearerToken();
+        if (authorization.isBlank()) {
+            LOG.warning("No OAuth2 bearer token available for authorization header of " + uftpParticipant);
+        }
+        return authorization;
+    }
+
+    protected String fetchBearerToken() {
         try {
-            // Perform OAuth2 client credentials flow
             try (Response response = gopacsAuthResource.getAccessToken(
                     "client_credentials",
                     this.clientId,
@@ -297,13 +364,10 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
                 if (response.getStatus() == 200) {
                     String responseBody = response.readEntity(String.class);
                     OAuth2TokenResponse tokenResponse = objectMapper.readValue(responseBody, OAuth2TokenResponse.class);
-
-                    // Return Bearer token header
                     return "Bearer " + tokenResponse.getAccessToken();
-                } else {
-                    LOG.warning("OAuth2 token request failed with status: " + response.getStatus());
-                    return "";
                 }
+                LOG.warning("OAuth2 token request failed with status: " + response.getStatus());
+                return "";
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to obtain OAuth2 access token", e);
@@ -312,7 +376,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     }
 
     protected void handleFlexRequestMessage(UftpParticipant participant, FlexRequest flexRequest) {
-        LOG.fine("Received Flex Request: " + flexRequest);
+        LOG.fine("Received Flex Request: " + flexRequest.getConversationID());
         int year = flexRequest.getPeriod().getYear();
         int month = flexRequest.getPeriod().getMonthValue();
         int day = flexRequest.getPeriod().getDayOfMonth();
@@ -324,6 +388,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             LocalTime start = FlexRequestISPTypeHelper.getISPStart(flexRequestISPType.getStart(), year, month, day, flexRequest.getTimeZone());
             double importMax = flexRequestISPType.getMaxPower() == 0L ? 0 : (double) flexRequestISPType.getMaxPower() / 1000.0F;
             double exportMax = flexRequestISPType.getMinPower() == 0L ? 0 : (double) Math.abs(flexRequestISPType.getMinPower()) / 1000.0F;
+            LOG.fine("importMax:" + importMax + " exportMax:" + exportMax);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.POWER_MAXIMUM_FLEX_REQUEST.getName(), exportMax);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.POWER_MINIMUM_FLEX_REQUEST.getName(), exportMax);
 
@@ -343,14 +408,14 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     protected void handleFlexOfferResponseMessage(UftpParticipant participant, FlexOfferResponse flexOfferResponse) {
         // Handle the response to our FlexOffer
         if (flexOfferResponse.getResult() == AcceptedRejectedType.ACCEPTED) {
-            LOG.info("FlexOffer accepted: " + flexOfferResponse.getFlexOfferMessageID());
+            LOG.info("FlexOffer accepted: " + flexOfferResponse.getConversationID());
         } else {
-            LOG.warning("FlexOffer rejected: " + flexOfferResponse.getFlexOfferMessageID());
+            LOG.warning("FlexOffer rejected: " + flexOfferResponse.getConversationID());
         }
     }
 
     protected void handleFlexOrderMessage(UftpParticipant participant, FlexOrder flexOrder) {
-        LOG.info("Received FlexOrder for FlexOffer: " + flexOrder.getFlexOfferMessageID());
+        LOG.fine("Received FlexOrder for FlexOffer: " + flexOrder.getConversationID());
 
         int year = flexOrder.getPeriod().getYear();
         int month = flexOrder.getPeriod().getMonthValue();
@@ -363,6 +428,7 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             FlexOrderISPType flexOrderISPType = flexOrder.getISPS().get(i);
             LocalTime start = FlexRequestISPTypeHelper.getISPStart(flexOrderISPType.getStart(), year, month, day, flexOrder.getTimeZone());
             double power = flexOrderISPType.getPower() / 1000.0F;
+            LOG.fine("power:" + power);
             this.schedulePowerUpdate(start, EmsGOPACSAsset.CURRENT_POWER_FLEX_REQUEST.getName(), power);
 
             // Correct usage of ZoneId.of instead of ZoneOffset.of
@@ -485,11 +551,69 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         return requestIsp.getMaxPower() == 0 ? requestIsp.getMinPower() : requestIsp.getMaxPower();
     }
 
+    /**
+     * Only act on flex messages whose congestion point matches this handler's contracted EAN. Returns
+     * false (and logs a warning) for out-of-scope messages so they are rejected (with a rejection
+     * response, but without asset mutation or FlexOffer). See issue #28 for full per-contract/role
+     * scoping via the V3 contracts endpoint.
+     */
+    protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
+        if (Objects.equals(toCongestionPoint(contractedEAN), toCongestionPoint(congestionPoint))) {
+            return true;
+        }
+        LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
+                + congestionPoint + " (contracted EAN " + contractedEAN + ")");
+        return false;
+    }
+
+    /**
+     * Converts an EAN / congestion-point identifier to the canonical GOPACS congestion-point format
+     * "ean.&lt;code&gt;" (for example "ean.265987182507322951"). GOPACS flex messages always carry the
+     * congestion point with the "ean." prefix, whereas the contracted EAN may be configured with or
+     * without it; canonicalising both sides keeps the scope check correct either way.
+     */
+    protected static String toCongestionPoint(String ean) {
+        if (ean == null) {
+            return null;
+        }
+        String trimmed = ean.trim();
+        if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
+            // Already prefixed (any case) — normalise the prefix to its canonical lower-case form.
+            return EAN_PREFIX + trimmed.substring(EAN_PREFIX.length());
+        }
+        return EAN_PREFIX + trimmed;
+    }
+
     protected void processRawMessage(String transportXml) {
         try {
             SignedMessage signedMessage = serializer.fromSignedXml(transportXml);
             String payloadXml = cryptoService.verifySignedMessage(signedMessage);
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine("Received message:" + payloadXml);
+            }
             PayloadMessageType payloadMessage = serializer.fromPayloadXml(payloadXml);
+
+            // Re-assert EAN scoping that the V2 participant lookup enforced implicitly. The V3 lookup
+            // resolves any participant domain, so a validly signed flex message from a participant outside
+            // this handler's contracted EAN would otherwise be applied to the asset. Full per-contract/role
+            // scoping via the V3 contracts endpoint is tracked in issue #28.
+            // Out-of-scope messages are not applied to the asset and get no FlexOffer, but UFTP still
+            // requires a response: reject with a reason instead of leaving the DSO's conversation dangling.
+            if (payloadMessage instanceof FlexMessageType flexMessage
+                    && !isWithinContractedScope(payloadMessage.getClass().getSimpleName(),
+                            payloadMessage.getConversationID(), flexMessage.getCongestionPoint())) {
+                PayloadMessageType rejection = UftpValidationResponseCreator.getResponseForMessage(
+                        payloadMessage, ValidationResult.rejection("CongestionPoint not within contracted scope"));
+                UftpParticipant sender = new UftpParticipant(signedMessage);
+                UftpParticipant responder = new UftpParticipant(payloadMessage.getRecipientDomain(),
+                        UftpRoleInformation.getRecipientRoleBySenderRole(sender.role()));
+                // Send delayed so the HTTP 200 on the transport call goes out first, like the accepted path
+                scheduledExecutorService.schedule(() ->
+                        notifyNewOutgoingMessage(OutgoingUftpMessage.create(responder, rejection)),
+                        this.responseDelaySeconds, TimeUnit.SECONDS);
+                return;
+            }
+
             var incomingUftpMessage = IncomingUftpMessage.create(new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
             notifyNewIncomingMessage(incomingUftpMessage);
 
@@ -534,23 +658,29 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public Optional<UftpParticipantInformation> getParticipantInformation(USEFRoleType role, String domain) {
         if (participants.containsKey(domain)) {
             return Optional.of(participants.get(domain));
-        } else {
-            try (Response response = gopacsAddressBookResource.fetchParticipants(contractedEAN)) {
-                if (response != null && response.getStatus() == 200) {
-                    List<UftpParticipantInformation> participants = response.readEntity(new GenericType<>() {
-                    });
-                    for (UftpParticipantInformation participant : participants) {
-                        this.participants.put(participant.domain(), new UftpParticipantInformation(participant.domain(), participant.publicKey(), participant.endpoint(), true));
-                    }
-                    return participants.stream().filter(p -> p.domain().equals(domain)).findFirst();
-                }
-            } catch (Exception e) {
-                if (e.getCause() != null && e.getCause() instanceof IOException) {
-                    LOG.log(Level.SEVERE, "Exception when requesting participant information", e.getCause());
-                } else {
-                    LOG.log(Level.SEVERE, "Exception when requesting participant information", e);
-                }
+        }
+
+        String authorization = fetchBearerToken();
+        if (authorization.isBlank()) {
+            LOG.warning("Skipping participant lookup for " + domain + ": no OAuth2 bearer token available");
+            return Optional.empty();
+        }
+        try (Response response = gopacsAddressBookResource.fetchParticipantByDomain(authorization, domain)) {
+            int status = response != null ? response.getStatus() : -1;
+            if (status == 200) {
+                ParticipantView view = response.readEntity(ParticipantView.class);
+                UftpParticipantInformation info = new UftpParticipantInformation(view.domain(), view.publicKey(), this.gopacsBrokerUrl + "/shapeshifter/api/v3/message", true);
+                participants.put(view.domain(), info);
+                return Optional.of(info);
             }
+            if (status == 404) {
+                LOG.fine("Participant not found in GOPACS address book: " + domain);
+            } else {
+                LOG.severe("Unexpected status " + status + " when requesting participant information for " + domain);
+            }
+        } catch (Exception e) {
+            Throwable cause = e.getCause() instanceof IOException ? e.getCause() : e;
+            LOG.log(Level.SEVERE, "Exception when requesting participant information for " + domain, cause);
         }
         return Optional.empty();
     }
