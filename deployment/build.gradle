@@ -1,0 +1,4 @@
+copy {
+    into layout.buildDirectory
+    from "Dockerfile"
+}
