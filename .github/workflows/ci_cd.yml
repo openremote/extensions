@@ -55,7 +55,7 @@ jobs:
           fi
 
       - name: Update openremoteVersion in gradle.properties
-        if: ${{ github.ref_name != '' }}
+        if: ${{ github.ref_name != 'tag' }}
         run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $RELEASED_VERSION/" gradle.properties
         env:
           RELEASED_VERSION: ${{ github.ref_name }}
