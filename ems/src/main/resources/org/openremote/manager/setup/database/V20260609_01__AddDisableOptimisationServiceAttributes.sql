@@ -1,3 +1,15 @@
--- Add attribute disableOptimisationService to EmsEnergyOptimisationAsset
-SELECT a.id, ADD_ATTRIBUTE(a, 'disableOptimisationService', 'boolean', null, now(), '{}'::jsonb)
-FROM asset a WHERE a.type = 'EmsEnergyOptimisationAsset';
+-- Change attribute name from optimisationDisabled to disableOptimisationService for EmsEnergyOptimisationAsset
+UPDATE asset
+SET attributes =
+    (
+        attributes - 'optimisationDisabled'
+    ) || jsonb_build_object(
+        'disableOptimisationService',
+        jsonb_set(
+            attributes -> 'optimisationDisabled',
+            '{name}',
+            '"disableOptimisationService"',
+            false
+        )
+    )
+WHERE type = 'EmsEnergyOptimisationAsset';
