@@ -9,8 +9,6 @@ base {
 dependencies {
     api "io.openremote:openremote-manager:$openremoteVersion"
     implementation project(":energy")
-
-    implementation project(":energy")
 }
 
 jar {
