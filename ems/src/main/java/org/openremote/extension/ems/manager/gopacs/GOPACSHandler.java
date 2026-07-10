@@ -44,9 +44,11 @@ import org.lfenergy.shapeshifter.core.service.crypto.UftpCryptoService;
 import org.lfenergy.shapeshifter.core.service.handler.UftpPayloadHandler;
 import org.lfenergy.shapeshifter.core.service.participant.ParticipantResolutionService;
 import org.lfenergy.shapeshifter.core.service.receiving.UftpReceivedMessageService;
+import org.lfenergy.shapeshifter.core.service.receiving.response.UftpValidationResponseCreator;
 import org.lfenergy.shapeshifter.core.service.sending.UftpSendMessageService;
 import org.lfenergy.shapeshifter.core.service.serialization.UftpSerializer;
 import org.lfenergy.shapeshifter.core.service.validation.UftpValidationService;
+import org.lfenergy.shapeshifter.core.service.validation.model.ValidationResult;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.CORSConfig;
 import org.openremote.container.web.WebApplication;
@@ -551,8 +553,9 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     /**
      * Only act on flex messages whose congestion point matches this handler's contracted EAN. Returns
-     * false (and logs a warning) for out-of-scope messages so they are dropped before any asset mutation
-     * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
+     * false (and logs a warning) for out-of-scope messages so they are rejected (with a rejection
+     * response, but without asset mutation or FlexOffer). See issue #28 for full per-contract/role
+     * scoping via the V3 contracts endpoint.
      */
     protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
         if (Objects.equals(toCongestionPoint(contractedEAN), toCongestionPoint(congestionPoint))) {
@@ -594,11 +597,20 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             // resolves any participant domain, so a validly signed flex message from a participant outside
             // this handler's contracted EAN would otherwise be applied to the asset. Full per-contract/role
             // scoping via the V3 contracts endpoint is tracked in issue #28.
-            // Out-of-scope messages are intentionally dropped here: the transport call still returns 200
-            // (signed envelope accepted) but no FlexRequestResponse/FlexOffer is sent in reply.
+            // Out-of-scope messages are not applied to the asset and get no FlexOffer, but UFTP still
+            // requires a response: reject with a reason instead of leaving the DSO's conversation dangling.
             if (payloadMessage instanceof FlexMessageType flexMessage
                     && !isWithinContractedScope(payloadMessage.getClass().getSimpleName(),
                             payloadMessage.getConversationID(), flexMessage.getCongestionPoint())) {
+                PayloadMessageType rejection = UftpValidationResponseCreator.getResponseForMessage(
+                        payloadMessage, ValidationResult.rejection("CongestionPoint not within contracted scope"));
+                UftpParticipant sender = new UftpParticipant(signedMessage);
+                UftpParticipant responder = new UftpParticipant(payloadMessage.getRecipientDomain(),
+                        UftpRoleInformation.getRecipientRoleBySenderRole(sender.role()));
+                // Send delayed so the HTTP 200 on the transport call goes out first, like the accepted path
+                scheduledExecutorService.schedule(() ->
+                        notifyNewOutgoingMessage(OutgoingUftpMessage.create(responder, rejection)),
+                        this.responseDelaySeconds, TimeUnit.SECONDS);
                 return;
             }
 

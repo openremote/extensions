@@ -250,6 +250,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
         }
+
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName());
+        services.getAssetPredictedDatapointService().purgeValues(assetId, EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName());
     }
 
     private void startGopacsHandler(String contractedEan, String realm, String assetId) {
@@ -348,18 +353,18 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         String logPrefix = String.format("assetType='%s', assetId='%s', assetName='%s', attributeName='%s'", attributeEvent.getAssetType(), attributeEvent.getId(), attributeEvent.getAssetName(), attributeEvent.getName());
         String attributeName = attributeEvent.getName();
 
-        // Disable/enable optimisation
-        if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_DISABLED.getName())) {
+        // Disable/enable optimisation service
+        if (attributeName.equals(EmsEnergyOptimisationAsset.DISABLE_OPTIMISATION_SERVICE.getName())) {
             boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
             if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
                 if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
-                    LOG.info(String.format("%s; Enabled energy optimisation", logPrefix));
+                    LOG.info(String.format("%s; Enabled energy optimisation service", logPrefix));
                     startOptimisation(assetId);
                 }
             } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
                 stopOptimisation(assetId);
-                LOG.info(String.format("%s; Disabled energy optimisation", logPrefix));
+                LOG.info(String.format("%s; Disabled energy optimisation service", logPrefix));
             }
             return;
         }
@@ -426,6 +431,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
         // Update power limit maximum profile manual
         if (attributeName.equals(EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL_INPUT.getName())) {
+            if (!energyOptimisationAssetsMap.containsKey(assetId)) {
+                LOG.warning(String.format("%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.", logPrefix));
+                return;
+            }
+
             String powerLimitMaximumProfileManualInput = (String) attributeEvent.getValue().orElse("");
 
             if (powerLimitMaximumProfileManualInput.isBlank()) {
@@ -463,6 +473,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
         // Update power limit minimum profile manual
         if (attributeName.equals(EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_MANUAL_INPUT.getName())) {
+            if (!energyOptimisationAssetsMap.containsKey(assetId)) {
+                LOG.warning(String.format("%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.", logPrefix));
+                return;
+            }
+
             String powerLimitMinimumProfileManualInput = (String) attributeEvent.getValue().orElse("");
 
             if (powerLimitMinimumProfileManualInput.isBlank()) {
