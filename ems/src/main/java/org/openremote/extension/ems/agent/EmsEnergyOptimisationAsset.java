@@ -56,7 +56,7 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
 
     public static final AttributeDescriptor<Boolean> GENERATE_POWER_LIMIT_MINIMUM_PROFILE_MANUAL_INPUT = new AttributeDescriptor<>("generatePowerLimitMinimumProfileManualInput", ValueType.BOOLEAN);
 
-    public static final AttributeDescriptor<Boolean> OPTIMISATION_DISABLED = new AttributeDescriptor<>("optimisationDisabled", ValueType.BOOLEAN);
+    public static final AttributeDescriptor<Boolean> DISABLE_OPTIMISATION_SERVICE = new AttributeDescriptor<>("disableOptimisationService", ValueType.BOOLEAN);
 
     public enum OptimisationMethodValueType {
         None,
@@ -186,7 +186,7 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
     }
 
     public Optional<Boolean> getOptimisationDisabled() {
-        return getAttribute(OPTIMISATION_DISABLED).flatMap(AbstractNameValueHolder::getValue);
+        return getAttribute(DISABLE_OPTIMISATION_SERVICE).flatMap(AbstractNameValueHolder::getValue);
     }
 
     public Optional<OptimisationMethodValueType> getOptimisationMethod() {
@@ -231,7 +231,7 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
 
 
     public EmsEnergyOptimisationAsset setOptimisationDisabled(Boolean value) {
-        getAttributes().getOrCreate(OPTIMISATION_DISABLED).setValue(value);
+        getAttributes().getOrCreate(DISABLE_OPTIMISATION_SERVICE).setValue(value);
         return this;
     }
 
