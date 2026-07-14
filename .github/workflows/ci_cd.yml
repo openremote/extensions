@@ -15,10 +15,15 @@ on:
 
   # Manual trigger
   workflow_dispatch:
-
-  # Release
-  release:
-    types: [ published ]
+    inputs:
+      version:
+        required: true
+        description: Extensions version
+        type: string
+      is_release:
+        required: true
+        description: Create Extensions Release
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Checkout main repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: openremote/openremote
           path: openremote
@@ -59,10 +64,10 @@ jobs:
           fi
 
       - name: Update openremoteVersion in gradle.properties
-        if: ${{ github.event_name == 'release' }}
-        run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $RELEASED_VERSION/" gradle.properties
+        if: ${{ github.event_name != 'pull_request' }}
+        run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $VERSION/" gradle.properties
         env:
-          RELEASED_VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ inputs.version }}
 
       - name: Run build
         timeout-minutes: 20
@@ -78,7 +83,7 @@ jobs:
 
       - name: Login to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        if: ${{ success() && steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         with:
           username: ${{ secrets._TEMP_DOCKERHUB_USER }}
           password: ${{ secrets._TEMP_DOCKERHUB_PASSWORD }}
@@ -94,7 +99,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build develop image
-        if: ${{ steps.is_main_repo.outputs.value && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         timeout-minutes: 20
         with:
@@ -110,7 +115,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: false
 
       - name: Build manager image
-        if: ${{ steps.is_main_repo.outputs.value && github.event_name == 'release' }}
+        if: ${{ steps.is_main_repo.outputs.value && inputs.is_release == true }}
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         timeout-minutes: 20
         with:
@@ -119,7 +124,7 @@ jobs:
           load: false
           push: true
           tags: |
-            openremote/manager:${{ github.event.release.tag_name }}
+            openremote/manager:${{ inputs.version }}
             openremote/manager:latest
           build-args: |
             GIT_COMMIT=${{ github.sha }}
@@ -128,7 +133,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: false
 
       - name: Publish to Maven Sonatype
-        if: ${{ steps.is_main_repo.outputs.value && github.event_name == 'release' }}
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         timeout-minutes: 20
         run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
         env:
