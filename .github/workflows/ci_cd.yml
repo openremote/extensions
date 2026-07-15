@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Update openremoteVersion in gradle.properties
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' && inputs.version != '' }}
         run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $VERSION/" gradle.properties
         env:
           VERSION: ${{ inputs.version }}
