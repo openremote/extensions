@@ -11,9 +11,7 @@ dependencies {
     api "io.openremote:openremote-manager:$openremoteVersion"
     api "io.openremote:openremote-model:$openremoteVersion"
 
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
-
+    testImplementation libs.resteasyClientApi
     testImplementation "io.openremote:openremote-test:$openremoteVersion"
 }
 

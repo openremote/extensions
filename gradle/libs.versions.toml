@@ -1,7 +1,12 @@
 [versions]
-camel = "4.20.0"
+jackson = "2.21.4"
 resteasy = "6.2.16.Final"
+shapeshifter = "3.5.0"
+wireMock = "3.13.1"
+camel = "4.20.0"
 
 [libraries]
 camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
 resteasyClientApi = { module = "org.jboss.resteasy:resteasy-client-api", version.ref = "resteasy" }
+shapeshifter = { module = "org.lfenergy.shapeshifter:shapeshifter-core", version.ref = "shapeshifter" }
+wireMock = { module = "org.wiremock:wiremock-standalone", version.ref = "wireMock" }
