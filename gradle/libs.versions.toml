@@ -7,5 +7,7 @@ camel = "4.20.0"
 [libraries]
 camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
 resteasyClientApi = { module = "org.jboss.resteasy:resteasy-client-api", version.ref = "resteasy" }
+resteasyJaxbProvider = { module = "org.jboss.resteasy:resteasy-jaxb-provider", version.ref = "resteasy" }
 shapeshifter = { module = "org.lfenergy.shapeshifter:shapeshifter-core", version.ref = "shapeshifter" }
 wireMock = { module = "org.wiremock:wiremock-standalone", version.ref = "wireMock" }
+
