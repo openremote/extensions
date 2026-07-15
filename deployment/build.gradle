@@ -1,0 +1,10 @@
+apply plugin: "base"
+
+tasks.register("prepareDockerContext", Copy) {
+    from(layout.projectDirectory.file("Dockerfile"))
+    into(layout.buildDirectory)
+}
+
+tasks.named("build") {
+    dependsOn("prepareDockerContext")
+}

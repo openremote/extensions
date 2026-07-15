@@ -15,6 +15,15 @@ on:
 
   # Manual trigger
   workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: Extensions version
+        type: string
+      is_release:
+        required: true
+        description: Create Extensions Release
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,7 +37,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Checkout main repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: openremote/openremote
+          path: openremote
+          ref: master
+          sparse-checkout: profile
+          sparse-checkout-cone-mode: false
 
       - name: Set up JDK 21 and gradle cache
         id: java
@@ -45,40 +63,95 @@ jobs:
             echo "value=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Run build
-        if: ${{ !steps.is_main_repo.outputs.value || github.event_name == 'pull_request' }}
-        run: |
-          ./gradlew build
-        timeout-minutes: 20
-
-      - name: Run build and publish
-        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > keystore
-          ./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository \
-              -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD \
-              -PkeystoreKeyAlias=$KEYSTORE_KEY_ALIAS -PkeystoreKeyPassword=$KEYSTORE_KEY_PASSWORD -PkeystoreFile=$PWD/keystore -PkeystorePassword=$KEYSTORE_PASSWORD
+      - name: Update openremoteVersion in gradle.properties
+        if: ${{ github.event_name != 'pull_request' && inputs.version != '' }}
+        run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $VERSION/" gradle.properties
         env:
-          MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY || secrets.MAVEN_SIGNING_KEY }}
-          MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD || secrets.MAVEN_SIGNING_PASSWORD }}
-          MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME || secrets.MAVEN_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD || secrets.MAVEN_PASSWORD }}
-          KEYSTORE_BASE64: |
-            ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEYSTORE_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_KEY_ALIAS }}
-          KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
-        timeout-minutes: 20
+          VERSION: ${{ inputs.version }}
 
-      - name: Archive backend test results
+      - name: Run build
+        timeout-minutes: 20
+        run: |
+          # Run build
+          # Make temp dir with 777 mask as docker seems to run as root
+          mkdir -pm 777 tmp
+          
+          # Start the dev-testing stack
+          docker compose -f openremote/profile/dev-testing.yml up -d --no-build
+          
+          ./gradlew build
+
+      - name: Login to DockerHub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        with:
+          username: ${{ secrets._TEMP_DOCKERHUB_USER }}
+          password: ${{ secrets._TEMP_DOCKERHUB_PASSWORD }}
+
+      - name: Install QEMU
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Install Buildx
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build develop image
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        timeout-minutes: 20
+        with:
+          context: deployment/build
+          platforms: linux/amd64,linux/arm64
+          load: false
+          push: true
+          tags: openremote/manager:develop
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+
+      - name: Build manager image
+        if: ${{ steps.is_main_repo.outputs.value && inputs.is_release == true }}
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        timeout-minutes: 20
+        with:
+          context: deployment/build
+          platforms: linux/amd64,linux/arm64
+          load: false
+          push: true
+          tags: |
+            openremote/manager:${{ inputs.version }}
+            openremote/manager:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+
+      - name: Publish to Maven Sonatype
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        timeout-minutes: 20
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
+        env:
+          MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY }}
+          MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD }}
+          MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
+
+      - name: Archive test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: backend-test-results
-          path: test/build/reports/tests
+          name: test-results
+          path: '**/build/reports/tests'
 
       - name: Archive coverage report
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
-          path: test/build/reports/jacoco/test/html
+          path: '**/build/reports/jacoco/test/html'
