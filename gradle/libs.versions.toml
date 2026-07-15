@@ -1,5 +1,4 @@
 [versions]
-jackson = "2.21.4"
 resteasy = "6.2.16.Final"
 shapeshifter = "3.5.0"
 wireMock = "3.13.1"
