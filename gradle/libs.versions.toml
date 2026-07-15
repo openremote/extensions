@@ -1,18 +1,18 @@
 [versions]
+camel = "4.20.0"
+jackson = "2.21.4"
 resteasy = "6.2.16.Final"
 shapeshifter = "3.5.0"
 wireMock = "3.13.1"
-camel = "4.20.0"
-jackson = "2.21.4"
 
 [libraries]
 camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
-resteasyClientApi = { module = "org.jboss.resteasy:resteasy-client-api", version.ref = "resteasy" }
-resteasyJaxbProvider = { module = "org.jboss.resteasy:resteasy-jaxb-provider", version.ref = "resteasy" }
-shapeshifter = { module = "org.lfenergy.shapeshifter:shapeshifter-core", version.ref = "shapeshifter" }
-wireMock = { module = "org.wiremock:wiremock-standalone", version.ref = "wireMock" }
 jacksonDataformatCsv = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-csv", version.ref = "jackson" }
 jacksonDatabind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jacksonDatatypeJdk8 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jdk8", version.ref = "jackson" }
 jacksonDatatypeJsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 jacksonModuleParameterNames = { module = "com.fasterxml.jackson.module:jackson-module-parameter-names", version.ref = "jackson" }
+resteasyClientApi = { module = "org.jboss.resteasy:resteasy-client-api", version.ref = "resteasy" }
+resteasyJaxbProvider = { module = "org.jboss.resteasy:resteasy-jaxb-provider", version.ref = "resteasy" }
+shapeshifter = { module = "org.lfenergy.shapeshifter:shapeshifter-core", version.ref = "shapeshifter" }
+wireMock = { module = "org.wiremock:wiremock-standalone", version.ref = "wireMock" }
