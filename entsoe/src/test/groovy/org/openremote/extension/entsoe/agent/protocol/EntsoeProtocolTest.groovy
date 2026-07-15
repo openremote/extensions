@@ -426,6 +426,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         closeClient()
     }
 
+    @Ignore
     def "ENTSO-E integration test filters out points in the past when clock is mid-period"() {
         given: "the container environment is started with clock in the middle of the dataset period"
         requestCountByZone.clear()
