@@ -87,13 +87,3 @@ signing {
         sign publishing.publications.maven
     }
 }
-
-tasks.register("copyExtension", Copy) {
-    dependsOn jar
-    from(jar.archiveFile)
-    into project(":deployment").layout.buildDirectory.dir("extensions")
-}
-
-tasks.named('build') {
-    dependsOn('copyExtension')
-}

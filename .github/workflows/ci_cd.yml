@@ -69,7 +69,12 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
-      - name: Run build
+      - name: Run installDist
+        timeout-minutes: 20
+        run: ./gradlew installDist
+
+      - name: Run integration tests
+        if: ${{ inputs.is_release != true }}
         timeout-minutes: 20
         run: |
           # Run build
@@ -79,7 +84,7 @@ jobs:
           # Start the dev-testing stack
           docker compose -f openremote/profile/dev-testing.yml up -d --no-build
           
-          ./gradlew build
+          ./gradlew test
 
       - name: Login to DockerHub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
