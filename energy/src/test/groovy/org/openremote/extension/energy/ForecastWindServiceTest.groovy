@@ -640,7 +640,6 @@ class ForecastWindServiceTest extends Specification implements ManagerContainerT
         }
     }
 
-    @Ignore
     def "Test adding and removing asset with enabled attributes"() {
         given: "the container environment is started"
         def conditions = new PollingConditions(timeout: 10, delay: 0.2)
