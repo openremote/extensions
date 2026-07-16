@@ -115,6 +115,7 @@ jobs:
           tags: openremote/manager:develop
           build-args: |
             GIT_COMMIT=${{ github.sha }}
+            QUALIFIER=develop
         env:
           DOCKER_BUILD_SUMMARY: false
           DOCKER_BUILD_RECORD_UPLOAD: false
@@ -133,6 +134,7 @@ jobs:
             openremote/manager:latest
           build-args: |
             GIT_COMMIT=${{ github.sha }}
+            QUALIFIER=latest
         env:
           DOCKER_BUILD_SUMMARY: false
           DOCKER_BUILD_RECORD_UPLOAD: false
