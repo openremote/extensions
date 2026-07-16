@@ -27,7 +27,7 @@ scmVersion {
 
 allprojects {
     // Apply common project setup
-    apply from: "${project.rootDir}/project.gradle"
+    apply from: "${rootDir}/project.gradle"
     version = rootProject.scmVersion.version
 }
 

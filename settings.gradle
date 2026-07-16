@@ -1,8 +1,15 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
 // TODO: These plugins remain here because project.gradle imports their classes,
 // and version-catalog aliases cannot be used in settings.gradle. Move the related
 // configuration into convention plugins/build logic so their versions can be
 // managed through libs.versions.toml.
 plugins {
+    id 'com.diffplug.spotless' version "$spotlessVersion" apply false
     id 'org.jetbrains.gradle.plugin.idea-ext' version "$ideaExtPluginVersion" apply false
 }
 

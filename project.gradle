@@ -93,6 +93,9 @@ repositories {
     maven {
         url = 'https://jitpack.io'
     }
+    maven {
+        url = 'https://plugins.gradle.org/m2'
+    }
 }
 
 // Eclipse needs help
@@ -111,6 +114,27 @@ idea {
         excludeDirs += file("lib")
         excludeDirs += file("build")
     }
+}
+
+def getYarnInstallTask() {
+    tasks.getByPath(":yarnInstall")
+}
+
+ext {
+    getYarnInstallTask = this.&getYarnInstallTask
+}
+
+// Add UI tasks
+ext.npmCommand = { cmd ->
+    isFamily(FAMILY_WINDOWS) ? "${cmd}.cmd" : cmd
+}
+
+// Add yarn tasks
+tasks.register('yarnInstall', Exec) {
+    commandLine npmCommand("yarn"), "install"
+}
+tasks.register('yarnInstallForce', Exec) {
+    commandLine npmCommand("yarn"), "install", "--force"
 }
 
 // Configure Java build
@@ -176,6 +200,11 @@ plugins.withType(JavaPlugin).whenPluginAdded {
 
         addTestListener(new TestSummaryListener())
     }
+}
+
+// Configure Spotless
+if (project == rootProject) {
+    apply from: "${rootDir}/spotless.gradle"
 }
 
 // POM generator
