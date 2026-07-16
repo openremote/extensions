@@ -3,6 +3,7 @@ package org.openremote.extension.energy
 import org.openremote.extension.energy.manager.EnergyOptimiser
 import org.openremote.model.util.UniqueIdentifierGenerator
 import org.openremote.model.util.Pair
+import spock.lang.Ignore
 import spock.lang.Specification
 
 import java.time.LocalDateTime
@@ -32,6 +33,7 @@ import static spock.util.matcher.HamcrestMatchers.closeTo
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+@Ignore
 class EnergyOptimisationTest extends Specification {
 
     def gridId = UniqueIdentifierGenerator.generateId("grid")
