@@ -28,7 +28,6 @@ import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastWindService.OR_OPEN_WEATHER_API_APP_ID
 
-@Ignore // Produces StackOverflow Error
 class ForecastWindServiceTest extends Specification implements ManagerContainerTrait {
 
     @Shared
@@ -640,6 +639,7 @@ class ForecastWindServiceTest extends Specification implements ManagerContainerT
         }
     }
 
+    @Ignore
     def "Test adding and removing asset with enabled attributes"() {
         given: "the container environment is started"
         def conditions = new PollingConditions(timeout: 10, delay: 0.2)

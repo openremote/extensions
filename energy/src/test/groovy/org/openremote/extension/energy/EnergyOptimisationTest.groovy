@@ -32,8 +32,6 @@ import static spock.util.matcher.HamcrestMatchers.closeTo
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
-@Ignore // Produces StackOverflow Error
 class EnergyOptimisationTest extends Specification {
 
     def gridId = UniqueIdentifierGenerator.generateId("grid")
