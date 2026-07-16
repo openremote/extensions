@@ -78,7 +78,6 @@ import static org.openremote.model.Constants.MASTER_REALM
  * writes are scheduled asynchronously and are already covered precisely by {@code GOPACSHandlerTest}. This
  * test focuses on the HTTP contract, so a placeholder asset id is sufficient.
  */
-@IgnoreIf({ System.getenv("GITHUB_ACTIONS") == "true" })
 class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTrait {
 
     static final String CONTRACTED_EAN = "ean.871234567890123456"
