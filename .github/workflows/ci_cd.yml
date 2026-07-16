@@ -17,11 +17,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        required: true
+        required: false
         description: Extensions version
         type: string
       is_release:
-        required: true
+        required: false
         description: Create Extensions Release
         type: boolean
 
