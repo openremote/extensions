@@ -91,7 +91,7 @@ When adding or updating an extension:
 * Use the package namespace `org.openremote.extension.<extension-name>`.
 * Register extension components using the appropriate OpenRemote SPI files under `META-INF/services`.
 * Keep extension-specific resources under an extension-specific resource path.
-* Add tests for extension behaviour, preferably following the existing OpenRemote testing conventions.
+* Add tests for extension behavior, preferably following the existing OpenRemote testing conventions.
 
 Typical extension integration points include:
 
