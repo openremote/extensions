@@ -28,7 +28,7 @@ import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastWindService.OR_OPEN_WEATHER_API_APP_ID
 
-@Ignore
+@Ignore // Produces StackOverflow Error
 class ForecastWindServiceTest extends Specification implements ManagerContainerTrait {
 
     @Shared
