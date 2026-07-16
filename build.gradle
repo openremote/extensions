@@ -21,7 +21,7 @@ scmVersion {
 allprojects {
     // Apply common project setup
     apply from: "${project.rootDir}/project.gradle"
-    version = scmVersion.version
+    version = rootProject.scmVersion.version
 }
 
 subprojects {
