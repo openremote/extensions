@@ -18,16 +18,19 @@ on:
     inputs:
       version:
         required: false
-        description: Extensions version
+        description: Provide the OpenRemote version
         type: string
       is_release:
         required: false
-        description: Create Extensions Release
+        description: Whether a new extensions release is created
         type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
 
@@ -63,9 +66,18 @@ jobs:
             echo "value=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update openremoteVersion in gradle.properties
+      - name: Update OpenRemote version in gradle.properties
         if: ${{ github.event_name != 'pull_request' && inputs.version != '' }}
-        run: sed -i "s/^openremoteVersion = .*/openremoteVersion = $VERSION/" gradle.properties
+        run: |
+          CURRENT=$(grep '^openremoteVersion' gradle.properties | sed 's/^openremoteVersion = //')
+          if [ "$CURRENT" != "$VERSION" ]; then
+            sed -i "s/^openremoteVersion = .*/openremoteVersion = $VERSION/" gradle.properties
+            git add gradle.properties
+            git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "Update OpenRemote version to $VERSION"
+            git push
+          else
+            echo "Version unchanged, skipping commit."
+          fi
         env:
           VERSION: ${{ inputs.version }}
 
@@ -148,6 +160,11 @@ jobs:
           MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD }}
           MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
+
+      - name: Run deployment
+        run: gh workflow run deploy.yml -R openremote/openremote -f CLEAN_INSTALL="true"
+        env:
+          GH_TOKEN: ${{ secrets._TEMP_GH_OPENREMOTE_TOKEN }}
 
       - name: Archive test results
         if: always()
