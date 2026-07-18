@@ -162,9 +162,10 @@ jobs:
           MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
 
       - name: Run deployment
+        if: ${{ github.event_name != 'pull_request' }}
         run: gh workflow run deploy.yml -R openremote/openremote -f CLEAN_INSTALL="true"
         env:
-          GH_TOKEN: ${{ secrets._TEMP_GH_OPENREMOTE_TOKEN }}
+          GH_TOKEN: ${{ secrets._TEMP_GH_EXTENSIONS_TOKEN }}
 
       - name: Archive test results
         if: always()
