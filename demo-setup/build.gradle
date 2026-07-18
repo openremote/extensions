@@ -1,13 +1,15 @@
-apply plugin: "java-library"
-apply plugin: "maven-publish"
-apply plugin: "signing"
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+}
 
 base {
     archivesName = "openremote-${project.name}-extension"
 }
 
 dependencies {
-    api "io.openremote:openremote-manager:$openremoteVersion"
+    api libs.openremote.manager
     implementation project(":energy")
 }
 
