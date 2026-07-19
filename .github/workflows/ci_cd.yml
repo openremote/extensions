@@ -80,6 +80,7 @@ jobs:
           fi
         env:
           VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets._TEMP_GH_EXTENSIONS_TOKEN }}  # When the 'github.token' is used events are not generated to prevent users from accidentally creating recursive workflow runs.
 
       - name: Run installDist
         timeout-minutes: 20
