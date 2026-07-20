@@ -164,10 +164,10 @@ jobs:
       - name: Run deployment
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         run: |
-          if [ "$IS_RELEASE" != true ]; then
-            gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="staging" -f MANAGER_TAG="develop" -f CLEAN_INSTALL="true"
-          else
+          if [ "$IS_RELEASE" == true ]; then
             gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="demo" -f MANAGER_TAG="latest" -f CLEAN_INSTALL="true"
+          else 
+            gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="staging" -f MANAGER_TAG="develop" -f CLEAN_INSTALL="true"
           fi
 
         env:
