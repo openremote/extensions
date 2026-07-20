@@ -29,9 +29,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
 
   build:
@@ -66,13 +63,13 @@ jobs:
             echo "value=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update OpenRemote version in gradle.properties
+      - name: Update OpenRemote version in gradle/libs.versions.toml
         if: ${{ github.event_name != 'pull_request' && inputs.version != '' }}
         run: |
-          CURRENT=$(grep '^openremote = ' gradle/libs.versions.toml | sed 's/^openremote = //')
+          CURRENT=$(grep '^openremote = ' gradle/libs.versions.toml | sed -E 's/^openremote = "([^\"]+)".*/\1/' | head -n 1)
           if [ "$CURRENT" != "$VERSION" ]; then
             sed -i "s/^openremote = .*/openremote = \"$VERSION\"/" gradle/libs.versions.toml
-            git add gradle.properties
+            git add gradle/libs.versions.toml
             git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "Update OpenRemote version to $VERSION [skip ci]"
             git push
           else
