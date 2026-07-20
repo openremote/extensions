@@ -166,7 +166,7 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: gh workflow run deploy.yml -R openremote/openremote -f CLEAN_INSTALL="true"
         env:
-          GH_TOKEN: ${{ secrets._TEMP_GH_EXTENSIONS_TOKEN }}
+          GH_TOKEN: ${{ secrets._TEMP_GH_OPENREMOTE_TOKEN }}
 
       - name: Archive test results
         if: always()
