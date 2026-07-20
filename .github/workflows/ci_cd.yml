@@ -71,7 +71,7 @@ jobs:
         run: |
           CURRENT=$(grep '^openremote = ' gradle/libs.versions.toml | sed 's/^openremote = //')
           if [ "$CURRENT" != "$VERSION" ]; then
-            sed -i "s/^openremote = .*/openremote = $VERSION/" gradle/libs.versions.toml
+            sed -i "s/^openremote = .*/openremote = \"$VERSION\"/" gradle/libs.versions.toml
             git add gradle.properties
             git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "Update OpenRemote version to $VERSION"
             git push
