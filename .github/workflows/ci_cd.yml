@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Update OpenRemote version in gradle/libs.versions.toml
-        if: ${{ github.event_name != 'pull_request' && inputs.version != '' }}
+        if: ${{ github.event_name != 'pull_request' && github.event_name == 'workflow_dispatch' }}
         run: |
           CURRENT=$(grep '^openremote = ' gradle/libs.versions.toml | sed -E 's/^openremote = "([^\"]+)".*/\1/' | head -n 1)
           if [ "$CURRENT" != "$VERSION" ]; then
@@ -159,7 +159,7 @@ jobs:
           MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
 
       - name: Run deployment
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         run: gh workflow run deploy.yml -R openremote/openremote -f CLEAN_INSTALL="true"
         env:
           GH_TOKEN: ${{ secrets._TEMP_GH_OPENREMOTE_TOKEN }}
