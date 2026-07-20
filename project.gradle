@@ -89,10 +89,10 @@ repositories {
 }
 
 // Eclipse needs help
-apply plugin: "eclipse"
+pluginManager.apply('eclipse')
 
 // Intellij needs help
-apply plugin: 'idea'
+pluginManager.apply('idea')
 // Use the same output directories in IDE as in gradle
 idea {
     module {
@@ -106,22 +106,8 @@ idea {
     }
 }
 
-def resolveProject(String path) {
-    project(path)
-}
-
-def resolveTask(String path) {
-    tasks.getByPath(path)
-}
-
-ext {
-    resolveProject = this.&resolveProject
-    resolveTask = this.&resolveTask
-}
-
 // Configure Java build
 plugins.withType(JavaPlugin).whenPluginAdded {
-
     // Use Java 21
     tasks.withType(JavaCompile) {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -143,6 +129,8 @@ plugins.withType(JavaPlugin).whenPluginAdded {
         // JAR/ZIP base name is the fully qualified subproject name
         archivesName = "${rootProject.name}${path.replaceAll(":", "-")}"
     }
+
+    pluginManager.apply(libs.plugins.testLogger.get().pluginId)
 
     test {
         workingDir = findProject(":openremote") != null ? project(":openremote").projectDir : rootProject.projectDir
