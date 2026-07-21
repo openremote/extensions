@@ -3,5 +3,5 @@ ARG QUALIFIER=latest
 
 FROM openremote/manager:${QUALIFIER}-core
 
-RUN mkdir -p /deployment/manager/extensions
-COPY extensions /deployment/manager/extensions
+RUN mkdir -p /extensions
+COPY extensions /extensions
