@@ -1,0 +1,27 @@
+plugins {
+    id 'base'
+}
+
+tasks.register("copyDockerFile", Copy) {
+    from layout.projectDirectory.file("Dockerfile")
+    into layout.buildDirectory
+}
+
+tasks.register("distributeExtensions", Copy) {
+    def extensionProjects = [
+            project(":demo-setup"),
+            project(":energy"),
+            project(":entsoe")
+    ]
+
+    extensionProjects.each { extProj ->
+        def jarTask = extProj.tasks.named("jar")
+        from(jarTask.flatMap { it.archiveFile })
+    }
+
+    into layout.buildDirectory.dir("extensions")
+}
+
+tasks.register("installDist") {
+    dependsOn "copyDockerFile", "distributeExtensions"
+}
