@@ -8,14 +8,16 @@ base {
 }
 
 dependencies {
-    api "io.openremote:openremote-manager:$openremoteVersion"
-    api "io.openremote:openremote-model:$openremoteVersion"
 
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-multipart-provider:$resteasyVersion"
+    api libs.openremote.manager
+    api libs.openremote.model
 
-    testImplementation "io.openremote:openremote-test:$openremoteVersion"
+    api libs.resteasyClientApi
+    api libs.resteasyJaxbProvider
+    api libs.resteasyMultipartProvider
+
+    testImplementation libs.openremote.test
+
 }
 
 jar {
