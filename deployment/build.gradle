@@ -1,5 +1,109 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.LibraryElements
+import org.gradle.api.attributes.Usage
+import org.gradle.api.attributes.java.TargetJvmEnvironment
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
+import javax.inject.Inject
+
 plugins {
     id 'base'
+}
+
+abstract class DistributeExtensions extends DefaultTask {
+
+    @Classpath
+    abstract ConfigurableFileCollection getExtensionFiles()
+
+    @Classpath
+    abstract ConfigurableFileCollection getManagerFiles()
+
+    @OutputDirectory
+    abstract DirectoryProperty getDestinationDirectory()
+
+    @Inject
+    abstract FileSystemOperations getFileSystemOperations()
+
+    @TaskAction
+    void distribute() {
+        Set<String> managerFileNames = managerFiles.files.collect {
+            it.name
+        } as Set<String>
+
+        fileSystemOperations.sync {
+            from(extensionFiles) {
+                exclude { details ->
+                    managerFileNames.contains(details.file.name)
+                }
+            }
+
+            into(destinationDirectory.get().asFile)
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        }
+    }
+}
+
+def excludedExtensionProjects = [
+    project.path,
+    ":ems"
+] as Set
+
+def extensionProjects = rootProject.subprojects.findAll {
+    !excludedExtensionProjects.contains(it.path)
+}
+
+def configureRuntimeAttributes = { configuration ->
+    configuration.attributes {
+        attribute(
+            Usage.USAGE_ATTRIBUTE,
+            objects.named(Usage, Usage.JAVA_RUNTIME)
+        )
+        attribute(
+            Category.CATEGORY_ATTRIBUTE,
+            objects.named(Category, Category.LIBRARY)
+        )
+        attribute(
+            LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+            objects.named(LibraryElements, LibraryElements.JAR)
+        )
+        attribute(
+            TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(
+                TargetJvmEnvironment,
+                TargetJvmEnvironment.STANDARD_JVM
+            )
+        )
+    }
+}
+
+configurations {
+    extensionRuntime {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+
+    managerRuntime {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+configureRuntimeAttributes(configurations.extensionRuntime)
+configureRuntimeAttributes(configurations.managerRuntime)
+
+dependencies {
+    extensionProjects.each { extensionProject ->
+        extensionRuntime project(path: extensionProject.path)
+    }
+
+    managerRuntime libs.openremote.manager
 }
 
 tasks.register("copyDockerFile", Copy) {
@@ -7,19 +111,12 @@ tasks.register("copyDockerFile", Copy) {
     into layout.buildDirectory
 }
 
-tasks.register("distributeExtensions", Copy) {
-    def extensionProjects = [
-            project(":demo-setup"),
-            project(":energy"),
-            project(":entsoe")
-    ]
-
-    extensionProjects.each { extProj ->
-        def jarTask = extProj.tasks.named("jar")
-        from(jarTask.flatMap { it.archiveFile })
-    }
-
-    into layout.buildDirectory.dir("extensions")
+tasks.register("distributeExtensions", DistributeExtensions) {
+    extensionFiles.from(configurations.extensionRuntime)
+    managerFiles.from(configurations.managerRuntime)
+    destinationDirectory.set(
+        layout.buildDirectory.dir("extensions")
+    )
 }
 
 tasks.register("installDist") {
