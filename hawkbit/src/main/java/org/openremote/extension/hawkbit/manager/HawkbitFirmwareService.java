@@ -28,7 +28,6 @@ import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataWriter;
 import org.openremote.container.timer.TimerService;
-import org.openremote.container.web.WebClient;
 import org.openremote.container.web.WebTargetBuilder;
 import org.openremote.extension.hawkbit.manager.hawkbit.*;
 import org.openremote.extension.hawkbit.manager.resource.*;
@@ -60,7 +59,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.openremote.container.web.WebTargetBuilder.*;
 import static org.openremote.model.syslog.SyslogCategory.API;
 import static org.openremote.model.util.MapAccess.getString;
 
@@ -84,6 +82,9 @@ public class HawkbitFirmwareService implements ContainerService {
 
     public static final String HAWKBIT_MANAGEMENT_API_URL = "HAWKBIT_MANAGEMENT_API_URL";
     public static final String HAWKBIT_MANAGEMENT_API_URL_DEFAULT = "http://localhost:8083/hawkbit/rest/v1";
+
+    public static final int CONNECTION_POOL_SIZE = 10;
+    public static final int CONNECTION_TIMEOUT_MILLISECONDS = 10000;
 
     private static final Logger LOG = SyslogCategory.getLogger(API, HawkbitFirmwareService.class);
 
@@ -154,9 +155,8 @@ public class HawkbitFirmwareService implements ContainerService {
 
         hawkbitRealm = getString(container.getConfig(), HAWKBIT_REALM, HAWKBIT_REALM_DEFAULT);
 
-        client = createClient(org.openremote.container.Container.EXECUTOR, CONNECTION_POOL_SIZE,
+        client = WebTargetBuilder.createClient(org.openremote.container.Container.EXECUTOR, CONNECTION_POOL_SIZE,
                 CONNECTION_TIMEOUT_MILLISECONDS, resteasyClientBuilder -> {
-                    WebClient.registerDefaults(resteasyClientBuilder);
                     ResteasyJackson2Provider provider = new ResteasyJackson2Provider();
                     provider.setMapper(ValueUtil.JSON);
                     resteasyClientBuilder.register(provider);
