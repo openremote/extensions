@@ -155,6 +155,17 @@ jobs:
         if: ${{ inputs.is_release }}
         run: ./gradlew findSonatypeStagingRepository releaseSonatypeStagingRepository -PpublishUsername=${{ secrets.MAVEN_USERNAME }} -PpublishPassword=${{ secrets.MAVEN_PASSWORD }}
 
+      - name: Create OpenRemote deployment token
+        id: deployment-token
+        if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets._TEMP_CI_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets._TEMP_CI_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: openremote
+          repositories: openremote
+          permission-actions: write
+
       - name: Run deployment
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         run: |
@@ -163,9 +174,8 @@ jobs:
           else 
             gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="staging" -f MANAGER_TAG="develop" -f CLEAN_INSTALL="true"
           fi
-
         env:
-          GH_TOKEN: ${{ secrets._TEMP_GH_OPENREMOTE_TOKEN }}
+          GH_TOKEN: ${{ steps.deployment-token.outputs.token }}
           IS_RELEASE: ${{ inputs.is_release }}
 
       - name: Archive test results
