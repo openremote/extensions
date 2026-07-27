@@ -139,12 +139,21 @@ jobs:
       - name: Publish to Maven Sonatype
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
         timeout-minutes: 20
-        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
+        run: ./gradlew publishToSonatype -PsigningKey=$MAVEN_SIGNING_KEY -PsigningPassword=$MAVEN_SIGNING_PASSWORD -PpublishUsername=$MAVEN_USERNAME -PpublishPassword=$MAVEN_PASSWORD
         env:
           MAVEN_SIGNING_KEY: ${{ secrets._TEMP_MAVEN_SIGNING_KEY }}
           MAVEN_SIGNING_PASSWORD: ${{ secrets._TEMP_MAVEN_SIGNING_PASSWORD }}
           MAVEN_USERNAME: ${{ secrets._TEMP_MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets._TEMP_MAVEN_PASSWORD }}
+
+      - name: Close and Verify Staging Repository
+        if: ${{ inputs.is_release }}
+        # This will poll the Sonatype API and wait until all validation rules pass.
+        run: ./gradlew findSonatypeStagingRepository closeSonatypeStagingRepository -PpublishUsername=${{ secrets.MAVEN_USERNAME }} -PpublishPassword=${{ secrets.MAVEN_PASSWORD }}
+
+      - name: Release to Maven Central Sonatype
+        if: ${{ inputs.is_release }}
+        run: ./gradlew findSonatypeStagingRepository releaseSonatypeStagingRepository -PpublishUsername=${{ secrets.MAVEN_USERNAME }} -PpublishPassword=${{ secrets.MAVEN_PASSWORD }}
 
       - name: Run deployment
         if: ${{ steps.is_main_repo.outputs.value && github.event_name != 'pull_request' }}
