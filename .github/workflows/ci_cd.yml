@@ -66,6 +66,11 @@ jobs:
             echo "value=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Run Spotless check
+        if: ${{ inputs.is_release != true }}
+        timeout-minutes: 10
+        run: ./gradlew spotlessCheck
+
       - name: Run installDist
         timeout-minutes: 20
         run: ./gradlew installDist
