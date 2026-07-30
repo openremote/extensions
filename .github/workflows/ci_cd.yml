@@ -149,11 +149,11 @@ jobs:
       - name: Close and Verify Staging Repository
         if: ${{ inputs.is_release }}
         # This will poll the Sonatype API and wait until all validation rules pass.
-        run: ./gradlew findSonatypeStagingRepository closeSonatypeStagingRepository -PpublishUsername=${{ secrets.MAVEN_USERNAME }} -PpublishPassword=${{ secrets.MAVEN_PASSWORD }}
+        run: ./gradlew findSonatypeStagingRepository closeSonatypeStagingRepository -PpublishUsername=${{ secrets._TEMP_MAVEN_USERNAME }} -PpublishPassword=${{ secrets._TEMP_MAVEN_PASSWORD }}
 
       - name: Release to Maven Central Sonatype
         if: ${{ inputs.is_release }}
-        run: ./gradlew findSonatypeStagingRepository releaseSonatypeStagingRepository -PpublishUsername=${{ secrets.MAVEN_USERNAME }} -PpublishPassword=${{ secrets.MAVEN_PASSWORD }}
+        run: ./gradlew findSonatypeStagingRepository releaseSonatypeStagingRepository -PpublishUsername=${{ secrets._TEMP_MAVEN_USERNAME }} -PpublishPassword=${{ secrets._TEMP_MAVEN_PASSWORD }}
 
       - name: Create OpenRemote deployment token
         id: deployment-token
