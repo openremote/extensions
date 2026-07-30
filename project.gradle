@@ -139,7 +139,6 @@ plugins.withType(JavaPlugin).whenPluginAdded {
 
     pluginManager.apply(libs.plugins.testLogger.get().pluginId)
 
-
     test {
         workingDir = findProject(":openremote") != null ? project(":openremote").projectDir : rootProject.projectDir
         if (findProject(":openremote") == null) {
