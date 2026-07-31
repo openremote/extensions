@@ -2,7 +2,7 @@
 
 ## Introduction
 
-[ENTSO-E](https://www.entsoe.eu/data/transparency-platform/) is a European transparency platform for the energy market that provides 
+[ENTSO-E](https://www.entsoe.eu/data/transparency-platform/) is a European transparency platform for the energy market that provides
 a large collection of energy related data.
 
 This agent uses their [REST API](https://documenter.getpostman.com/view/7009892/2s93JtP3F6#3b383df0-ada2-49fe-9a50-98b1bb201c6b) to retrieve the `Energy Prices` (document type A44) data.
@@ -17,8 +17,8 @@ To do so, follow the process described at [How to get security token? – Transp
 ### ENTSO-E Agent
 
 To get access to the data, add an ENTSO-E agent to your configuration.  
-On the agent, fill-in the `Security token` attribute with the token you got from ENTSO-E (see [Prerequisites](#prerequisites) above).    
-You can optionally add the `Polling millis` attribute to set the polling frequency. It defaults to 1h.  
+On the agent, fill-in the `Security token` attribute with the token you got from ENTSO-E (see [Prerequisites](#prerequisites) above).  
+You can optionally add the `Polling millis` attribute to set the polling frequency. It defaults to 1h.
 
 ### Getting the data
 

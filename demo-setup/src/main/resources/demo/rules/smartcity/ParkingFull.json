@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "GroupAsset"
-                  ],
+                  "types": ["GroupAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,9 +29,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "7UUzmvnTuLdjVpTb8MnjSX"
-                  ]
+                  "ids": ["7UUzmvnTuLdjVpTb8MnjSX"]
                 }
               }
             ]

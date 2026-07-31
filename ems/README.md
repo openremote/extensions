@@ -23,15 +23,15 @@ To participate in GOPACS flex trading through OpenRemote, you need:
 
 The following environment variables must be set on the OpenRemote manager:
 
-| Variable | Required | Description |
-|---|---|---|
-| `GOPACS_PRIVATE_KEY_FILE` | Yes | File path to the Ed25519 private key for signing UFTP messages |
-| `GOPACS_CLIENT_ID` | Yes | OAuth2 client ID from GOPACS |
-| `GOPACS_CLIENT_SECRET` | Yes | OAuth2 client secret from GOPACS |
-| `GOPACS_PARTICIPANT_URL` | No | Address book base URL (default: `https://clc-message-broker.gopacs-services.eu`) |
-| `GOPACS_OAUTH2_URL` | No | OAuth2 token endpoint (default: `https://auth.gopacs-services.eu/realms/gopacs/protocol/openid-connect/token`) |
-| `GOPACS_RESPONSE_DELAY_SECONDS` | No | Delay before auto-responding to messages (default: `10`) |
-| `GOPACS_FLEX_OFFER_DELAY_SECONDS` | No | Delay before sending a flex offer (default: `30`) |
+| Variable                          | Required | Description                                                                                                    |
+| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `GOPACS_PRIVATE_KEY_FILE`         | Yes      | File path to the Ed25519 private key for signing UFTP messages                                                 |
+| `GOPACS_CLIENT_ID`                | Yes      | OAuth2 client ID from GOPACS                                                                                   |
+| `GOPACS_CLIENT_SECRET`            | Yes      | OAuth2 client secret from GOPACS                                                                               |
+| `GOPACS_PARTICIPANT_URL`          | No       | Address book base URL (default: `https://clc-message-broker.gopacs-services.eu`)                               |
+| `GOPACS_OAUTH2_URL`               | No       | OAuth2 token endpoint (default: `https://auth.gopacs-services.eu/realms/gopacs/protocol/openid-connect/token`) |
+| `GOPACS_RESPONSE_DELAY_SECONDS`   | No       | Delay before auto-responding to messages (default: `10`)                                                       |
+| `GOPACS_FLEX_OFFER_DELAY_SECONDS` | No       | Delay before sending a flex offer (default: `30`)                                                              |
 
 #### Asset Setup
 
@@ -56,6 +56,7 @@ gopacs/
 ```
 
 Related files outside this package:
+
 - `agent/EmsGOPACSAsset.java` — JPA entity defining the GOPACS asset type (contracted EAN, power attributes)
 - `manager/EmsOptimisationService.java` — Manages `GOPACSHandler` lifecycle (creates/destroys handlers when assets are added/removed)
 - `manager/EmsOptimisationSetupService.java` — Setup class that optionally creates GOPACS assets
@@ -104,6 +105,7 @@ Content-Type: application/xml
 ```
 
 Processing steps:
+
 1. Deserialize signed XML envelope
 2. Verify cryptographic signature using the sender's public key (from address book)
 3. Deserialize UFTP payload
@@ -136,11 +138,11 @@ The Redispatch flow is different from the UFTP flow:
 
 ### Configuration
 
-| Variable | Required | Description |
-|---|---|---|
-| `GOPACS_REDISPATCH_API_KEY` | Yes | API key from GOPACS UI (User Menu > Settings > Generate API-key); required to resolve EAN effectivity per announcement. Polling will not start without it. |
-| `GOPACS_REDISPATCH_URL` | No | Base URL for the Redispatch API (default: `https://idcons.gopacs-services.eu`) |
-| `GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES` | No | Polling interval in minutes (default: `5`, minimum: `5`) |
+| Variable                                  | Required | Description                                                                                                                                                |
+| ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOPACS_REDISPATCH_API_KEY`               | Yes      | API key from GOPACS UI (User Menu > Settings > Generate API-key); required to resolve EAN effectivity per announcement. Polling will not start without it. |
+| `GOPACS_REDISPATCH_URL`                   | No       | Base URL for the Redispatch API (default: `https://idcons.gopacs-services.eu`)                                                                             |
+| `GOPACS_REDISPATCH_POLL_INTERVAL_MINUTES` | No       | Polling interval in minutes (default: `5`, minimum: `5`)                                                                                                   |
 
 ### Asset Setup
 

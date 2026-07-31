@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "ElectricityChargerAsset"
-                  ],
+                  "types": ["ElectricityChargerAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,16 +29,12 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "2QEKoczoTiOfLKh5UHqEf5"
-                  ]
+                  "ids": ["2QEKoczoTiOfLKh5UHqEf5"]
                 }
               },
               {
                 "assets": {
-                  "types": [
-                    "ElectricityChargerAsset"
-                  ],
+                  "types": ["ElectricityChargerAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -57,16 +51,12 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "6Pgv4HQGmC0EjXg7GmNM6l"
-                  ]
+                  "ids": ["6Pgv4HQGmC0EjXg7GmNM6l"]
                 }
               },
               {
                 "assets": {
-                  "types": [
-                    "ElectricityChargerAsset"
-                  ],
+                  "types": ["ElectricityChargerAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -83,16 +73,12 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "3KUCNnuNcS2zFAURMpAq0u"
-                  ]
+                  "ids": ["3KUCNnuNcS2zFAURMpAq0u"]
                 }
               },
               {
                 "assets": {
-                  "types": [
-                    "ElectricityChargerAsset"
-                  ],
+                  "types": ["ElectricityChargerAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -109,9 +95,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "6EaYX7DEAFwxOJr3de4GFf"
-                  ]
+                  "ids": ["6EaYX7DEAFwxOJr3de4GFf"]
                 }
               }
             ]

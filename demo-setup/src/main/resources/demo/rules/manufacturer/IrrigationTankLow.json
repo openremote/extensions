@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "IrrigationAsset"
-                  ],
+                  "types": ["IrrigationAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,9 +29,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "7atRfYJf83HuiHB6ZdM3ko"
-                  ]
+                  "ids": ["7atRfYJf83HuiHB6ZdM3ko"]
                 }
               }
             ]
@@ -43,9 +39,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "IrrigationAsset"
-                  ],
+                  "types": ["IrrigationAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -62,9 +56,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "7jSsUaNvM3ZQGfRqBTsOpJ"
-                  ]
+                  "ids": ["7jSsUaNvM3ZQGfRqBTsOpJ"]
                 }
               }
             ]
@@ -74,9 +66,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "IrrigationAsset"
-                  ],
+                  "types": ["IrrigationAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -93,9 +83,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "72f37OCsEYkVPdzgcKDlRL"
-                  ]
+                  "ids": ["72f37OCsEYkVPdzgcKDlRL"]
                 }
               }
             ]
