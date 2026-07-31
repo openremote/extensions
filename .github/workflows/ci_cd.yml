@@ -4,14 +4,14 @@ on:
   # Push on main and release tags
   push:
     branches:
-      - 'main'
+      - "main"
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - "[0-9]+.[0-9]+.[0-9]+"
 
   # PR
   pull_request:
     branches:
-      - 'main'
+      - "main"
 
   # Manual trigger
   workflow_dispatch:
@@ -33,7 +33,6 @@ permissions:
   contents: write
 
 jobs:
-
   build:
     name: CI/CD
     runs-on: ubuntu-latest
@@ -55,9 +54,9 @@ jobs:
         id: java
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'gradle'
+          distribution: "temurin"
+          java-version: "21"
+          cache: "gradle"
 
       - name: Check if main repo
         id: is_main_repo
@@ -82,10 +81,10 @@ jobs:
           # Run build
           # Make temp dir with 777 mask as docker seems to run as root
           mkdir -pm 777 tmp
-          
+
           # Start the dev-testing stack
           docker compose -f openremote/profile/dev-testing.yml up -d --no-build
-          
+
           ./gradlew test
 
       - name: Login to DockerHub
@@ -188,11 +187,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results
-          path: '**/build/reports/tests'
+          path: "**/build/reports/tests"
 
       - name: Archive coverage report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
-          path: '**/build/reports/jacoco/test/html'
+          path: "**/build/reports/jacoco/test/html"

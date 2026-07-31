@@ -2,69 +2,69 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
-    id 'jacoco'
-    id 'test-report-aggregation'
-    alias libs.plugins.axionRelease
-    alias libs.plugins.nexusPublish
-    alias libs.plugins.testLogger apply false
+  id 'jacoco'
+  id 'test-report-aggregation'
+  alias libs.plugins.axionRelease
+  alias libs.plugins.nexusPublish
+  alias libs.plugins.testLogger apply false
 }
 
 // Configure version based on Git tags
 scmVersion {
-    releaseOnlyOnReleaseBranches = true
-    releaseBranchNames = ['main']
-    unshallowRepoOnCI.set(true)
-    versionCreator('simple')
-    versionIncrementer('incrementMinor')
-    repository {
-        remote.set('origin')
-    }
-    tag {
-        prefix.set('')
-        initialVersion({config, position -> '0.1.0'})
-    }
+  releaseOnlyOnReleaseBranches = true
+  releaseBranchNames = ['main']
+  unshallowRepoOnCI.set(true)
+  versionCreator('simple')
+  versionIncrementer('incrementMinor')
+  repository {
+    remote.set('origin')
+  }
+  tag {
+    prefix.set('')
+    initialVersion({config, position -> '0.1.0'})
+  }
 }
 
 allprojects {
-    // Apply common project setup
-    apply from: "${rootDir}/project.gradle"
-    version = rootProject.scmVersion.version
+  // Apply common project setup
+  apply from: "${rootDir}/project.gradle"
+  version = rootProject.scmVersion.version
 }
 
 def jacocoToolVersion = libs.versions.jacoco.get()
 
 jacoco {
-    toolVersion = jacocoToolVersion
+  toolVersion = jacocoToolVersion
 }
 
 subprojects {
-    pluginManager.withPlugin('java') {
-        pluginManager.apply('jacoco')
-        jacoco { toolVersion = jacocoToolVersion }
-        test {
-            finalizedBy jacocoTestReport // report is always generated after tests run
-        }
-        jacocoTestReport {
-            dependsOn test // tests are required to run before generating the report
-        }
+  pluginManager.withPlugin('java') {
+    pluginManager.apply('jacoco')
+    jacoco { toolVersion = jacocoToolVersion }
+    test {
+      finalizedBy jacocoTestReport // report is always generated after tests run
     }
+    jacocoTestReport {
+      dependsOn test // tests are required to run before generating the report
+    }
+  }
 
-    tasks.withType(JacocoReport) {
-        reports {
-            xml.required = true
-            html.required = true
-        }
+  tasks.withType(JacocoReport) {
+    reports {
+      xml.required = true
+      html.required = true
     }
+  }
 }
 
 nexusPublishing {
-    repositories {
-        sonatype {
-            nexusUrl = uri(findProperty('releasesRepoUrl'))
-            snapshotRepositoryUrl = uri(findProperty('snapshotsRepoUrl'))
-            username = findProperty('publishUsername')
-            password = findProperty('publishPassword')
-        }
+  repositories {
+    sonatype {
+      nexusUrl = uri(findProperty('releasesRepoUrl'))
+      snapshotRepositoryUrl = uri(findProperty('snapshotsRepoUrl'))
+      username = findProperty('publishUsername')
+      password = findProperty('publishPassword')
     }
+  }
 }
 group = 'io.openremote.extension'

@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "BuildingAsset"
-                  ],
+                  "types": ["BuildingAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,9 +29,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "2wzKB2j39144oTzAJnHpfs"
-                  ]
+                  "ids": ["2wzKB2j39144oTzAJnHpfs"]
                 }
               }
             ]
@@ -45,12 +41,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "6bzhox7vxOKpKQ5yX5Ysoh"
-              ],
-              "types": [
-                "ElectricityBatteryAsset"
-              ]
+              "ids": ["6bzhox7vxOKpKQ5yX5Ysoh"],
+              "types": ["ElectricityBatteryAsset"]
             }
           },
           "value": 25,

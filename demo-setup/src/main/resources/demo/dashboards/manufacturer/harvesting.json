@@ -94,18 +94,9 @@
           "decimals": 0,
           "valueType": "number",
           "thresholds": [
-            [
-              0,
-              "#4caf50"
-            ],
-            [
-              75,
-              "#ff9800"
-            ],
-            [
-              90,
-              "#ef5350"
-            ]
+            [0, "#4caf50"],
+            [75, "#ff9800"],
+            [90, "#ef5350"]
           ],
           "attributeRefs": [
             {
@@ -167,30 +158,21 @@
         "widgetConfig": {
           "markers": [
             {
-              "coordinates": [
-                45,
-                80
-              ],
+              "coordinates": [45, 80],
               "attributeRef": {
                 "id": "6ZQkcWjwZjL8d04t9mvVvW",
                 "name": "harvestedSession"
               }
             },
             {
-              "coordinates": [
-                75,
-                80
-              ],
+              "coordinates": [75, 80],
               "attributeRef": {
                 "id": "2XOXVoMmDkOyLjY1JEnuoF",
                 "name": "soilTensionMeasured"
               }
             },
             {
-              "coordinates": [
-                12,
-                80
-              ],
+              "coordinates": [12, 80],
               "attributeRef": {
                 "id": "2XOXVoMmDkOyLjY1JEnuoF",
                 "name": "temperature"
@@ -351,28 +333,13 @@
           },
           "showLabels": true,
           "textColors": [
-            [
-              "example",
-              "#4caf50"
-            ],
-            [
-              "example2",
-              "#ff9800"
-            ]
+            ["example", "#4caf50"],
+            ["example2", "#ff9800"]
           ],
           "thresholds": [
-            [
-              90,
-              "#ef5350"
-            ],
-            [
-              75,
-              "#ff9800"
-            ],
-            [
-              0,
-              "#4caf50"
-            ]
+            [90, "#ef5350"],
+            [75, "#ff9800"],
+            [0, "#4caf50"]
           ],
           "showGeoJson": true,
           "attributeName": "flowTotal",
@@ -407,17 +374,8 @@
           ],
           "assetType": "HarvestRobotAsset",
           "tableSize": 10,
-          "tableOptions": [
-            10,
-            25,
-            100
-          ],
-          "attributeNames": [
-            "harvestedTotal",
-            "vegetableType",
-            "speed",
-            "harvestedSession"
-          ]
+          "tableOptions": [10, 25, 100],
+          "attributeNames": ["harvestedTotal", "vegetableType", "speed", "harvestedSession"]
         }
       }
     ]
