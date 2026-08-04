@@ -1,6 +1,6 @@
 # Ems Electricity Battery Asset
 
-For detailed setup instructions, see the [EMS Setup](../EmsSetup.md) guide.  
+For detailed setup instructions, see the [EMS Setup](../EmsSetup.md) guide.
 
 The `Ems Electricity Battery Asset` must be a child asset of the `Ems Energy Optimisation Asset` to be available as flexible power to the EMS.
 
@@ -9,7 +9,7 @@ The `Ems Electricity Battery Asset` must be a child asset of the `Ems Energy Opt
 ### Set attributes:
 
 | Attribute Name                 | Value Type       | Units | Description                                          |
-|--------------------------------|------------------|-------|------------------------------------------------------|
+| ------------------------------ | ---------------- | ----- | ---------------------------------------------------- |
 | `allowCharging`                | Boolean          | -     | Allow the EMS to control charging of the battery.    |
 | `allowDischarging`             | Boolean          | -     | Allow the EMS to control discharging of the battery. |
 | `chargeEfficiency`             | Positive integer | %     | Efficiency of the charging process.                  |
@@ -23,7 +23,7 @@ The `Ems Electricity Battery Asset` must be a child asset of the `Ems Energy Opt
 ### Connect attributes:
 
 | Attribute Name          | Value Type      | Units | Description                                                       |
-|-------------------------|-----------------|-------|-------------------------------------------------------------------|
+| ----------------------- | --------------- | ----- | ----------------------------------------------------------------- |
 | `energyLevel`           | Positive number | kWh   | Current stored energy in the battery (Optional).                  |
 | `energyLevelPercentage` | Positive number | %     | Current energy level percentage.                                  |
 | `power`                 | Number          | kW    | Current power flow (positive = charging, negative = discharging). |
@@ -31,6 +31,6 @@ The `Ems Electricity Battery Asset` must be a child asset of the `Ems Energy Opt
 ## Output attributes
 
 | Attribute Name     | Value Type | Units | Description                                                  |
-|--------------------|------------|-------|--------------------------------------------------------------|
+| ------------------ | ---------- | ----- | ------------------------------------------------------------ |
 | `connectionStatus` | Enum       | -     | Current connection status of the battery.                    |
 | `powerSetpoint`    | Number     | kW    | Current active battery power setpoint calculated by the EMS. |

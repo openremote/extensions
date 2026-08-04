@@ -9,7 +9,7 @@ The `Ems Energy Optimisation Asset` serves as the parent asset of the Energy Man
 ### Set attributes:
 
 | Attribute Name                                | Value Type | Units | Description                                                                                                                                                                                                        |
-|-----------------------------------------------|------------|-------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --------------------------------------------- | ---------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `enableDetailedLogging`                       | Boolean    | -     | Enables detailed logging (optimisation method specific).                                                                                                                                                           |
 | `generatePowerLimitMaximumProfileManualInput` | Boolean    | -     | Generates maximum power limit profile based on the `powerLimitMaximumInput` value.                                                                                                                                 |
 | `generatePowerLimitMinimumProfileManualInput` | Boolean    | -     | Generates minimum power limit profile based on the `powerLimitMinimumInput` value.                                                                                                                                 |
@@ -24,9 +24,8 @@ The `Ems Energy Optimisation Asset` serves as the parent asset of the Energy Man
 
 The exact way in which the following attributes are connected is left to the user. This is intentional and allows maximum flexibility when configuring the EMS based on the available power meter readings. The last column provides an example of how each attribute can be connected. Attribute values can be calculated using either _Flow rules_ or, for more advanced use cases, _Groovy rules_. Ensure that the `Rule state` configuration item is added to all attributes involved in the calculations.
 
-
 | Attribute Name      | Value Type | Units | Description                                                         | Connection example                                                                                         |
-|---------------------|------------|-------|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| ------------------- | ---------- | ----- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `energyExportTotal` | Number     | kWh   | Total energy exported                                               | Connect: main meter. (Not required for EMS optimisation)                                                   |
 | `energyImportTotal` | Number     | kWh   | Total energy imported                                               | Connect: main meter. (Not required for EMS optimisation)                                                   |
 | `powerConsumption`  | Number     | kW    | Current power consumption.                                          | Calculate: sum of power consumer assets or, powerConsumption = powerNet - powerFlexible - powerProduction. |
@@ -39,7 +38,7 @@ The exact way in which the following attributes are connected is left to the use
 ## Output attributes
 
 | Attribute Name                   | Value Type | Units | Description                                                                                                                                                          |
-|----------------------------------|------------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------------------- | ---------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `advancedSettingsAttributes`     | Text       | -     | List of advanced settings attributes that can be added manually for the selected `optimisationMethod` (Only visible in `MODIFY` mode, optimisation method specific). |
 | `powerLimitMaximumProfileManual` | Number     | kW    | Current manual maximum power limit based on `powerLimitMaximumProfileManualInput`.                                                                                   |
 | `powerLimitMaximumProfileTotal`  | Number     | kW    | Current total maximum power limit, calculated as the sum of the manual power limit and the GOPACS order power limit. This value is used for optimisation.            |
