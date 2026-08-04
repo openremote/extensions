@@ -124,9 +124,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "notes"
-          ]
+          "include": ["notes"]
         }
       },
       {
@@ -137,9 +135,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "location"
-          ],
+          "include": ["location"],
           "itemConfig": {
             "location": {
               "label": ""
@@ -164,11 +160,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "currentPowerFlexRequest",
-            "powerMaximumFlexRequest",
-            "powerMinimumFlexRequest"
-          ]
+          "include": ["currentPowerFlexRequest", "powerMaximumFlexRequest", "powerMinimumFlexRequest"]
         }
       },
       {
@@ -178,28 +170,23 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "powerLimitMaximumProfileFlexOrder",
-            "powerLimitMinimumProfileFlexOrder"
-          ]
+          "include": ["powerLimitMaximumProfileFlexOrder", "powerLimitMinimumProfileFlexOrder"]
         }
       },
       {
         "type": "info",
-        "column" : 1,
+        "column": 1,
         "title": "Redispatch — Configuration",
         "properties": {
           "include": []
         },
         "attributes": {
-          "include": [
-            "redispatchEnabled"
-          ]
+          "include": ["redispatchEnabled"]
         }
       },
       {
         "type": "info",
-        "column" : 1,
+        "column": 1,
         "title": "Redispatch — Announcement",
         "properties": {
           "include": []
@@ -227,11 +214,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "redispatchBidPrice",
-            "redispatchSuggestedPower",
-            "redispatchSuggestedVolume"
-          ]
+          "include": ["redispatchBidPrice", "redispatchSuggestedPower", "redispatchSuggestedVolume"]
         }
       },
       {
@@ -241,10 +224,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "redispatchConfirmBid",
-            "redispatchBidStatus"
-          ]
+          "include": ["redispatchConfirmBid", "redispatchBidStatus"]
         }
       },
       {
@@ -254,10 +234,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "redispatchAnnouncementHistory",
-            "redispatchBidHistory"
-          ]
+          "include": ["redispatchAnnouncementHistory", "redispatchBidHistory"]
         }
       },
       {
