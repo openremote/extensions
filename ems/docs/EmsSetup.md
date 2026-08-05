@@ -71,9 +71,12 @@ After completing the steps above, GOPACS flex requests can be received and are a
      - `Energy level percentage maximum (kW)` (**e.g. 90**)
      - `Energy level percentage minimum (kW)` (**e.g. 10**)
    - Connect the following attributes with your battery:
-     - `Energy level (kWh)` (Optional)
-     - `Energy level percentage (%)`
-     - `Power (kW)`
+     - Write to attribute
+       - `Energy level (kWh)` (Optional)
+       - `Energy level percentage (%)`
+       - `Power (kW)`
+     - Read from attribute
+       - `Power setpoint (kW)`
    - Select the `Allow charging` and `Allow discharging` checkboxes to allow battery control by the EMS.
 
 Repeat the above steps to add multiple batteries to the EMS.
