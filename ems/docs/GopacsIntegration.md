@@ -155,18 +155,31 @@ sequenceDiagram
     participant API as GOPACS Redispatch API
     participant TP as Trading Platform (future)
 
-    loop every poll interval (≥ 5 min)
+    loop Every poll interval (≥ 5 min)
         OR->>API: GET /machineannouncements (CONGESTIONMANAGEMENT, ANNOUNCEMENT_OPEN)
-        API-->>OR: announcements
-        Note right of OR: Record every newly-seen announcement in history
-        OR->>API: GET .../eansolvingeffectivity per announcement
-        API-->>OR: EAN categories per announcement
-        Note right of OR: Keep announcements where the contracted EAN<br/>is listed; prefer MANDATORY over VOLUNTARY
-        OR->>OR: On a new selection: update redispatch* attributes,<br/>record a second history entry with effectivity,<br/>set redispatchBidStatus = PENDING_CONFIRMATION
+        API-->>OR: Announcements
+
+        Note right of OR: Record every newly seen announcement in history
+
+        OR->>API: GET /eansolvingeffectivity (per announcement)
+        API-->>OR: EAN categories
+
+        Note right of OR: Keep announcements where the contracted EAN is listed
+        Note right of OR: Prefer MANDATORY over VOLUNTARY
+
+        OR->>OR: Update redispatch attributes
+        Note right of OR: On a new selection:
+        Note right of OR: - Update redispatch* attributes
+        Note right of OR: - Record history entry with effectivity
+        Note right of OR: - Set redispatchBidStatus = PENDING_CONFIRMATION
     end
 
-    Op->>OR: Set redispatchBidPrice, toggle redispatchConfirmBid = true
-    OR->>OR: Log bid, set redispatchBidStatus = CONFIRMED
+    Op->>OR: Set redispatchBidPrice
+    Op->>OR: Set redispatchConfirmBid = true
+
+    OR->>OR: Log bid
+    OR->>OR: Set redispatchBidStatus = CONFIRMED
+
     OR-->>TP: Place order (not yet implemented)
 ```
 
