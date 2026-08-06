@@ -16,4 +16,4 @@
 
 **GOPACS**
 
-- [GOPACS Integration](docs/Gopacs.md)
+- [GOPACS Integration](docs/GopacsIntegration.md)
