@@ -463,10 +463,11 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         asset = assetStorageService.merge(asset)
 
         def attributeRef = new AttributeRef(asset.id, "energyPrice")
-        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+        def protocol = null
 
         then: "the protocol is connected and attribute linked"
         conditions.eventually {
+            protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
             assert protocol != null
             assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
             assert protocol.getLinkedAttributes().containsKey(attributeRef)
@@ -943,10 +944,11 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         asset = assetStorageService.merge(asset)
 
         def attributeRef = new AttributeRef(asset.id, "energyPrice")
-        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+        def protocol = null
 
         then: "the protocol is connected and attribute linked"
         conditions.eventually {
+            protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
             assert protocol != null
             assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
             assert protocol.getLinkedAttributes().containsKey(attributeRef)
@@ -1021,10 +1023,11 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         asset = assetStorageService.merge(asset)
 
         def attributeRef = new AttributeRef(asset.id, "energyPrice")
-        def protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
+        def protocol = null
 
         then: "the protocol is connected and attribute linked"
         conditions.eventually {
+            protocol = (EntsoeProtocol) agentService.getProtocolInstance(agent.id)
             assert protocol != null
             assert agentService.getAgent(agent.id).getAgentStatus().orElse(null) == ConnectionStatus.CONNECTED
             assert protocol.getLinkedAttributes().containsKey(attributeRef)
