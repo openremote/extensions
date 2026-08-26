@@ -27,19 +27,19 @@ import spock.lang.Specification
  */
 class GOPACSHandlerEanTest extends Specification {
 
-    def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
-        expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
-        GOPACSHandler.toCongestionPoint(input) == expected
+  def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
+    expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
+    GOPACSHandler.toCongestionPoint(input) == expected
 
-        where:
-        input                        || expected
-        "ean.265987182507322951"     || "ean.265987182507322951"
-        "265987182507322951"         || "ean.265987182507322951"
-        "EAN.265987182507322951"     || "ean.265987182507322951"
-        "Ean.265987182507322951"     || "ean.265987182507322951"
-        "  ean.265987182507322951  " || "ean.265987182507322951"
-        "  265987182507322951  "     || "ean.265987182507322951"
-        ""                           || "ean."
-        null                         || null
-    }
+    where:
+    input || expected
+    "ean.265987182507322951" || "ean.265987182507322951"
+    "265987182507322951" || "ean.265987182507322951"
+    "EAN.265987182507322951" || "ean.265987182507322951"
+    "Ean.265987182507322951" || "ean.265987182507322951"
+    "  ean.265987182507322951  " || "ean.265987182507322951"
+    "  265987182507322951  " || "ean.265987182507322951"
+    "" || "ean."
+    null || null
+  }
 }
