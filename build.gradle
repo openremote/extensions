@@ -1,8 +1,15 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
+plugins {
+    id 'jacoco'
+    id 'test-report-aggregation'
+    alias libs.plugins.axionRelease
+    alias libs.plugins.nexusPublish
+    alias libs.plugins.testLogger apply false
+}
+
 // Configure version based on Git tags
-apply plugin: 'pl.allegro.tech.build.axion-release'
 scmVersion {
     releaseOnlyOnReleaseBranches = true
     releaseBranchNames = ['main']
@@ -20,11 +27,36 @@ scmVersion {
 
 allprojects {
     // Apply common project setup
-    apply from: "${project.rootDir}/project.gradle"
-    version = scmVersion.version
+    apply from: "${rootDir}/project.gradle"
+    version = rootProject.scmVersion.version
 }
 
-apply plugin: 'io.github.gradle-nexus.publish-plugin'
+def jacocoToolVersion = libs.versions.jacoco.get()
+
+jacoco {
+    toolVersion = jacocoToolVersion
+}
+
+subprojects {
+    pluginManager.withPlugin('java') {
+        pluginManager.apply('jacoco')
+        jacoco { toolVersion = jacocoToolVersion }
+        test {
+            finalizedBy jacocoTestReport // report is always generated after tests run
+        }
+        jacocoTestReport {
+            dependsOn test // tests are required to run before generating the report
+        }
+    }
+
+    tasks.withType(JacocoReport) {
+        reports {
+            xml.required = true
+            html.required = true
+        }
+    }
+}
+
 nexusPublishing {
     repositories {
         sonatype {

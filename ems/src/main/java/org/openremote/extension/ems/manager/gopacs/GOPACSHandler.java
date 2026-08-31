@@ -44,9 +44,11 @@ import org.lfenergy.shapeshifter.core.service.crypto.UftpCryptoService;
 import org.lfenergy.shapeshifter.core.service.handler.UftpPayloadHandler;
 import org.lfenergy.shapeshifter.core.service.participant.ParticipantResolutionService;
 import org.lfenergy.shapeshifter.core.service.receiving.UftpReceivedMessageService;
+import org.lfenergy.shapeshifter.core.service.receiving.response.UftpValidationResponseCreator;
 import org.lfenergy.shapeshifter.core.service.sending.UftpSendMessageService;
 import org.lfenergy.shapeshifter.core.service.serialization.UftpSerializer;
 import org.lfenergy.shapeshifter.core.service.validation.UftpValidationService;
+import org.lfenergy.shapeshifter.core.service.validation.model.ValidationResult;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.CORSConfig;
 import org.openremote.container.web.WebApplication;
@@ -100,6 +102,8 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
     public static final String GOPACS_FLEX_OFFER_DELAY_SECONDS = "GOPACS_FLEX_OFFER_DELAY_SECONDS";
     public static final String DEFAULT_GOPACS_FLEX_OFFER_DELAY_SECONDS = "30";
     public static final String DEPLOYMENT_PATH = "/gopacs";
+    /** Scheme prefix GOPACS uses on congestion-point identifiers, e.g. "ean.265987182507322951". */
+    public static final String EAN_PREFIX = "ean.";
 
 
     protected static final UftpSerializer serializer = new UftpSerializer(new XmlSerializer(), new XsdValidator(new XsdSchemaProvider(new XsdFactory(new XsdSchemaFactoryPool()))));
@@ -209,6 +213,52 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
         objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
         deploy(container);
+    }
+
+    /**
+     * Test-support constructor. Wires the message-processing collaborators directly and skips
+     * remote configuration (OAuth client, private-key file) and JAX-RS deployment, so the
+     * day-ahead UFTP message flow can be exercised in isolation. Not used in production wiring.
+     */
+    protected GOPACSHandler(String contractedEAN,
+                            String realm,
+                            String electricitySupplierAssetId,
+                            AssetProcessingService assetProcessingService,
+                            AssetPredictedDatapointService assetPredictedDatapointService,
+                            TimerService timerService,
+                            ScheduledExecutorService scheduledExecutorService,
+                            String privateKey) {
+        this.devMode = false;
+        this.contractedEAN = contractedEAN;
+        this.realm = realm;
+        this.electricitySupplierAssetId = electricitySupplierAssetId;
+        this.participants = new HashMap<>();
+
+        this.assetProcessingService = assetProcessingService;
+        this.assetPredictedDatapointService = assetPredictedDatapointService;
+        this.timerService = timerService;
+        this.scheduledExecutorService = scheduledExecutorService;
+        this.webService = null;
+
+        this.gopacsBrokerUrl = "";
+        this.responseDelaySeconds = 0;
+        this.flexOfferDelaySeconds = 0;
+        this.clientId = null;
+        this.clientSecret = null;
+        this.privateKey = privateKey;
+
+        this.client = null;
+        this.gopacsAddressBookResource = null;
+        this.gopacsAuthResource = null;
+        this.gopacsServerResource = null;
+
+        this.participantResolutionService = new ParticipantResolutionService(this);
+        this.cryptoService = new UftpCryptoService(participantResolutionService, new LazySodiumFactory(), new LazySodiumBase64Pool());
+        this.uftpValidationService = new UftpValidationService(new ArrayList<>());
+        this.uftpReceivedMessageService = new UftpReceivedMessageService(uftpValidationService, this);
+        this.uftpSendMessageService = new UftpSendMessageService(serializer, cryptoService, participantResolutionService, this, uftpValidationService);
+
+        this.objectMapper = new ObjectMapper();
     }
 
     protected static String getDeploymentName(String contractedEAN) {
@@ -503,16 +553,35 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
 
     /**
      * Only act on flex messages whose congestion point matches this handler's contracted EAN. Returns
-     * false (and logs a warning) for out-of-scope messages so they are dropped before any asset mutation
-     * or outbound response. See issue #28 for full per-contract/role scoping via the V3 contracts endpoint.
+     * false (and logs a warning) for out-of-scope messages so they are rejected (with a rejection
+     * response, but without asset mutation or FlexOffer). See issue #28 for full per-contract/role
+     * scoping via the V3 contracts endpoint.
      */
     protected boolean isWithinContractedScope(String messageType, String conversationId, String congestionPoint) {
-        if (contractedEAN.equals(congestionPoint)) {
+        if (Objects.equals(toCongestionPoint(contractedEAN), toCongestionPoint(congestionPoint))) {
             return true;
         }
         LOG.warning("Rejecting " + messageType + " " + conversationId + " for out-of-scope congestion point "
                 + congestionPoint + " (contracted EAN " + contractedEAN + ")");
         return false;
+    }
+
+    /**
+     * Converts an EAN / congestion-point identifier to the canonical GOPACS congestion-point format
+     * "ean.&lt;code&gt;" (for example "ean.265987182507322951"). GOPACS flex messages always carry the
+     * congestion point with the "ean." prefix, whereas the contracted EAN may be configured with or
+     * without it; canonicalising both sides keeps the scope check correct either way.
+     */
+    protected static String toCongestionPoint(String ean) {
+        if (ean == null) {
+            return null;
+        }
+        String trimmed = ean.trim();
+        if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
+            // Already prefixed (any case) — normalise the prefix to its canonical lower-case form.
+            return EAN_PREFIX + trimmed.substring(EAN_PREFIX.length());
+        }
+        return EAN_PREFIX + trimmed;
     }
 
     protected void processRawMessage(String transportXml) {
@@ -528,11 +597,20 @@ public class GOPACSHandler implements UftpPayloadHandler, UftpParticipantService
             // resolves any participant domain, so a validly signed flex message from a participant outside
             // this handler's contracted EAN would otherwise be applied to the asset. Full per-contract/role
             // scoping via the V3 contracts endpoint is tracked in issue #28.
-            // Out-of-scope messages are intentionally dropped here: the transport call still returns 200
-            // (signed envelope accepted) but no FlexRequestResponse/FlexOffer is sent in reply.
+            // Out-of-scope messages are not applied to the asset and get no FlexOffer, but UFTP still
+            // requires a response: reject with a reason instead of leaving the DSO's conversation dangling.
             if (payloadMessage instanceof FlexMessageType flexMessage
                     && !isWithinContractedScope(payloadMessage.getClass().getSimpleName(),
                             payloadMessage.getConversationID(), flexMessage.getCongestionPoint())) {
+                PayloadMessageType rejection = UftpValidationResponseCreator.getResponseForMessage(
+                        payloadMessage, ValidationResult.rejection("CongestionPoint not within contracted scope"));
+                UftpParticipant sender = new UftpParticipant(signedMessage);
+                UftpParticipant responder = new UftpParticipant(payloadMessage.getRecipientDomain(),
+                        UftpRoleInformation.getRecipientRoleBySenderRole(sender.role()));
+                // Send delayed so the HTTP 200 on the transport call goes out first, like the accepted path
+                scheduledExecutorService.schedule(() ->
+                        notifyNewOutgoingMessage(OutgoingUftpMessage.create(responder, rejection)),
+                        this.responseDelaySeconds, TimeUnit.SECONDS);
                 return;
             }
 

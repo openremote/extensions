@@ -1,20 +1,21 @@
-apply plugin: "groovy"
-apply plugin: "java-library"
-apply plugin: "maven-publish"
-apply plugin: "signing"
+plugins {
+    id 'groovy'
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+}
 
 base {
     archivesName = "openremote-${project.name}-extension"
 }
 
 dependencies {
-    api "io.openremote:openremote-manager:$openremoteVersion"
-    api "io.openremote:openremote-model:$openremoteVersion"
+    api libs.openremote.manager
+    api libs.openremote.model
 
-    api "org.jboss.resteasy:resteasy-client-api:$resteasyVersion"
-    api "org.jboss.resteasy:resteasy-jaxb-provider:$resteasyVersion"
-
-    testImplementation "io.openremote:openremote-test:$openremoteVersion"
+    api libs.resteasyClientApi
+    api libs.resteasyJaxbProvider
+    testImplementation libs.openremote.test
 }
 
 jar {

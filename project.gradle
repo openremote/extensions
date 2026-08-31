@@ -24,6 +24,9 @@ import org.jetbrains.gradle.ext.JUnit
 
 configurations.all {
     resolutionStrategy {
+        // check for changing (i.e. SNAPSHOT) updates every build
+        cacheChangingModulesFor 0, 'seconds'
+
         //failOnVersionConflict()
 
         // This has been replaced with eclipse angus implementation
@@ -58,6 +61,13 @@ subprojects {
     }
 }
 
+tasks.configureEach { task ->
+    if (task.name in ['findSonatypeStagingRepository', 'closeSonatypeStagingRepository', 'releaseSonatypeStagingRepository', 'closeAndReleaseSonatypeStagingRepository']) {
+        // See: https://github.com/gradle-nexus/publish-plugin/issues/221
+        task.notCompatibleWithConfigurationCache("Gradle Nexus Publish plugin task keeps Gradle Task/Project state")
+    }
+}
+
 // Default repositories for dependency resolution
 repositories {
     mavenLocal()
@@ -83,13 +93,16 @@ repositories {
     maven {
         url = 'https://jitpack.io'
     }
+    maven {
+        url = 'https://plugins.gradle.org/m2'
+    }
 }
 
 // Eclipse needs help
-apply plugin: "eclipse"
+pluginManager.apply('eclipse')
 
 // Intellij needs help
-apply plugin: 'idea'
+pluginManager.apply('idea')
 // Use the same output directories in IDE as in gradle
 idea {
     module {
@@ -103,22 +116,29 @@ idea {
     }
 }
 
-def resolveProject(String path) {
-    project(path)
-}
-
-def resolveTask(String path) {
-    tasks.getByPath(path)
+def getYarnInstallTask() {
+    tasks.getByPath(":yarnInstall")
 }
 
 ext {
-    resolveProject = this.&resolveProject
-    resolveTask = this.&resolveTask
+    getYarnInstallTask = this.&getYarnInstallTask
+}
+
+// Add UI tasks
+ext.npmCommand = { cmd ->
+    isFamily(FAMILY_WINDOWS) ? "${cmd}.cmd" : cmd
+}
+
+// Add yarn tasks
+tasks.register('yarnInstall', Exec) {
+    commandLine npmCommand("yarn"), "install"
+}
+tasks.register('yarnInstallForce', Exec) {
+    commandLine npmCommand("yarn"), "install", "--force"
 }
 
 // Configure Java build
 plugins.withType(JavaPlugin).whenPluginAdded {
-
     // Use Java 21
     tasks.withType(JavaCompile) {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -140,6 +160,8 @@ plugins.withType(JavaPlugin).whenPluginAdded {
         // JAR/ZIP base name is the fully qualified subproject name
         archivesName = "${rootProject.name}${path.replaceAll(":", "-")}"
     }
+
+    pluginManager.apply(libs.plugins.testLogger.get().pluginId)
 
     test {
         workingDir = findProject(":openremote") != null ? project(":openremote").projectDir : rootProject.projectDir
@@ -174,21 +196,15 @@ plugins.withType(JavaPlugin).whenPluginAdded {
             }
             info.events = debug.events
             info.exceptionFormat = debug.exceptionFormat
-
-            afterTest { desc, result ->
-                logger.quiet "${desc.className} > ${desc.name} took: ${(result.endTime - result.startTime)}ms"
-            }
-
-            afterSuite { desc, result ->
-                if (!desc.parent) { // will match the outermost suite
-                    def output = "Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} passed, ${result.failedTestCount} failed, ${result.skippedTestCount} skipped)"
-                    def startItem = '|  ', endItem = '  |'
-                    def repeatLength = startItem.length() + output.length() + endItem.length()
-                    println('\n' + ('-' * repeatLength) + '\n' + startItem + output + endItem + '\n' + ('-' * repeatLength))
-                }
-            }
         }
+
+        addTestListener(new TestSummaryListener())
     }
+}
+
+// Configure Spotless
+if (project == rootProject) {
+    apply from: "${rootDir}/spotless.gradle"
 }
 
 // POM generator

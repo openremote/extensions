@@ -25,17 +25,19 @@ Subprojects are included automatically when they contain a `build.gradle` file, 
 
 ## Available extensions
 
-| Extension | Description                                                                               |
-| --------- | ----------------------------------------------------------------------------------------- |
-| `ems`     | A new extension-based implementation of the Energy Management System with GOPACS support. |
-| `entsoe`  | Agent for retrieving ENTSO-E energy price data and storing it as predicted datapoints.    |
+| Extension    | Description                                                                               |
+|--------------|-------------------------------------------------------------------------------------------|
+| `demo-setup` | Adds the OpenRemote Demo setup.                                                           |
+| `ems`        | A new extension-based implementation of the Energy Management System with GOPACS support. |
+| `energy`     | Adds the energy domain extension with several energy related assets.                      |
+| `entsoe`     | Agent for retrieving ENTSO-E energy price data and storing it as predicted datapoints.    |
 
 ## Building
 
 From the repository root:
 
 ```bash
-./gradlew build
+./gradlew installDist
 ```
 
 To build a single extension:
@@ -45,6 +47,20 @@ To build a single extension:
 ```
 
 Replace `entsoe` with the name of the extension subproject you want to build.
+
+## Testing
+
+From the repository root:
+
+```bash
+./gradlew test
+```
+
+To test a single extension:
+
+```bash
+./gradlew :entsoe:test
+```
 
 ## Versioning and publishing
 
@@ -75,7 +91,7 @@ When adding or updating an extension:
 * Use the package namespace `org.openremote.extension.<extension-name>`.
 * Register extension components using the appropriate OpenRemote SPI files under `META-INF/services`.
 * Keep extension-specific resources under an extension-specific resource path.
-* Add tests for extension behaviour, preferably following the existing OpenRemote testing conventions.
+* Add tests for extension behavior, preferably following the existing OpenRemote testing conventions.
 
 Typical extension integration points include:
 
