@@ -24,15 +24,15 @@ import org.openremote.model.security.Realm
 
 class KeycloakTestSetup extends AbstractKeycloakSetup {
 
-    Realm realmEnergy
+  Realm realmEnergy
 
-    KeycloakTestSetup(Container container) {
-        super(container)
-    }
+  KeycloakTestSetup(Container container) {
+    super(container)
+  }
 
-    @Override
-    void onStart() throws Exception {
-        super.onStart()
-        realmEnergy = createRealm("energy", "Energy Test", true)
-    }
+  @Override
+  void onStart() throws Exception {
+    super.onStart()
+    realmEnergy = createRealm("energy", "Energy Test", true)
+  }
 }

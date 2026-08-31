@@ -119,6 +119,32 @@
     "panels": [
       {
         "type": "info",
+        "hideOnMobile": true,
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["notes"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "location",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["location"],
+          "itemConfig": {
+            "location": {
+              "label": ""
+            }
+          }
+        }
+      },
+      {
+        "type": "info",
         "title": "Configuration",
         "properties": {
           "include": []
@@ -129,23 +155,39 @@
       },
       {
         "type": "info",
-        "title": "UFTP / Day-Ahead",
+        "title": "Intraday — Flex Request",
         "properties": {
           "include": []
         },
         "attributes": {
-          "include": [
-            "currentPowerFlexRequest",
-            "powerMaximumFlexRequest",
-            "powerMinimumFlexRequest",
-            "powerLimitMaximumProfileFlexOrder",
-            "powerLimitMinimumProfileFlexOrder"
-          ]
+          "include": ["currentPowerFlexRequest", "powerMaximumFlexRequest", "powerMinimumFlexRequest"]
         }
       },
       {
         "type": "info",
-        "title": "Redispatch Status",
+        "title": "Intraday — Flex Order",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["powerLimitMaximumProfileFlexOrder", "powerLimitMinimumProfileFlexOrder"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch — Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchEnabled"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch — Announcement",
         "properties": {
           "include": []
         },
@@ -167,22 +209,40 @@
       },
       {
         "type": "info",
-        "title": "Redispatch Bid",
+        "title": "Redispatch — Bid",
         "properties": {
           "include": []
         },
         "attributes": {
-          "include": [
-            "redispatchSuggestedPower",
-            "redispatchSuggestedVolume",
-            "redispatchBidPrice",
-            "redispatchBidStatus",
-            "redispatchConfirmBid"
-          ]
+          "include": ["redispatchBidPrice", "redispatchSuggestedPower", "redispatchSuggestedVolume"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch — Workflow",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchConfirmBid", "redispatchBidStatus"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch — History",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchAnnouncementHistory", "redispatchBidHistory"]
         }
       },
       {
         "type": "history",
+        "column": 1
+      },
+      {
+        "type": "linkedUsers",
         "column": 1
       }
     ]
