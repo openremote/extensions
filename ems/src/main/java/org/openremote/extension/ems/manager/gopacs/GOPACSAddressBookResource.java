@@ -1,9 +1,6 @@
 /*
  * Copyright 2025, OpenRemote Inc.
  *
- * See the CONTRIBUTORS.txt file in the distribution for a
- * full listing of individual contributors.
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -15,21 +12,27 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 package org.openremote.extension.ems.manager.gopacs;
 
-import jakarta.ws.rs.Consumes;
+import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.Path;
-import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
 
-import static jakarta.ws.rs.core.MediaType.APPLICATION_XML;
-
-@Path("v2/participants/DSO")
+@Path("uftp-participants/v3/participants")
 public interface GOPACSAddressBookResource {
-    @GET
-    @Consumes(APPLICATION_XML)
-    Response fetchParticipants(@QueryParam("contractedEan") String contractedEan);
+  @GET
+  @Path("{uftpDomainName}")
+  @Produces(APPLICATION_JSON)
+  Response fetchParticipantByDomain(
+      @HeaderParam("Authorization") String authorization,
+      @PathParam("uftpDomainName") String uftpDomainName);
 }

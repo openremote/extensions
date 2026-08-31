@@ -13,9 +13,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "notes"
-          ]
+          "include": ["notes"]
         }
       },
       {
@@ -26,9 +24,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "location"
-          ],
+          "include": ["location"],
           "itemConfig": {
             "location": {
               "label": ""
@@ -43,11 +39,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "enableDetailedLogging",
-            "optimisationDisabled",
-            "optimisationMethod"
-          ]
+          "include": ["disableOptimisationService", "enableDetailedLogging", "optimisationMethod"]
         }
       },
       {
@@ -89,12 +81,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "powerConsumption",
-            "powerFlexible",
-            "powerNet",
-            "powerProduction"
-          ]
+          "include": ["powerConsumption", "powerFlexible", "powerNet", "powerProduction"]
         }
       },
       {
@@ -104,10 +91,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "energyExportTotal",
-            "energyImportTotal"
-          ]
+          "include": ["energyExportTotal", "energyImportTotal"]
         }
       },
       {
@@ -117,10 +101,140 @@
           "include": []
         },
         "attributes": {
+          "include": ["tariffExport", "tariffImport"]
+        }
+      },
+      {
+        "type": "history",
+        "column": 1
+      },
+      {
+        "type": "linkedUsers",
+        "column": 1
+      }
+    ]
+  },
+  "EmsGOPACSAsset": {
+    "viewerStyles": {},
+    "panels": [
+      {
+        "type": "info",
+        "hideOnMobile": true,
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["notes"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "location",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["location"],
+          "itemConfig": {
+            "location": {
+              "label": ""
+            }
+          }
+        }
+      },
+      {
+        "type": "info",
+        "title": "Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["contractedEAN", "redispatchEnabled"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Intraday — Flex Request",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["currentPowerFlexRequest", "powerMaximumFlexRequest", "powerMinimumFlexRequest"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Intraday — Flex Order",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["powerLimitMaximumProfileFlexOrder", "powerLimitMinimumProfileFlexOrder"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch — Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchEnabled"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch — Announcement",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
           "include": [
-            "tariffExport",
-            "tariffImport"
+            "redispatchAnnouncementId",
+            "redispatchComplianceType",
+            "redispatchAnnouncementMessage",
+            "redispatchStartTime",
+            "redispatchEndTime",
+            "redispatchBidValidityEnd",
+            "redispatchRequestedPower",
+            "redispatchEanEffectivity",
+            "redispatchRequestAreaBuy",
+            "redispatchRequestAreaSell",
+            "redispatchLastPoll"
           ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch — Bid",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchBidPrice", "redispatchSuggestedPower", "redispatchSuggestedVolume"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch — Workflow",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchConfirmBid", "redispatchBidStatus"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch — History",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["redispatchAnnouncementHistory", "redispatchBidHistory"]
         }
       },
       {

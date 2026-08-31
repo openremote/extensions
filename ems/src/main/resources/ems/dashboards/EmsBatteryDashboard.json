@@ -1,0 +1,203 @@
+{
+  "createdOn": 0,
+  "realm": "",
+  "ownerId": "",
+  "access": "1",
+  "displayName": "",
+  "template": {
+    "id": "setTemplateId1",
+    "columns": 12,
+    "widgets": [
+      {
+        "id": "setWidgetId1",
+        "gridItem": {
+          "h": 3,
+          "w": 12,
+          "x": 0,
+          "y": 6,
+          "id": "setWidgetId1",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "Energy level (%)",
+        "widgetConfig": {
+          "stacked": false,
+          "showLegend": true,
+          "showZoomBar": false,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "energyLevelPercentage"
+            }
+          ],
+          "datapointQuery": {
+            "type": "lttb",
+            "toTimestamp": 1771324682600,
+            "fromTimestamp": 1771321080000
+          },
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "energyLevelPercentage"
+              },
+              "#8e44ad"
+            ]
+          ],
+          "defaultTimePresetKey": "thisDay",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "linechart"
+      },
+      {
+        "id": "setWidgetId2",
+        "gridItem": {
+          "h": 3,
+          "w": 12,
+          "x": 0,
+          "y": 0,
+          "id": "setWidgetId2",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "Set point",
+        "widgetConfig": {
+          "stacked": false,
+          "showLegend": true,
+          "showZoomBar": false,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerSetpoint"
+            }
+          ],
+          "datapointQuery": {
+            "type": "lttb",
+            "toTimestamp": 1771324703690,
+            "fromTimestamp": 1771321080000
+          },
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerSetpoint"
+              },
+              "#8e44ad"
+            ]
+          ],
+          "attributeConfig": {
+            "steppedAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerSetpoint"
+              }
+            ]
+          },
+          "defaultTimePresetKey": "thisDay",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "linechart"
+      },
+      {
+        "id": "setWidgetId3",
+        "gridItem": {
+          "h": 3,
+          "w": 12,
+          "x": 0,
+          "y": 3,
+          "id": "setWidgetId3",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "Set point - average",
+        "widgetConfig": {
+          "stacked": false,
+          "decimals": 2,
+          "showLegend": true,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerSetpoint"
+            }
+          ],
+          "datapointQuery": {
+            "type": "interval",
+            "toTimestamp": 1771369199999,
+            "fromTimestamp": 1771196400000
+          },
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerSetpoint"
+              },
+              "#8e44ad"
+            ]
+          ],
+          "defaultInterval": "15Minutes",
+          "attributeSettings": {
+            "methodAvgAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerSetpoint"
+              }
+            ]
+          },
+          "defaultTimePrefixKey": "this",
+          "defaultTimeWindowKey": "Day",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "barchart"
+      }
+    ],
+    "screenPresets": [
+      {
+        "id": "mobile",
+        "breakpoint": 640,
+        "displayName": "dashboard.size.mobile",
+        "scalingPreset": "WRAP_TO_SINGLE_COLUMN"
+      }
+    ],
+    "maxScreenWidth": 4000,
+    "refreshInterval": "OFF"
+  }
+}

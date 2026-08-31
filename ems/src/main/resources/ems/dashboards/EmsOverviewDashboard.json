@@ -1,0 +1,423 @@
+{
+  "createdOn": 0,
+  "realm": "",
+  "ownerId": "",
+  "access": "1",
+  "displayName": "",
+  "template": {
+    "id": "setTemplateId1",
+    "columns": 12,
+    "widgets": [
+      {
+        "id": "setWidgetId1",
+        "gridItem": {
+          "h": 4,
+          "w": 12,
+          "x": 0,
+          "y": 7,
+          "id": "setWidgetId1",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "EMS overview",
+        "widgetConfig": {
+          "stacked": false,
+          "showLegend": true,
+          "showZoomBar": false,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerConsumption"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerFlexible"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerLimitMaximumProfileTotal"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerLimitMinimumProfileTotal"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerNet"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerProduction"
+            }
+          ],
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerConsumption"
+              },
+              "#c0392b"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerFlexible"
+              },
+              "#8e44ad"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              },
+              "#7f8c8d"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              },
+              "#7f8c8d"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerProduction"
+              },
+              "#f1c40f"
+            ]
+          ],
+          "attributeConfig": {
+            "areaAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              }
+            ],
+            "steppedAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerFlexible"
+              }
+            ]
+          },
+          "defaultTimePresetKey": "thisDay",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "linechart"
+      },
+      {
+        "id": "setWidgetId2",
+        "gridItem": {
+          "h": 4,
+          "w": 12,
+          "x": 0,
+          "y": 0,
+          "id": "setWidgetId2",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "Power net",
+        "widgetConfig": {
+          "stacked": false,
+          "showLegend": true,
+          "showZoomBar": false,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerLimitMaximumProfileTotal"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerLimitMinimumProfileTotal"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerNet"
+            }
+          ],
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              },
+              "#7f8c8d"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              },
+              "#7f8c8d"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ]
+          ],
+          "attributeConfig": {
+            "areaAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              }
+            ],
+            "steppedAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMinimumProfileTotal"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerLimitMaximumProfileTotal"
+              }
+            ]
+          },
+          "defaultTimePresetKey": "thisDay",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "linechart"
+      },
+      {
+        "id": "setWidgetId3",
+        "gridItem": {
+          "h": 3,
+          "w": 12,
+          "x": 0,
+          "y": 11,
+          "id": "setWidgetId3",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "EMS overview - average",
+        "widgetConfig": {
+          "stacked": false,
+          "decimals": 2,
+          "showLegend": true,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerConsumption"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerFlexible"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerNet"
+            },
+            {
+              "id": "setAssetId1",
+              "name": "powerProduction"
+            }
+          ],
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerConsumption"
+              },
+              "#c0392b"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerFlexible"
+              },
+              "#8e44ad"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerProduction"
+              },
+              "#f1c40f"
+            ]
+          ],
+          "defaultInterval": "15Minutes",
+          "attributeSettings": {
+            "methodAvgAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerConsumption"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerFlexible"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              {
+                "id": "setAssetId1",
+                "name": "powerProduction"
+              }
+            ]
+          },
+          "defaultTimePrefixKey": "this",
+          "defaultTimeWindowKey": "Day",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "barchart"
+      },
+      {
+        "id": "setWidgetId4",
+        "gridItem": {
+          "h": 3,
+          "w": 12,
+          "x": 0,
+          "y": 4,
+          "id": "setWidgetId4",
+          "minH": 2,
+          "minW": 2,
+          "locked": false,
+          "noMove": false,
+          "noResize": false,
+          "minPixelH": 0,
+          "minPixelW": 0
+        },
+        "displayName": "Power net - average",
+        "widgetConfig": {
+          "stacked": false,
+          "decimals": 2,
+          "showLegend": true,
+          "chartOptions": {
+            "options": {
+              "scales": {
+                "y": {},
+                "y1": {}
+              }
+            }
+          },
+          "attributeRefs": [
+            {
+              "id": "setAssetId1",
+              "name": "powerNet"
+            }
+          ],
+          "attributeColors": [
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ],
+            [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              },
+              "#392BC0"
+            ]
+          ],
+          "defaultInterval": "15Minutes",
+          "attributeSettings": {
+            "methodAvgAttributes": [
+              {
+                "id": "setAssetId1",
+                "name": "powerNet"
+              }
+            ]
+          },
+          "defaultTimePrefixKey": "this",
+          "defaultTimeWindowKey": "Day",
+          "showTimestampControls": false
+        },
+        "widgetTypeId": "barchart"
+      }
+    ],
+    "screenPresets": [
+      {
+        "id": "mobile",
+        "breakpoint": 640,
+        "displayName": "dashboard.size.mobile",
+        "scalingPreset": "WRAP_TO_SINGLE_COLUMN"
+      }
+    ],
+    "maxScreenWidth": 4000,
+    "refreshInterval": "OFF"
+  }
+}
