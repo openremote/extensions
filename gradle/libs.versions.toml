@@ -8,7 +8,7 @@ openremote = "1.30.0-SNAPSHOT"
 resteasy = "6.2.16.Final"
 shapeshifter = "3.5.0"
 testLogger = "4.0.0"
-wireMock = "3.13.1"
+wireMock = "3.13.2"
 
 [libraries]
 camelCoreModel = { module = "org.apache.camel:camel-core-model", version.ref = "camel" }
