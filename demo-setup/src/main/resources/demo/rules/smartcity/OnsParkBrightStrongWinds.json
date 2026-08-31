@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "WeatherAsset"
-                  ],
+                  "types": ["WeatherAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,9 +29,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "2bMjSx0iy1usC9KKhT24h9"
-                  ]
+                  "ids": ["2bMjSx0iy1usC9KKhT24h9"]
                 }
               }
             ]
@@ -45,12 +41,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "3QlH8nQWvnevcyxat6tQKJ"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["3QlH8nQWvnevcyxat6tQKJ"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,
@@ -60,12 +52,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "4Y8sldGAezGSxqSSW3bly5"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["4Y8sldGAezGSxqSSW3bly5"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,
@@ -75,12 +63,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "4RYkKKuM1wOw21PNOgHShZ"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["4RYkKKuM1wOw21PNOgHShZ"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,
@@ -90,12 +74,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "43F9MlyRcnGhY2m2hHlOdz"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["43F9MlyRcnGhY2m2hHlOdz"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,
@@ -105,12 +85,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "5aID6iE9exaVNirT2flago"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["5aID6iE9exaVNirT2flago"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,
@@ -120,12 +96,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "3wauEi0ol2th6hXULHV2N4"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["3wauEi0ol2th6hXULHV2N4"],
+              "types": ["LightAsset"]
             }
           },
           "value": 90,

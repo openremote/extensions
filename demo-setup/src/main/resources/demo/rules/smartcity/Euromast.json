@@ -10,9 +10,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "ConsoleAsset"
-                  ],
+                  "types": ["ConsoleAsset"],
                   "attributes": {
                     "items": [
                       {

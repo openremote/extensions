@@ -13,9 +13,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "notes"
-          ]
+          "include": ["notes"]
         }
       },
       {
@@ -26,9 +24,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "location"
-          ],
+          "include": ["location"],
           "itemConfig": {
             "location": {
               "label": ""
@@ -43,11 +39,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "disableOptimisationService",
-            "enableDetailedLogging",
-            "optimisationMethod"
-          ]
+          "include": ["disableOptimisationService", "enableDetailedLogging", "optimisationMethod"]
         }
       },
       {
@@ -89,12 +81,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "powerConsumption",
-            "powerFlexible",
-            "powerNet",
-            "powerProduction"
-          ]
+          "include": ["powerConsumption", "powerFlexible", "powerNet", "powerProduction"]
         }
       },
       {
@@ -104,10 +91,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "energyExportTotal",
-            "energyImportTotal"
-          ]
+          "include": ["energyExportTotal", "energyImportTotal"]
         }
       },
       {
@@ -117,10 +101,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "tariffExport",
-            "tariffImport"
-          ]
+          "include": ["tariffExport", "tariffImport"]
         }
       },
       {
@@ -143,10 +124,7 @@
           "include": []
         },
         "attributes": {
-          "include": [
-            "contractedEAN",
-            "redispatchEnabled"
-          ]
+          "include": ["contractedEAN", "redispatchEnabled"]
         }
       },
       {
