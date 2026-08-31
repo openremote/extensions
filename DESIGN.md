@@ -10,10 +10,10 @@ This mechanism allows developers to package resources such as Protocol Agents, A
 
 By standardizing how these extensions are built and integrated, we aim to achieve the following:
 
-* **Enhanced Maintainability**: Create a leaner Core codebase while supporting all existing and future domains.
-* **Simplified User Experience**: Making functionality optional ensures users are not overwhelmed by Agents, Asset Types, or menu items that are irrelevant to their specific project.
-* **System Resource Efficiency**: A monolithic architecture forces the system to load all libraries and background processes regardless of use. Modularization allows for a smaller runtime which reduces resource consumption (RAM, CPU) on edge gateways and industrial hardware.
-* **Architectural Rigor & API Maturity**: Formalizing the boundary between the Core and Extensions forces the development of stable, well-documented APIs. It encourages developers to think in terms of reusability and clean contracts rather than making ad-hoc changes to the Core.
+- **Enhanced Maintainability**: Create a leaner Core codebase while supporting all existing and future domains.
+- **Simplified User Experience**: Making functionality optional ensures users are not overwhelmed by Agents, Asset Types, or menu items that are irrelevant to their specific project.
+- **System Resource Efficiency**: A monolithic architecture forces the system to load all libraries and background processes regardless of use. Modularization allows for a smaller runtime which reduces resource consumption (RAM, CPU) on edge gateways and industrial hardware.
+- **Architectural Rigor & API Maturity**: Formalizing the boundary between the Core and Extensions forces the development of stable, well-documented APIs. It encourages developers to think in terms of reusability and clean contracts rather than making ad-hoc changes to the Core.
 
 ## Conceptual Definition
 
@@ -36,31 +36,31 @@ There is currently no immediate need for each of these types; however, having a 
 These add backend logic, connectivity, or processing power to the system.
 They typically run as background processes or service providers.
 
-* **Connectivity**: Protocol agents such as Artnet, ChirpStack, KNX, and ZWave.
-* **Logic & Rules**: Support for Groovy/Flow rules, Container Services (Forecasting, Simulators), Rule languages (similar to JavaScript and JSON).
-* **Identity**: Pluggable Identity providers (similar to the Keycloak and Basic IdPs).
-* **Storage**: Infrastructure drivers for Operational data (JDBC) or Historical data (TimescaleDB).
+- **Connectivity**: Protocol agents such as Artnet, ChirpStack, KNX, and ZWave.
+- **Logic & Rules**: Support for Groovy/Flow rules, Container Services (Forecasting, Simulators), Rule languages (similar to JavaScript and JSON).
+- **Identity**: Pluggable Identity providers (similar to the Keycloak and Basic IdPs).
+- **Storage**: Infrastructure drivers for Operational data (JDBC) or Historical data (TimescaleDB).
 
 #### Data Extensions
 
 These define how data is structured and transformed within the system.
 
-* **Model Definitions**: Domain-specific Asset Types (Energy, HVAC, Smart City) and Setup Types (Demo, Load testing).
-* **Data Integrity**:
-  * **Value Types**: Defining custom data structures or units of measurement.
-  * **Value Validation**: Logic to ensure incoming data meets specific criteria (range checks, schema validation, or mandatory fields).
-* **Processing & Presentation**:
-  * **Value Filters**: Data transformation logic (JsonPath, RegEx).
-  * **Value Formatting**: Rules for how data is rendered in the UI or exported (unit conversion, decimal rounding, or localized date strings).
+- **Model Definitions**: Domain-specific Asset Types (Energy, HVAC, Smart City) and Setup Types (Demo, Load testing).
+- **Data Integrity**:
+  - **Value Types**: Defining custom data structures or units of measurement.
+  - **Value Validation**: Logic to ensure incoming data meets specific criteria (range checks, schema validation, or mandatory fields).
+- **Processing & Presentation**:
+  - **Value Filters**: Data transformation logic (JsonPath, RegEx).
+  - **Value Formatting**: Rules for how data is rendered in the UI or exported (unit conversion, decimal rounding, or localized date strings).
 
 #### Visual Extensions
 
 These enhance the Manager UI or provide end-user applications.
 They are primarily client-side assets that extend the frontend.
 
-* **Widgets**: Custom Insights widgets for dashboards and data visualization (e.g. a specialized gauge for energy consumption).
-* **Custom Applications**: Project-specific UIs developed to meet unique domain requirements (e.g. an Alarms App or a Fleet App).
-* **System & Utility UIs**: Integration of technical or third-party interfaces directly into the platform, such as Swagger UI for API exploration.
+- **Widgets**: Custom Insights widgets for dashboards and data visualization (e.g. a specialized gauge for energy consumption).
+- **Custom Applications**: Project-specific UIs developed to meet unique domain requirements (e.g. an Alarms App or a Fleet App).
+- **System & Utility UIs**: Integration of technical or third-party interfaces directly into the platform, such as Swagger UI for API exploration.
 
 #### Composite Extensions
 
@@ -76,26 +76,26 @@ We will focus on introducing extensions into the backend and the structural rela
 
 Existing OpenRemote functionality is first migrated into a modular structure:
 
-* **Connectivity**: Decoupling Protocol Agents (KNX, ZWave, Artnet etc.) to allow for project-specific Agents and reduce the Core codebase complexity.
-* **Logic & Rules**: Reusable Groovy/Flow rules, Container Services (Forecasting, Simulators).
-* **Model Definitions**: Supporting optionally installing Asset Types (Energy, Smart City) and Setup Types (Demo, Load tests).
-* **Composition**: Implementing the logic for extension dependencies and composite extensions. This allows extensions to build upon one another and be composed into domain-specific solutions.
+- **Connectivity**: Decoupling Protocol Agents (KNX, ZWave, Artnet etc.) to allow for project-specific Agents and reduce the Core codebase complexity.
+- **Logic & Rules**: Reusable Groovy/Flow rules, Container Services (Forecasting, Simulators).
+- **Model Definitions**: Supporting optionally installing Asset Types (Energy, Smart City) and Setup Types (Demo, Load tests).
+- **Composition**: Implementing the logic for extension dependencies and composite extensions. This allows extensions to build upon one another and be composed into domain-specific solutions.
 
 #### Phase 2: User Interfaces
 
 Once the initial infrastructure has been built, the scope will expand to include standalone UIs.
 
-* **Custom Applications**: Enabling project or domain specific UIs to be deployed as extensions (Alarms or Fleet App).
-* **System & Utility UIs**: Integrating technical tools directly into the platform, such as Swagger UI.
+- **Custom Applications**: Enabling project or domain specific UIs to be deployed as extensions (Alarms or Fleet App).
+- **System & Utility UIs**: Integrating technical tools directly into the platform, such as Swagger UI.
 
 #### Future
 
 These represent long-term goals that require the development of new internal APIs within the OpenRemote Core before they can be fully supported:
 
-* **Widgets**: Custom Insights widgets for dashboards and data visualization (specialized energy gauges).
-* **Data Integrity & Processing**: Advanced value types, validation, formatting, and specialized filters.
-* **Rules**: Integration of entirely new Rule Engine languages (JavaScript, JSON).
-* **Storage**: Pluggable infrastructure drivers for database management.
+- **Widgets**: Custom Insights widgets for dashboards and data visualization (specialized energy gauges).
+- **Data Integrity & Processing**: Advanced value types, validation, formatting, and specialized filters.
+- **Rules**: Integration of entirely new Rule Engine languages (JavaScript, JSON).
+- **Storage**: Pluggable infrastructure drivers for database management.
 
 ## Technical Specification
 
@@ -114,26 +114,26 @@ This convention applies to both the Java package structure and the internal reso
 Extensions are developed as independent Gradle projects.
 To include an extension in an OpenRemote deployment, it is added as a standard dependency in the project's `build.gradle`.
 
-* **Transitive Dependencies**: Gradle handles the resolution of shared libraries between the Core and multiple extensions, ensuring a consistent and conflict-free classpath.
-* **Composition**: Composite Extensions define a collection of dependencies in their `build.gradle`, allowing a developer to include a single "Composite" artifact to pull in a complete suite of functional and data modules.
+- **Transitive Dependencies**: Gradle handles the resolution of shared libraries between the Core and multiple extensions, ensuring a consistent and conflict-free classpath.
+- **Composition**: Composite Extensions define a collection of dependencies in their `build.gradle`, allowing a developer to include a single "Composite" artifact to pull in a complete suite of functional and data modules.
 
 ### Discovery and Registration (SPI)
 
 Extensions register their components and initialization logic by implementing standard OpenRemote SPIs.
 The Manager scans the classpath at startup to find and execute these implementations via the Java `ServiceLoader`.
 
-* **Asset Types**: Extensions must implement the `org.openremote.model.AssetModelProvider` SPI. This allows the extension to register its domain-specific Asset Types (Energy, HVAC) in a Manager instance.
-* **Container Services**: Background logic (such as forecasting or simulators) is registered via the `org.openremote.model.ContainerService` SPI. These services are managed by the platform container, allowing them to be started and stopped in coordination with the Manager's lifecycle.
-* **Setup Tasks**: Extensions must implement the `org.openremote.model.setup.SetupTasks` SPI. This is the primary mechanism for initializing the extension within a project. Setup tasks are responsible for:
-   * Creating default assets and system configurations.
-   * **Rule Creation**: Programmatically creating and persisting Groovy and Flow rules into the platform.
+- **Asset Types**: Extensions must implement the `org.openremote.model.AssetModelProvider` SPI. This allows the extension to register its domain-specific Asset Types (Energy, HVAC) in a Manager instance.
+- **Container Services**: Background logic (such as forecasting or simulators) is registered via the `org.openremote.model.ContainerService` SPI. These services are managed by the platform container, allowing them to be started and stopped in coordination with the Manager's lifecycle.
+- **Setup Tasks**: Extensions must implement the `org.openremote.model.setup.SetupTasks` SPI. This is the primary mechanism for initializing the extension within a project. Setup tasks are responsible for:
+  - Creating default assets and system configurations.
+  - **Rule Creation**: Programmatically creating and persisting Groovy and Flow rules into the platform.
 
 ### Database Migrations (Flyway)
 
 Extensions requiring database migrations must use Flyway.
 
-* **Path**: `src/main/resources/org/openremote/extension/{name}/setup/database/`
-* **Execution**: Migrations are triggered during the extension activation sequence, before `SetupTasks` or `ContainerServices` are initialized.
+- **Path**: `src/main/resources/org/openremote/extension/{name}/setup/database/`
+- **Execution**: Migrations are triggered during the extension activation sequence, before `SetupTasks` or `ContainerServices` are initialized.
 
 ### Testing Strategy (Spock & Groovy)
 
@@ -180,10 +180,10 @@ This section defines how extensions are packaged, discovered, and activated usin
 
 In the initial implementation, extensions are treated as static modules bundled into the OpenRemote Manager's classpath.
 
-* **Build-time Integration**: Extensions are added as `implementation` dependencies in the deployment project's Gradle configuration.
-* **The Artifact**: Every extension must include an implementation of the `ExtensionMetadata` SPI.
-* **Registration**: The implementation is registered in `src/main/resources/META-INF/services/org.openremote.model.ExtensionMetadata`.
-* **Artifact Inclusion**: During the Docker build, JARs are placed in the Manager's library directory for automatic JVM loading.
+- **Build-time Integration**: Extensions are added as `implementation` dependencies in the deployment project's Gradle configuration.
+- **The Artifact**: Every extension must include an implementation of the `ExtensionMetadata` SPI.
+- **Registration**: The implementation is registered in `src/main/resources/META-INF/services/org.openremote.model.ExtensionMetadata`.
+- **Artifact Inclusion**: During the Docker build, JARs are placed in the Manager's library directory for automatic JVM loading.
 
 ### The Metadata SPI (`ExtensionMetadata`)
 
@@ -201,13 +201,13 @@ import java.util.Set;
 public class EnergyExtensionMetadata implements ExtensionMetadata {
     @Override
     public String getId() { return "org.openremote.extension.energy"; }
-    
+
     @Override
     public String getVersion() { return "1.0.0"; }
 
     @Override
-    public String getDescription() { 
-        return "A composite suite providing Energy Asset types, optimization logic, and Modbus connectivity."; 
+    public String getDescription() {
+        return "A composite suite providing Energy Asset types, optimization logic, and Modbus connectivity.";
     }
 
     @Override
@@ -224,9 +224,9 @@ public class EnergyExtensionMetadata implements ExtensionMetadata {
 
 The use of a Metadata SPI allows the Manager to handle Composite Extensions as logical bundles.
 
-* **Dependency Resolution**: On startup, the Manager uses `ServiceLoader` to load all `ExtensionMetadata` instances. It builds a directed graph of the extensions on the classpath.
-* **Circular Dependency Protection**: The Manager's dependency resolver checks for circular references (A → B → A). If a cycle is detected, the Manager aborts the boot sequence to prevent recursive initialization loops.
-* **Activation Safety**: The Manager will refuse to initialize an extension if its declared dependencies are missing from the classpath or are explicitly disabled.
+- **Dependency Resolution**: On startup, the Manager uses `ServiceLoader` to load all `ExtensionMetadata` instances. It builds a directed graph of the extensions on the classpath.
+- **Circular Dependency Protection**: The Manager's dependency resolver checks for circular references (A → B → A). If a cycle is detected, the Manager aborts the boot sequence to prevent recursive initialization loops.
+- **Activation Safety**: The Manager will refuse to initialize an extension if its declared dependencies are missing from the classpath or are explicitly disabled.
 
 ### The Activation Roadmap
 
@@ -238,22 +238,22 @@ The Manager loads all extensions found via the `ExtensionMetadata` SPI and initi
 
 The `OR_ENABLED_EXTENSIONS` environment variable is introduced.
 
-* **Behavior**: The Manager filters the discovered `ExtensionMetadata` list. The Manager automatically activates all transitive dependencies declared in the metadata.
-* **Persistence**: The list of active extension IDs is persisted in `manager_config.json`.
+- **Behavior**: The Manager filters the discovered `ExtensionMetadata` list. The Manager automatically activates all transitive dependencies declared in the metadata.
+- **Persistence**: The list of active extension IDs is persisted in `manager_config.json`.
 
 #### Stage 3: UI-Driven Configuration
 
 An Extensions Page allows users to toggle extensions.
 The UI uses the extension metadata to show descriptions, versions, and warning prompts if a user tries to disable a dependency required by another active extension.
 
-* **Lifecycle Requirement (Restart)**: Because the extension mechanism relies on the Java Classpath and the `ServiceLoader` discovery process, any change to the activation state (enabling or disabling an extension) requires a restart of the Manager container.
-* **User Feedback**: The UI must explicitly notify the user that changes are "Pending" and provide a "Restart Manager" trigger or a clear instruction to restart the stack to apply the new configuration.
-* **Safety Check**: The Manager will validate the pending configuration during the next boot sequence.
+- **Lifecycle Requirement (Restart)**: Because the extension mechanism relies on the Java Classpath and the `ServiceLoader` discovery process, any change to the activation state (enabling or disabling an extension) requires a restart of the Manager container.
+- **User Feedback**: The UI must explicitly notify the user that changes are "Pending" and provide a "Restart Manager" trigger or a clear instruction to restart the stack to apply the new configuration.
+- **Safety Check**: The Manager will validate the pending configuration during the next boot sequence.
 
 ### Resource Isolation & Conflict Management
 
-* **Version Pinning**: Gradle remains the arbiter for build-time version conflicts.
-* **Namespace Hygiene**: All resources must stay within the `org.openremote.extension.{name}` path to prevent accidental overwriting of Core or peer-extension assets.
+- **Version Pinning**: Gradle remains the arbiter for build-time version conflicts.
+- **Namespace Hygiene**: All resources must stay within the `org.openremote.extension.{name}` path to prevent accidental overwriting of Core or peer-extension assets.
 
 ## Versioning & Release Management (Monorepo)
 
@@ -278,26 +278,26 @@ openremote-extensions/ (Monorepo Root)
 
 In this initial phase, explicit core compatibility functions like `getMinCoreVersion()` are omitted from the `ExtensionMetadata` SPI.
 
-* **The Docker Contract**: Compatibility is managed at the packaging level. Because the extensions and the Manager are bundled into the same Docker image during the CI/CD process, it is guaranteed that the extensions on the classpath have been built and tested against that specific Manager version.
-* **Simplified Manifest**: This reduces boilerplate and prevents version mismatch errors during startup in a controlled environment.
+- **The Docker Contract**: Compatibility is managed at the packaging level. Because the extensions and the Manager are bundled into the same Docker image during the CI/CD process, it is guaranteed that the extensions on the classpath have been built and tested against that specific Manager version.
+- **Simplified Manifest**: This reduces boilerplate and prevents version mismatch errors during startup in a controlled environment.
 
 ### Release Tying
 
 Extensions in the monorepo follow a Release Train model.
 
-* When a new version of the OpenRemote stack is released, all extensions within the monorepo are typically tagged and released under the same version number as the platform (or a synchronized sub-version).
-* This ensures that any internal API changes made in the Core are immediately reflected and tested across all extensions before the Docker image is published.
+- When a new version of the OpenRemote stack is released, all extensions within the monorepo are typically tagged and released under the same version number as the platform (or a synchronized sub-version).
+- This ensures that any internal API changes made in the Core are immediately reflected and tested across all extensions before the Docker image is published.
 
 ### Internal Dependency Management
 
 The monorepo allows extensions to share internal code without exposing it as public APIs:
 
-* **Shared Modules**: Shared utilities (e.g., energy calculation math) can still reside in a shared extension sub-project.
-* **Gradle Linking**: Extensions could include these via `implementation project(':extensions:sharedmodule')`. These can be shaded or bundled into the extension JAR during the build, keeping the artifact self-contained.
+- **Shared Modules**: Shared utilities (e.g., energy calculation math) can still reside in a shared extension sub-project.
+- **Gradle Linking**: Extensions could include these via `implementation project(':extensions:sharedmodule')`. These can be shaded or bundled into the extension JAR during the build, keeping the artifact self-contained.
 
 ### CI/CD Efficiency
 
 The monorepo structure allows for a unified pipeline:
 
-* **Atomic Commits**: A single Pull Request can update a dependency and all affected extensions simultaneously.
-* **Unified Testing**: Integration tests can easily span multiple extensions to verify that a Composite Extension (e.g. `energy`) functions correctly with its sub-dependencies (`modbus`, `ems`) before the image is finalized.
+- **Atomic Commits**: A single Pull Request can update a dependency and all affected extensions simultaneously.
+- **Unified Testing**: Integration tests can easily span multiple extensions to verify that a Composite Extension (e.g. `energy`) functions correctly with its sub-dependencies (`modbus`, `ems`) before the image is finalized.
