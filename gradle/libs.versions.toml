@@ -1,7 +1,7 @@
 [versions]
 axionRelease = "1.21.2"
 camel = "4.22.0"
-jackson = "2.21.4"
+jackson = "2.22.2"
 jacoco = "0.8.14"
 nexusPublish = "2.0.0"
 openremote = "1.30.0-SNAPSHOT"
