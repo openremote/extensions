@@ -42,6 +42,9 @@ They typically run as background processes or service providers.
 - **Identity**: Pluggable Identity providers (similar to the Keycloak and Basic IdPs).
 - **Storage**: Infrastructure drivers for Operational data (JDBC) or Historical data (TimescaleDB).
 
+Extensions may depend on external infrastructure or services.
+Provisioning and configuring such infrastructure is outside the scope of the extension mechanism and remains the responsibility of the deployment or project configuration.
+
 #### Data Extensions
 
 These define how data is structured and transformed within the system.
