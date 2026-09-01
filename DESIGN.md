@@ -23,6 +23,7 @@ An extension is not merely a piece of code; it is a self-contained package that 
 ### What is an Extension?
 
 Technically, an extension is a versioned artifact (such as a JAR file) that the OpenRemote Manager can discover, load, and initialize at runtime.
+Extensions are not dynamically installed, loaded, or unloaded at runtime.
 The Extension communicates with the Core through predefined extension points.
 These extension points are stable APIs that allow the Extension to register its own Container Services, UI elements or Asset Types into the Manager.
 
