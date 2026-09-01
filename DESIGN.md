@@ -153,6 +153,7 @@ Note the separation of concerns between production code (`src/main`) and testing
 
 ```text
 energy/
+├── build.gradle                       # Extension build and dependencies
 ├── src/main/java/org/openremote/extension/energy/
 │   ├── model/                         # Java Asset implementations
 │   │   ├── ElectricityAsset.java
@@ -160,8 +161,8 @@ energy/
 │   ├── manager/                       # Core logic & Container services
 │   │   └── EnergyOptimisationService.java # Implements ContainerService SPI
 ├── src/main/resources/
-│   ├── org/openremote/extension/energy/setup/database/ # Flyway scripts
-│   │   └── V20260131_01__RenameEnumValues.sql
+│   ├── org/openremote/extension/energy/setup/database/ # Flyway scripts
+│   │   └── V20260131_01__RenameEnumValues.sql
 │   └── META-INF/services/             # SPI Registration
 │       ├── org.openremote.model.AssetModelProvider
 │       ├── org.openremote.model.ContainerService
