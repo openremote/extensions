@@ -139,7 +139,8 @@ The Manager scans the classpath at startup to find and execute these implementat
 Extensions requiring database migrations must use Flyway.
 
 - **Path**: `src/main/resources/org/openremote/extension/{name}/setup/database/`
-- **Execution**: Migrations are triggered during the extension activation sequence, before `SetupTasks` or `ContainerServices` are initialized.
+- **Execution**: Extension migrations are applied before `SetupTasks` or `ContainerServices` are initialized.
+- **Lifecycle**: Extensions can be added to existing installations, so migration ordering and isolation require additional consideration. This is tracked in [openremote/extensions#23](https://github.com/openremote/extensions/issues/23).
 
 ### Testing Strategy (Spock & Groovy)
 
