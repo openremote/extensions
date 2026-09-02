@@ -237,14 +237,19 @@ The use of a Metadata SPI allows the Manager to handle Composite Extensions as l
 
 #### Stage 1: Implicit Activation (Current)
 
-The Manager loads all extensions found via the `ExtensionMetadata` SPI and initializes their associated `AssetModelProvider`, `SetupTasks`, and `ContainerService` implementations automatically.
+All extension components available on the Manager classpath are implicitly active and continue to be discovered through the existing `ServiceLoader` mechanisms for `AssetModelProvider`, `SetupTasks`, and `ContainerService`.
+
+`ExtensionMetadata` is not required for activation in this stage, but extensions may already provide it in preparation for the next stage.
 
 #### Stage 2: Environment-Driven Whitelisting
 
-The `OR_ENABLED_EXTENSIONS` environment variable is introduced.
+The `OR_ENABLED_EXTENSIONS` environment variable is introduced and `ExtensionMetadata` becomes mandatory for extensions.
 
-- **Behavior**: The Manager filters the discovered `ExtensionMetadata` list. The Manager automatically activates all transitive dependencies declared in the metadata.
-- **Persistence**: The list of active extension IDs is persisted in `manager_config.json`.
+- **Discovery**: The Manager discovers the available extensions through the `ExtensionMetadata` SPI.
+- **Activation**: The Manager determines the active extension set from `OR_ENABLED_EXTENSIONS` and automatically includes transitive extension dependencies declared in the metadata.
+- **Component Filtering**: `AssetModelProvider`, `SetupTasks`, `ContainerService`, and other extension components belonging to inactive extensions are not initialized or registered. The existing SPI discovery mechanisms therefore need to become extension-aware.
+- **Validation**: The Manager validates that required extension dependencies are present and detects invalid or circular dependency configurations before initialization.
+- **Persistence**: The list of active extension IDs is persisted for later configuration through the Manager UI.
 
 #### Stage 3: UI-Driven Configuration
 
