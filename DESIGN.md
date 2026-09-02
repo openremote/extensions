@@ -255,10 +255,10 @@ The `OR_ENABLED_EXTENSIONS` environment variable is introduced and `ExtensionMet
 
 An Extensions Page allows users to toggle extensions and shows metadata such as descriptions, versions, and dependencies.
 
-* **Validation**: The UI prevents saving configurations that violate extension dependency rules.
-* **Lifecycle**: Enabling or disabling extensions requires a Manager restart.
-* **User Feedback**: Changes are shown as pending until the Manager is restarted.
-* **Safety Check**: The Manager validates the effective extension configuration at startup, including changes made outside the UI.
+- **Validation**: The UI prevents saving configurations that violate extension dependency rules.
+- **Lifecycle**: Enabling or disabling extensions requires a Manager restart.
+- **User Feedback**: Changes are shown as pending until the Manager is restarted.
+- **Safety Check**: The Manager validates the effective extension configuration at startup, including changes made outside the UI.
 
 ### Resource Isolation & Conflict Management
 
