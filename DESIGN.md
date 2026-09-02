@@ -267,8 +267,14 @@ An Extensions Page allows users to toggle extensions and shows metadata such as 
 
 ## Versioning & Release Management (Monorepo)
 
-To minimize administrative overhead and simplify the development lifecycle, all official extensions are managed within a single monorepo.
-This approach ensures that extensions are built, tested, and shipped in lockstep with the OpenRemote Manager.
+Official extensions are initially managed in the `openremote/extensions` monorepo, separate from Core.
+
+This separation keeps optional domain-specific functionality clearly outside Core, enforces a cleaner dependency boundary, and allows Core to be built and tested without unrelated extensions. As the number of extensions grows, this also helps prevent the Core build and test scope from growing with every optional feature.
+
+Initially, Core and official extensions follow the same release train and are versioned in lockstep.
+This keeps compatibility management simple while the extension APIs are still evolving, even though the source code is maintained in separate repositories.
+
+The trade-off is that changes spanning Core and extensions require more coordination, particularly for refactoring, debugging, testing, and synchronized releases.
 
 ### Repository Structure
 
