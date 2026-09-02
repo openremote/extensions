@@ -294,7 +294,7 @@ openremote-extensions/ (Monorepo Root)
 
 In this initial phase, explicit core compatibility functions like `getMinCoreVersion()` are omitted from the `ExtensionMetadata` SPI.
 
-- **The Docker Contract**: Compatibility is managed at the packaging level. Because the extensions and the Manager are bundled into the same Docker image during the CI/CD process, it is guaranteed that the extensions on the classpath have been built and tested against that specific Manager version.
+- **Docker Contract**: CI/CD publishes a lean `openremote/manager:<version>-core` image without extensions and a standard `openremote/manager:<version>` image containing all official extensions. Custom projects can build on the core image and add only the extensions they require. Core and official extensions are initially versioned in lockstep to ensure compatibility.
 - **Simplified Manifest**: This reduces boilerplate and prevents version mismatch errors during startup in a controlled environment.
 
 ### Release Tying
