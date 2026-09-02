@@ -253,12 +253,12 @@ The `OR_ENABLED_EXTENSIONS` environment variable is introduced and `ExtensionMet
 
 #### Stage 3: UI-Driven Configuration
 
-An Extensions Page allows users to toggle extensions.
-The UI uses the extension metadata to show descriptions, versions, and warning prompts if a user tries to disable a dependency required by another active extension.
+An Extensions Page allows users to toggle extensions and shows metadata such as descriptions, versions, and dependencies.
 
-- **Lifecycle Requirement (Restart)**: Because the extension mechanism relies on the Java Classpath and the `ServiceLoader` discovery process, any change to the activation state (enabling or disabling an extension) requires a restart of the Manager container.
-- **User Feedback**: The UI must explicitly notify the user that changes are "Pending" and provide a "Restart Manager" trigger or a clear instruction to restart the stack to apply the new configuration.
-- **Safety Check**: The Manager will validate the pending configuration during the next boot sequence.
+* **Validation**: The UI prevents saving configurations that violate extension dependency rules.
+* **Lifecycle**: Enabling or disabling extensions requires a Manager restart.
+* **User Feedback**: Changes are shown as pending until the Manager is restarted.
+* **Safety Check**: The Manager validates the effective extension configuration at startup, including changes made outside the UI.
 
 ### Resource Isolation & Conflict Management
 
