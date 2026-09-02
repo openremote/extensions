@@ -29,8 +29,10 @@ These extension points are stable APIs that allow the Extension to register its 
 
 ### Extension Types
 
-In this section, Extensions are categorized by the nature of the resources they provide to the platform.
-There is currently no immediate need for each of these types; however, having a comprehensive list of possible future types helps with thinking about implementation requirements for future extensions.
+Extensions can provide one or more types of capabilities.
+The types below are descriptive and not mutually exclusive; an extension may span several types.
+The exact set of types may evolve as more extensions and extension points are introduced.
+There is currently no immediate need to implement all of these types; however, considering possible future types helps identify requirements for the extension mechanism.
 
 #### Functional Extensions
 
@@ -216,7 +218,7 @@ public class EnergyExtensionMetadata implements ExtensionMetadata {
     }
 
     @Override
-    public ExtensionType getType() { return ExtensionType.COMPOSITE; }
+    public Set<ExtensionType> getTypes() { return Set.of(ExtensionType.COMPOSITE); }
 
     @Override
     public Set<String> getDependencies() {
