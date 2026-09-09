@@ -1,9 +1,6 @@
 /*
  * Copyright 2026, OpenRemote Inc.
  *
- * See the CONTRIBUTORS.txt file in the distribution for a
- * full listing of individual contributors.
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -15,7 +12,9 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 package org.openremote.extension.ems.manager.gopacs
 
@@ -28,19 +27,19 @@ import spock.lang.Specification
  */
 class GOPACSHandlerEanTest extends Specification {
 
-    def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
-        expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
-        GOPACSHandler.toCongestionPoint(input) == expected
+  def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
+    expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
+    GOPACSHandler.toCongestionPoint(input) == expected
 
-        where:
-        input                        || expected
-        "ean.265987182507322951"     || "ean.265987182507322951"
-        "265987182507322951"         || "ean.265987182507322951"
-        "EAN.265987182507322951"     || "ean.265987182507322951"
-        "Ean.265987182507322951"     || "ean.265987182507322951"
-        "  ean.265987182507322951  " || "ean.265987182507322951"
-        "  265987182507322951  "     || "ean.265987182507322951"
-        ""                           || "ean."
-        null                         || null
-    }
+    where:
+    input || expected
+    "ean.265987182507322951" || "ean.265987182507322951"
+    "265987182507322951" || "ean.265987182507322951"
+    "EAN.265987182507322951" || "ean.265987182507322951"
+    "Ean.265987182507322951" || "ean.265987182507322951"
+    "  ean.265987182507322951  " || "ean.265987182507322951"
+    "  265987182507322951  " || "ean.265987182507322951"
+    "" || "ean."
+    null || null
+  }
 }

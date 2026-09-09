@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "GroundwaterSensorAsset"
-                  ],
+                  "types": ["GroundwaterSensorAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -40,9 +38,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "EnvironmentSensorAsset"
-                  ],
+                  "types": ["EnvironmentSensorAsset"],
                   "attributes": {
                     "items": [
                       {

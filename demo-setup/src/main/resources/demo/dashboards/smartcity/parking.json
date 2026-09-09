@@ -90,11 +90,7 @@
         "widgetTypeId": "map",
         "widgetConfig": {
           "zoom": 14,
-          "assetIds": [
-            "1yuaW634x1LqumPTwGxvyg",
-            "3D49AxXerrIycM8gNd0zlK",
-            "2tLAEBGjmRCu1KrdJn9T2Z"
-          ],
+          "assetIds": ["1yuaW634x1LqumPTwGxvyg", "3D49AxXerrIycM8gNd0zlK", "2tLAEBGjmRCu1KrdJn9T2Z"],
           "assetType": "ParkingAsset",
           "showUnits": false,
           "valueType": "positiveInteger",
@@ -107,28 +103,13 @@
           },
           "showLabels": true,
           "textColors": [
-            [
-              "example",
-              "#4caf50"
-            ],
-            [
-              "example2",
-              "#ff9800"
-            ]
+            ["example", "#4caf50"],
+            ["example2", "#ff9800"]
           ],
           "thresholds": [
-            [
-              450,
-              "#ef5350"
-            ],
-            [
-              250,
-              "#ff9800"
-            ],
-            [
-              0,
-              "#4caf50"
-            ]
+            [450, "#ef5350"],
+            [250, "#ff9800"],
+            [0, "#4caf50"]
           ],
           "showGeoJson": true,
           "attributeName": "spacesOccupied",
@@ -159,18 +140,9 @@
           "decimals": 0,
           "valueType": "number",
           "thresholds": [
-            [
-              0,
-              "#4caf50"
-            ],
-            [
-              75,
-              "#ff9800"
-            ],
-            [
-              90,
-              "#ef5350"
-            ]
+            [0, "#4caf50"],
+            [75, "#ff9800"],
+            [90, "#ef5350"]
           ],
           "attributeRefs": [
             {
@@ -201,20 +173,14 @@
         "widgetConfig": {
           "markers": [
             {
-              "coordinates": [
-                10,
-                50
-              ],
+              "coordinates": [10, 50],
               "attributeRef": {
                 "id": "52kOB7c1Rs7WUxgfoCKf5B",
                 "name": "onOff"
               }
             },
             {
-              "coordinates": [
-                9,
-                10
-              ],
+              "coordinates": [9, 10],
               "attributeRef": {
                 "id": "52kOB7c1Rs7WUxgfoCKf5B",
                 "name": "colourRGB"
@@ -250,23 +216,11 @@
         },
         "widgetTypeId": "table",
         "widgetConfig": {
-          "assetIds": [
-            "2tLAEBGjmRCu1KrdJn9T2Z",
-            "3D49AxXerrIycM8gNd0zlK",
-            "1yuaW634x1LqumPTwGxvyg"
-          ],
+          "assetIds": ["2tLAEBGjmRCu1KrdJn9T2Z", "3D49AxXerrIycM8gNd0zlK", "1yuaW634x1LqumPTwGxvyg"],
           "assetType": "ParkingAsset",
           "tableSize": 10,
-          "tableOptions": [
-            10,
-            25,
-            100
-          ],
-          "attributeNames": [
-            "spacesOccupied",
-            "spacesOpen",
-            "spacesTotal"
-          ]
+          "tableOptions": [10, 25, 100],
+          "attributeNames": ["spacesOccupied", "spacesOpen", "spacesTotal"]
         }
       }
     ]

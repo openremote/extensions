@@ -21,6 +21,7 @@ bin-release/
 .local/
 .DS_*
 node_modules/
+.eslintcache
 .pnp.*
 .yarn/*
 !.yarn/patches

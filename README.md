@@ -26,7 +26,7 @@ Subprojects are included automatically when they contain a `build.gradle` file, 
 ## Available extensions
 
 | Extension    | Description                                                                               |
-|--------------|-------------------------------------------------------------------------------------------|
+| ------------ | ----------------------------------------------------------------------------------------- |
 | `demo-setup` | Adds the OpenRemote Demo setup.                                                           |
 | `ems`        | A new extension-based implementation of the Energy Management System with GOPACS support. |
 | `energy`     | Adds the energy domain extension with several energy related assets.                      |
@@ -87,14 +87,14 @@ After the custom project is rebuilt and the OpenRemote Manager is restarted, the
 
 When adding or updating an extension:
 
-* Keep extension code in its own Gradle subproject.
-* Use the package namespace `org.openremote.extension.<extension-name>`.
-* Register extension components using the appropriate OpenRemote SPI files under `META-INF/services`.
-* Keep extension-specific resources under an extension-specific resource path.
-* Add tests for extension behavior, preferably following the existing OpenRemote testing conventions.
+- Keep extension code in its own Gradle subproject.
+- Use the package namespace `org.openremote.extension.<extension-name>`.
+- Register extension components using the appropriate OpenRemote SPI files under `META-INF/services`.
+- Keep extension-specific resources under an extension-specific resource path.
+- Add tests for extension behavior, preferably following the existing OpenRemote testing conventions.
 
 Typical extension integration points include:
 
-* `AssetModelProvider`
-* `ContainerService`
-* `SetupTasks`
+- `AssetModelProvider`
+- `ContainerService`
+- `SetupTasks`

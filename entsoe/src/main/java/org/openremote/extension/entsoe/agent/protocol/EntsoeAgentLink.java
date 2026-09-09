@@ -1,9 +1,6 @@
 /*
  * Copyright 2026, OpenRemote Inc.
  *
- * See the CONTRIBUTORS.txt file in the distribution for a
- * full listing of individual contributors.
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -15,7 +12,9 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 package org.openremote.extension.entsoe.agent.protocol;
 
@@ -26,25 +25,22 @@ import org.openremote.model.asset.agent.AgentLink;
 
 public class EntsoeAgentLink extends AgentLink<EntsoeAgentLink> {
 
-    @NotNull
-    @JsonPropertyDescription("Energy Identification Code of zone to fetch data for")
-    @Pattern(regexp = "^\\d{2}[A-Z][A-Z0-9-]{12}[A-Z0-9]$")
-    private String zone;
+  @NotNull @JsonPropertyDescription("Energy Identification Code of zone to fetch data for")
+  @Pattern(regexp = "^\\d{2}[A-Z][A-Z0-9-]{12}[A-Z0-9]$") private String zone;
 
-    // For Hydrators
-    public EntsoeAgentLink() {
-    }
+  // For Hydrators
+  public EntsoeAgentLink() {}
 
-    public EntsoeAgentLink(String id) {
-        super(id);
-    }
+  public EntsoeAgentLink(String id) {
+    super(id);
+  }
 
-    public String getZone() {
-        return zone;
-    }
+  public String getZone() {
+    return zone;
+  }
 
-    public EntsoeAgentLink setZone(String zone) {
-        this.zone = zone;
-        return this;
-    }
+  public EntsoeAgentLink setZone(String zone) {
+    this.zone = zone;
+    return this;
+  }
 }

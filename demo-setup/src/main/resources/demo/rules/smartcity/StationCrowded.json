@@ -12,9 +12,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "MicrophoneAsset"
-                  ],
+                  "types": ["MicrophoneAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -31,9 +29,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "2bdD9xZlveIOabucPi9Iur"
-                  ]
+                  "ids": ["2bdD9xZlveIOabucPi9Iur"]
                 }
               }
             ]
@@ -43,9 +39,7 @@
             "items": [
               {
                 "assets": {
-                  "types": [
-                    "MicrophoneAsset"
-                  ],
+                  "types": ["MicrophoneAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -62,16 +56,12 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "5WKcxVxZqFq1GYd9b2YVGD"
-                  ]
+                  "ids": ["5WKcxVxZqFq1GYd9b2YVGD"]
                 }
               },
               {
                 "assets": {
-                  "types": [
-                    "PeopleCounterAsset"
-                  ],
+                  "types": ["PeopleCounterAsset"],
                   "attributes": {
                     "items": [
                       {
@@ -88,9 +78,7 @@
                       }
                     ]
                   },
-                  "ids": [
-                    "4vD8XpKSR6iieaSLJ35nKl"
-                  ]
+                  "ids": ["4vD8XpKSR6iieaSLJ35nKl"]
                 }
               }
             ]
@@ -102,12 +90,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "2JA9oLQDHY0pjVHnGJMS35"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["2JA9oLQDHY0pjVHnGJMS35"],
+              "types": ["LightAsset"]
             }
           },
           "value": 60,
@@ -117,12 +101,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "3BSvaTREZX2MLjuE8bkM16"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["3BSvaTREZX2MLjuE8bkM16"],
+              "types": ["LightAsset"]
             }
           },
           "value": 75,
@@ -132,12 +112,8 @@
           "action": "write-attribute",
           "target": {
             "assets": {
-              "ids": [
-                "2motXSzult66RsYrImPTdf"
-              ],
-              "types": [
-                "LightAsset"
-              ]
+              "ids": ["2motXSzult66RsYrImPTdf"],
+              "types": ["LightAsset"]
             }
           },
           "value": 70,
