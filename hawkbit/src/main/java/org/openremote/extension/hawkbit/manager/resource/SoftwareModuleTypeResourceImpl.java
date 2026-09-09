@@ -1,9 +1,6 @@
 /*
  * Copyright 2025, OpenRemote Inc.
  *
- * See the CONTRIBUTORS.txt file in the distribution for a
- * full listing of individual contributors.
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -15,7 +12,9 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 package org.openremote.extension.hawkbit.manager.resource;
 
@@ -29,41 +28,46 @@ import org.openremote.manager.security.ManagerIdentityService;
 import org.openremote.model.http.RequestParams;
 
 public class SoftwareModuleTypeResourceImpl extends HawkbitWebResource
-        implements SoftwareModuleTypeResource {
+    implements SoftwareModuleTypeResource {
 
-    public SoftwareModuleTypeResourceImpl(TimerService timerService, ManagerIdentityService identityService,
-                                          HawkbitFirmwareService hawkbitFirmwareService) {
-        super(timerService, identityService, hawkbitFirmwareService);
-    }
+  public SoftwareModuleTypeResourceImpl(
+      TimerService timerService,
+      ManagerIdentityService identityService,
+      HawkbitFirmwareService hawkbitFirmwareService) {
+    super(timerService, identityService, hawkbitFirmwareService);
+  }
 
-    @Override
-    public Response createSoftwareModuleType(RequestParams requestParams,
-                                             String realm,
-                                             JsonNode softwareModuleType) {
-        requireHawkbitRealmAccess(realm);
-        return HawkbitResponseProxy.proxy("Failed to create firmware software module type",
-                () -> hawkbitFirmwareService.softwareModuleTypes().create(softwareModuleType));
-    }
+  @Override
+  public Response createSoftwareModuleType(
+      RequestParams requestParams, String realm, JsonNode softwareModuleType) {
+    requireHawkbitRealmAccess(realm);
+    return HawkbitResponseProxy.proxy(
+        "Failed to create firmware software module type",
+        () -> hawkbitFirmwareService.softwareModuleTypes().create(softwareModuleType));
+  }
 
-    @Override
-    public Response getSoftwareModuleTypes(RequestParams requestParams, String realm, Integer offset,
-                                           Integer limit) {
-        requireHawkbitRealmAccess(realm);
-        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module types",
-                () -> hawkbitFirmwareService.softwareModuleTypes().getSoftwareModuleTypes(offset, limit));
-    }
+  @Override
+  public Response getSoftwareModuleTypes(
+      RequestParams requestParams, String realm, Integer offset, Integer limit) {
+    requireHawkbitRealmAccess(realm);
+    return HawkbitResponseProxy.proxy(
+        "Failed to retrieve firmware software module types",
+        () -> hawkbitFirmwareService.softwareModuleTypes().getSoftwareModuleTypes(offset, limit));
+  }
 
-    @Override
-    public Response getSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
-        requireHawkbitRealmAccess(realm);
-        return HawkbitResponseProxy.proxy("Failed to retrieve firmware software module type '" + id + "'",
-                () -> hawkbitFirmwareService.softwareModuleTypes().get(id));
-    }
+  @Override
+  public Response getSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
+    requireHawkbitRealmAccess(realm);
+    return HawkbitResponseProxy.proxy(
+        "Failed to retrieve firmware software module type '" + id + "'",
+        () -> hawkbitFirmwareService.softwareModuleTypes().get(id));
+  }
 
-    @Override
-    public Response deleteSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
-        requireHawkbitRealmAccess(realm);
-        return HawkbitResponseProxy.proxy("Failed to delete firmware software module type '" + id + "'",
-                () -> hawkbitFirmwareService.softwareModuleTypes().delete(id));
-    }
+  @Override
+  public Response deleteSoftwareModuleType(RequestParams requestParams, String realm, Long id) {
+    requireHawkbitRealmAccess(realm);
+    return HawkbitResponseProxy.proxy(
+        "Failed to delete firmware software module type '" + id + "'",
+        () -> hawkbitFirmwareService.softwareModuleTypes().delete(id));
+  }
 }

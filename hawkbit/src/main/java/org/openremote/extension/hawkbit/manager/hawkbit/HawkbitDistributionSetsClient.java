@@ -1,9 +1,6 @@
 /*
  * Copyright 2025, OpenRemote Inc.
  *
- * See the CONTRIBUTORS.txt file in the distribution for a
- * full listing of individual contributors.
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -15,44 +12,45 @@
  * GNU Affero General Public License for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 package org.openremote.extension.hawkbit.manager.hawkbit;
+
+import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
+import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 
-import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
-import static org.openremote.extension.hawkbit.manager.hawkbit.HawkbitMediaType.APPLICATION_HAL_JSON;
-
 @Path("distributionsets")
 public interface HawkbitDistributionSetsClient {
 
-    @POST
-    @Consumes(APPLICATION_HAL_JSON)
-    @Produces(APPLICATION_HAL_JSON)
-    Response create(JsonNode distributionSets);
+  @POST
+  @Consumes(APPLICATION_HAL_JSON)
+  @Produces(APPLICATION_HAL_JSON)
+  Response create(JsonNode distributionSets);
 
-    @POST
-    @Path("{id}/assignedTargets")
-    @Consumes(APPLICATION_HAL_JSON)
-    @Produces(APPLICATION_HAL_JSON)
-    Response assignTargets(@PathParam("id") Long id,
-                           @QueryParam("offline") Boolean offline,
-                           JsonNode targets);
+  @POST
+  @Path("{id}/assignedTargets")
+  @Consumes(APPLICATION_HAL_JSON)
+  @Produces(APPLICATION_HAL_JSON)
+  Response assignTargets(
+      @PathParam("id") Long id, @QueryParam("offline") Boolean offline, JsonNode targets);
 
-    @GET
-    @Produces(APPLICATION_JSON)
-    Response getDistributionSets(@QueryParam("offset") Integer offset,
-                                 @QueryParam("limit") Integer limit);
+  @GET
+  @Produces(APPLICATION_JSON)
+  Response getDistributionSets(
+      @QueryParam("offset") Integer offset, @QueryParam("limit") Integer limit);
 
-    @GET
-    @Path("{id}")
-    @Produces(APPLICATION_JSON)
-    Response get(@PathParam("id") Long id);
+  @GET
+  @Path("{id}")
+  @Produces(APPLICATION_JSON)
+  Response get(@PathParam("id") Long id);
 
-    @DELETE
-    @Path("{id}")
-    Response delete(@PathParam("id") Long id);
+  @DELETE
+  @Path("{id}")
+  Response delete(@PathParam("id") Long id);
 }
