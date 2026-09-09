@@ -31,7 +31,9 @@ From the repository root:
 ```bash
 ./hawkbit/demo/start.sh
 ./hawkbit/demo/prepare-demo.sh
+./hawkbit/demo/prepare-fleet-demo.sh
 ./hawkbit/demo/status.sh
+./hawkbit/demo/fleet-status.sh
 ./hawkbit/demo/simulate-device.sh
 ./hawkbit/demo/status.sh
 ```
@@ -47,9 +49,10 @@ The OpenRemote URL uses a local self-signed certificate, so your browser will
 ask you to accept it once.
 
 In OpenRemote, inspect the **OTA Demo Sensor** asset. The
-`firmwareTargetInfo` attribute holds its hawkBit controller ID and device
-security token. The `deviceModel` and `region` attributes are synchronized as
-hawkBit metadata.
+`firmwareTargetInfo` attribute holds its hawkBit controller ID. The device
+security token remains in hawkBit and is retrieved through the extension's
+administrator-protected target API. The `deviceModel` and `region` attributes
+are synchronized as hawkBit metadata.
 
 In Firmware Management, inspect **Targets**, **Software modules**,
 **Distribution sets**, **Target filters**, and **Rollouts**. This application
@@ -111,6 +114,45 @@ thresholds. You can then start or pause the rollout and inspect each deployment
 group's progress. For a meaningful multi-group presentation, create several
 OpenRemote assets with the same `firmwareTarget` marker and matching metadata
 before creating the rollout.
+
+## Fleet and rollout scenario
+
+`prepare-fleet-demo.sh` creates a richer, idempotent scenario for the Firmware
+Management UI:
+
+- Eleven OpenRemote assets: four Athens stable devices, four Rotterdam stable
+  devices, two canary devices, and one future beta device. Model, region,
+  release channel, and hardware revision are synchronized into hawkBit
+  metadata.
+- Four software module types and eight modules, including OS, application,
+  configuration, and bootloader artifacts.
+- Three distribution set types: full release, application-only update, and
+  bootloader maintenance.
+- Five distribution sets with different module combinations: two site-specific
+  stable releases, an application hotfix, a canary release candidate, and a
+  maintenance release.
+- Five reusable target filters. The future-device filter is configured before
+  the future beta asset is created, proving that the canary distribution is
+  automatically assigned with a forced-update policy.
+- Three rollouts. Athens uses two groups and percentage thresholds; Rotterdam
+  uses four one-device groups and requires every group to succeed; canary uses
+  two groups and is started automatically.
+
+The automatically started canary rollout initially waits for its first device.
+Simulate that device, watch the first deployment group finish and the second
+group open, then simulate the second device:
+
+```bash
+DEVICE_ID=hbFleetCanaryDevice001 ./hawkbit/demo/simulate-device.sh
+./hawkbit/demo/fleet-status.sh
+DEVICE_ID=hbFleetCanaryDevice002 ./hawkbit/demo/simulate-device.sh
+./hawkbit/demo/fleet-status.sh
+```
+
+If hawkBit placed device `02` in the first group, reverse the two device IDs;
+the simulator safely reports when a target has no deployment waiting. Start the
+Athens or Rotterdam rollout from the UI when you want to demonstrate different
+group sizes and threshold policies.
 
 ## Stop or reset
 

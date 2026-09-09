@@ -3,20 +3,45 @@ set -euo pipefail
 
 HAWKBIT_URL="${HAWKBIT_URL:-http://localhost:8083/hawkbit}"
 HAWKBIT_TENANT="${HAWKBIT_TENANT:-DEFAULT}"
+OPENREMOTE_URL="${OPENREMOTE_URL:-https://localhost:9443}"
+OPENREMOTE_REALM="${OPENREMOTE_REALM:-master}"
+OPENREMOTE_USER="${OPENREMOTE_USER:-admin}"
+OPENREMOTE_PASSWORD="${OR_ADMIN_PASSWORD:-secret}"
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_FILE="$DEMO_DIR/.build/demo-state.json"
 DOWNLOAD_DIR="$DEMO_DIR/.build/downloaded"
 
-if [[ ! -f "$STATE_FILE" ]]; then
+if [[ -z "${DEVICE_ID:-}" && ! -f "$STATE_FILE" ]]; then
   echo "Run ./hawkbit/demo/prepare-demo.sh first." >&2
   exit 1
 fi
 
-DEVICE_ID="$(jq -r '.deviceId' "$STATE_FILE")"
-SECURITY_TOKEN="$(jq -r '.securityToken' "$STATE_FILE")"
+if [[ -z "${DEVICE_ID:-}" ]]; then
+  DEVICE_ID="$(jq -r '.deviceId' "$STATE_FILE")"
+  SECURITY_TOKEN="$(jq -r '.securityToken' "$STATE_FILE")"
+else
+  ACCESS_TOKEN="$(curl --fail-with-body --silent --show-error --insecure \
+    --request POST \
+    --data-urlencode 'grant_type=password' \
+    --data-urlencode 'client_id=openremote' \
+    --data-urlencode "username=$OPENREMOTE_USER" \
+    --data-urlencode "password=$OPENREMOTE_PASSWORD" \
+    "$OPENREMOTE_URL/auth/realms/$OPENREMOTE_REALM/protocol/openid-connect/token" | jq -r '.access_token')"
+  SECURITY_TOKEN="$(curl --fail-with-body --silent --show-error --insecure \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    "$OPENREMOTE_URL/api/$OPENREMOTE_REALM/firmware/target/$DEVICE_ID?realm=$OPENREMOTE_REALM" | \
+    jq -r '.securityToken')"
+fi
+
+if [[ -z "$SECURITY_TOKEN" || "$SECURITY_TOKEN" == "null" ]]; then
+  echo "Could not obtain the hawkBit security token for $DEVICE_ID." >&2
+  exit 1
+fi
+
 AUTH_HEADER="Authorization: TargetToken $SECURITY_TOKEN"
 CONTROLLER_URL="$HAWKBIT_URL/$HAWKBIT_TENANT/controller/v1/$DEVICE_ID"
 
+DOWNLOAD_DIR="$DOWNLOAD_DIR/$DEVICE_ID"
 mkdir -p "$DOWNLOAD_DIR"
 
 echo "1/4 Device polls hawkBit for work..."
