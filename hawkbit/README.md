@@ -135,9 +135,9 @@ The public DDI URL uses `/hawkbit/{tenant}/controller/v1/...`. The Management AP
 
 ### Firmware Targets
 
-To sync an OpenRemote asset as a hawkBit target, add the `firmwareTarget` meta item to one attribute of the asset.
+To synchronize an OpenRemote asset as a hawkBit target, add the MetaItem `firmwareTarget: true` to exactly one TEXT attribute. The extension writes JSON containing the hawkBit `controllerId` into that attribute. Assets with multiple marked attributes, or a marked attribute of another type, are not synchronized.
 
-When the asset is created or updated in the configured realm, the extension creates a hawkBit target using the OpenRemote asset ID as the hawkBit controller ID. The target info attribute is updated with the `controllerId` and `securityToken` returned by hawkBit.
+When the asset is created or updated in the configured realm, the extension creates a hawkBit target using the OpenRemote asset ID as the hawkBit controller ID. The target security token remains in hawkBit and is not copied into the asset. Trusted provisioning integrations can retrieve it through the administrator-protected `firmware/target/{id}` endpoint.
 
 When the asset is deleted, the matching hawkBit target is deleted.
 
@@ -174,7 +174,7 @@ sequenceDiagram
     participant Device as Device
 
     OR->>HB: Create target from asset
-    HB-->>OR: Target controller ID and security token
+    HB-->>OR: Target controller ID
     OR->>HB: Sync selected asset attributes as metadata
     OR->>HB: Create modules, distribution sets or rollouts
     Device->>HB: Poll for assigned firmware actions

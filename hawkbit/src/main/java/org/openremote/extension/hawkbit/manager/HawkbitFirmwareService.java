@@ -51,6 +51,7 @@ import org.openremote.model.attribute.MetaMap;
 import org.openremote.model.syslog.SyslogCategory;
 import org.openremote.model.util.TextUtil;
 import org.openremote.model.util.ValueUtil;
+import org.openremote.model.value.ValueType;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -233,13 +234,13 @@ public class HawkbitFirmwareService implements ContainerService {
 
     protected void handleAssetChange(AssetEvent assetEvent) {
         Asset<?> asset = assetEvent.getAsset();
-        Optional<String> targetInfoAttributeName = getTargetInfoAttributeName(asset);
+        Optional<Attribute<?>> targetInfoAttribute = getTargetInfoAttribute(asset);
 
-        if (targetInfoAttributeName.isEmpty()) {
+        if (targetInfoAttribute.isEmpty()) {
             return;
         }
 
-        String attributeName = targetInfoAttributeName.get();
+        String attributeName = targetInfoAttribute.get().getName();
         String controllerId = asset.getId();
         Target target = null;
 
@@ -484,7 +485,6 @@ public class HawkbitFirmwareService implements ContainerService {
         try {
             Map<String, String> targetInfo = new LinkedHashMap<>();
             targetInfo.put("controllerId", target.controllerId());
-            targetInfo.put("securityToken", target.securityToken());
             String newValueJson = ValueUtil.asJSON(targetInfo).orElse(null);
 
             assetProcessingService.sendAttributeEvent(
@@ -512,24 +512,33 @@ public class HawkbitFirmwareService implements ContainerService {
         }
     }
 
-    protected Optional<String> getTargetInfoAttributeName(Asset<?> asset) {
-        List<String> matchingAttributeNames = asset.getAttributes().values().stream()
+    protected Optional<Attribute<?>> getTargetInfoAttribute(Asset<?> asset) {
+        List<Attribute<?>> matchingAttributes = asset.getAttributes().values().stream()
                 .filter(attribute -> hasTargetInfoFlag(attribute.getMeta()))
-                .map(Attribute::getName)
-                .distinct()
                 .toList();
 
-        if (matchingAttributeNames.isEmpty()) {
+        if (matchingAttributes.isEmpty()) {
             return Optional.empty();
         }
 
-        if (matchingAttributeNames.size() > 1) {
-            LOG.warning("Multiple firmware target attributes assetType=" + asset.getType()
-                    + ", meta=" + FirmwareMetaItemType.FIRMWARE_TARGET.getName());
+        if (matchingAttributes.size() > 1) {
+            LOG.warning("Multiple firmware target attributes assetId=" + asset.getId());
             return Optional.empty();
         }
 
-        return Optional.of(matchingAttributeNames.getFirst());
+        Attribute<?> attribute = matchingAttributes.getFirst();
+
+        if (!Objects.equals(attribute.getType(), ValueType.TEXT)) {
+            LOG.severe("Invalid firmware target attribute assetId=" + asset.getId()
+                    + ", attribute=" + attribute.getName()
+                    + ", expectedType=" + ValueType.TEXT.getName()
+                    + ", actualType=" + (attribute.getType() == null
+                    ? "undefined"
+                    : attribute.getType().getName()));
+            return Optional.empty();
+        }
+
+        return Optional.of(attribute);
     }
 
     protected boolean hasMetadataFlag(String assetType, String attributeName, MetaMap meta) {

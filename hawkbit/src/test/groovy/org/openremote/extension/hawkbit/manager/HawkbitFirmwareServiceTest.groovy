@@ -19,6 +19,7 @@
  */
 package org.openremote.extension.hawkbit.manager
 
+import groovy.json.JsonSlurper
 import jakarta.ws.rs.core.Response
 import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetsClient
 import org.openremote.extension.hawkbit.model.FirmwareMetaItemType
@@ -29,6 +30,8 @@ import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest
 import org.openremote.model.asset.Asset
 import org.openremote.model.asset.AssetEvent
 import org.openremote.model.attribute.*
+import org.openremote.manager.asset.AssetProcessingService
+import org.openremote.model.value.ValueType
 import org.openremote.test.ManagerContainerTrait
 import spock.lang.Specification
 
@@ -47,12 +50,46 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
             hawkbitRealm = "test-realm"
         }
 
-        Optional<String> getTargetInfoAttributeName(Asset asset) {
-            return Optional.of("firmwareTarget")
+        Optional<Attribute<?>> getTargetInfoAttribute(Asset asset) {
+            return Optional.of(new Attribute<String>("firmwareTarget", TEXT))
         }
     }
 
-    def "getTargetInfoAttributeName rejects multiple marked attributes"() {
+    def "getTargetInfoAttribute accepts one marked TEXT attribute"() {
+        given: "an asset with exactly one TEXT attribute marked as a firmware target"
+        def service = new HawkbitFirmwareService()
+        def meta = new MetaMap()
+        meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+        def targetInfoAttribute = new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta)
+
+        def asset = Mock(Asset)
+        asset.getAttributes() >> new AttributeMap([targetInfoAttribute])
+
+        when: "the firmware target attribute is resolved"
+        def result = service.getTargetInfoAttribute(asset)
+
+        then: "the marked TEXT attribute is returned"
+        result.isPresent()
+        result.get().is(targetInfoAttribute)
+    }
+
+    def "getTargetInfoAttribute rejects a marked non-TEXT attribute"() {
+        given: "an asset with an INTEGER attribute marked as a firmware target"
+        def service = new HawkbitFirmwareService()
+        def meta = new MetaMap()
+        meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        asset.getAttributes() >> new AttributeMap([
+                new Attribute<>("firmwareTargetInfo", ValueType.INTEGER).setMeta(meta)
+        ])
+
+        expect: "the invalid attribute is ignored"
+        service.getTargetInfoAttribute(asset) == Optional.empty()
+    }
+
+    def "getTargetInfoAttribute rejects multiple marked attributes"() {
         given: "an asset with multiple attributes marked as firmware target"
         def service = new HawkbitFirmwareService()
         def meta = new MetaMap()
@@ -66,7 +103,29 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         ])
 
         expect: "ambiguous firmware target info attributes are ignored"
-        service.getTargetInfoAttributeName(asset) == Optional.empty()
+        service.getTargetInfoAttribute(asset) == Optional.empty()
+    }
+
+    def "handleAssetChange does not call hawkBit for a marked non-TEXT attribute"() {
+        given: "an asset with an invalid firmware target attribute"
+        def service = new HawkbitFirmwareService()
+        def targets = Mock(HawkbitTargetsClient)
+        service.targets = targets
+        def meta = new MetaMap()
+        meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        asset.getRealm() >> "test-realm"
+        asset.getAttributes() >> new AttributeMap([
+                new Attribute<>("firmwareTargetInfo", ValueType.INTEGER).setMeta(meta)
+        ])
+
+        when: "the asset is synchronized"
+        service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+        then: "validation stops processing before any hawkBit request"
+        0 * targets._
     }
 
     def "handleAssetChange with CREATE cause creates target when it does not exist"() {
@@ -164,6 +223,27 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
         1 * service.targets.get(CONTROLLER_ID) >> { throw new RuntimeException("connection failed") }
         0 * service.targets.create(_)
         0 * service.targets.delete(_)
+    }
+
+    def "updateTargetInfoForAttribute excludes the target security token"() {
+        given: "a hawkBit target containing a device credential"
+        def service = new TestableHawkbitFirmwareService()
+        service.assetProcessingService = Mock(AssetProcessingService)
+        def asset = Mock(Asset)
+        asset.getId() >> CONTROLLER_ID
+        def target = new Target(CONTROLLER_ID, null, null, "sensitive-token", null, null, null, null, null, null, null, null, null)
+
+        when: "the target information is written to the OpenRemote attribute"
+        service.updateTargetInfoForAttribute(asset, "firmwareTargetInfo", target)
+
+        then: "only the non-secret controller ID is stored"
+        1 * service.assetProcessingService.sendAttributeEvent({ AttributeEvent event ->
+            def targetInfo = new JsonSlurper().parseText(event.getValue().orElseThrow() as String) as Map
+            event.getId() == CONTROLLER_ID &&
+                    event.getName() == "firmwareTargetInfo" &&
+                    targetInfo == [controllerId: CONTROLLER_ID] &&
+                    !targetInfo.containsKey("securityToken")
+        }, _)
     }
 
     def "createTarget with security token forwards token in create request"() {
