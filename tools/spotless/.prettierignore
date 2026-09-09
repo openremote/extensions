@@ -6,6 +6,7 @@
 
 # Gradle and Spotless output
 **/build/**
+**/.build/**
 
 # Compiled output
 **/dist/**

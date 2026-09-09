@@ -28,12 +28,12 @@ You need:
 
 The following environment variables can be set on the OpenRemote manager:
 
-| Variable | Required | Description |
-|---|---|---|
-| `HAWKBIT_MANAGEMENT_API_URL` | No | hawkBit Management API URL (default: `http://localhost:8083/hawkbit/rest/v1`) |
-| `HAWKBIT_USERNAME` | No | hawkBit Management API username (default: `hawkbit`) |
-| `HAWKBIT_PASSWORD` | No | hawkBit Management API password (default: `hawkbit`) |
-| `HAWKBIT_REALM` | No | OpenRemote realm to sync with hawkBit (default: `master`) |
+| Variable                     | Required | Description                                                                   |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `HAWKBIT_MANAGEMENT_API_URL` | No       | hawkBit Management API URL (default: `http://localhost:8083/hawkbit/rest/v1`) |
+| `HAWKBIT_USERNAME`           | No       | hawkBit Management API username (default: `hawkbit`)                          |
+| `HAWKBIT_PASSWORD`           | No       | hawkBit Management API password (default: `hawkbit`)                          |
+| `HAWKBIT_REALM`              | No       | OpenRemote realm to sync with hawkBit (default: `master`)                     |
 
 ### Docker Compose Example
 
@@ -153,15 +153,15 @@ The parent asset must also be synced as a firmware target with `firmwareTarget`.
 
 OpenRemote Manager exposes endpoints that forward to the configured hawkBit instance.
 
-| Resource | Path | Functionality |
-|---|---|---|
-| Firmware targets | `firmware/target` | List targets, get target details, metadata, assigned and installed distribution sets, actions and action status messages |
-| Software module types | `firmware/softwaremoduletype` | Create, list, get and delete software module types |
-| Software modules | `firmware/softwaremodule` | Create, list, get and delete software modules, list and upload artifacts |
-| Distribution set types | `firmware/distributionsettype` | Create, list, get and delete distribution set types, list module type assignments |
-| Distribution sets | `firmware/distributionset` | Create, list, get, assign to targets and delete distribution sets |
-| Target filters | `firmware/targetfilter` | Create, list, get and delete target filters, manage auto assignment |
-| Rollouts | `firmware/rollout` | Create, list, get, start, pause and delete rollouts, list rollout groups |
+| Resource               | Path                           | Functionality                                                                                                            |
+| ---------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Firmware targets       | `firmware/target`              | List targets, get target details, metadata, assigned and installed distribution sets, actions and action status messages |
+| Software module types  | `firmware/softwaremoduletype`  | Create, list, get and delete software module types                                                                       |
+| Software modules       | `firmware/softwaremodule`      | Create, list, get and delete software modules, list and upload artifacts                                                 |
+| Distribution set types | `firmware/distributionsettype` | Create, list, get and delete distribution set types, list module type assignments                                        |
+| Distribution sets      | `firmware/distributionset`     | Create, list, get, assign to targets and delete distribution sets                                                        |
+| Target filters         | `firmware/targetfilter`        | Create, list, get and delete target filters, manage auto assignment                                                      |
+| Rollouts               | `firmware/rollout`             | Create, list, get, start, pause and delete rollouts, list rollout groups                                                 |
 
 Read endpoints require the OpenRemote read admin role. Write endpoints require the write admin role.
 
