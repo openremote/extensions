@@ -231,9 +231,18 @@ public class HawkbitFirmwareService implements ContainerService {
     executorService.submit(() -> handleAttributeChange(attributeEvent));
   }
 
+  /**
+   * Handles a metadata sync for a single attribute.
+   *
+   * <p>Removing the {@code firmwareMetadata} meta item is non-destructive: the attribute simply
+   * stops synchronizing and the existing hawkBit metadata entry is left in place. Deleting the
+   * attribute itself is the explicit action that removes the hawkBit metadata entry.
+   */
   protected void handleAttributeChange(AttributeEvent attributeEvent) {
     if (!hasMetadataFlag(
         attributeEvent.getAssetType(), attributeEvent.getName(), attributeEvent.getMeta())) {
+      // The attribute is no longer (or was never) marked as firmware metadata; stop synchronizing
+      // without touching what is already in hawkBit.
       return;
     }
 
@@ -246,11 +255,21 @@ public class HawkbitFirmwareService implements ContainerService {
         attributeEvent.getId(), attributeEvent.getName(), attributeEvent.getValue().orElse(null));
   }
 
+  /**
+   * Handles a target sync for a single asset.
+   *
+   * <p>Removing the {@code firmwareTarget} meta item is non-destructive: the asset simply stops
+   * synchronizing and the existing hawkBit target is left in place. Deleting the asset is the
+   * explicit action that deletes the hawkBit target.
+   */
   protected void handleAssetChange(AssetEvent assetEvent) {
     Asset<?> asset = assetEvent.getAsset();
     Optional<Attribute<?>> targetInfoAttribute = getTargetInfoAttribute(asset);
 
     if (targetInfoAttribute.isEmpty()) {
+      // The asset is no longer (or was never) marked as a firmware target; stop synchronizing
+      // without touching what is already in hawkBit. This also applies to a DELETE event, so an
+      // unmarked asset never deletes a hawkBit target.
       return;
     }
 
