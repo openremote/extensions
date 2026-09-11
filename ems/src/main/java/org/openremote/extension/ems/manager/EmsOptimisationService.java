@@ -395,6 +395,23 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
 
+    // find(..., EmsEnergyOptimisationAsset.class) returns null both for a missing asset and for one
+    // of the wrong type, which are the same problem here: there is no net power forecast to submit.
+    if (services
+            .getAssetStorageService()
+            .find(energyOptimisationAssetId, false, EmsEnergyOptimisationAsset.class)
+        == null) {
+      LOG.warning(
+          String.format(
+              "Unable to deploy Distro Energy for portfolio '%s'; parent '%s' of asset '%s' is not"
+                  + " an existing '%s'",
+              portfolio,
+              energyOptimisationAssetId,
+              assetId,
+              EmsEnergyOptimisationAsset.class.getSimpleName()));
+      return;
+    }
+
     LOG.fine("Deploying Distro Energy for portfolio: " + portfolio);
     DistroEnergyHandler handler;
     try {
