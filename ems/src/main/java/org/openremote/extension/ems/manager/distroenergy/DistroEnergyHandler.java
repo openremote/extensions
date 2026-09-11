@@ -65,7 +65,12 @@ public class DistroEnergyHandler {
   /** Market settlement interval. One submission entry per ISP. */
   protected static final Duration ISP_DURATION = Duration.ofMinutes(15);
 
-  protected static final int DAYS_AHEAD = 5;
+  /**
+   * Defensive ceiling on one run, not a business window. The loop stops at the first day with no
+   * forecast, so this only bounds the damage if a stray far-future datapoint makes the horizon look
+   * unbounded.
+   */
+  protected static final int MAX_DAYS_AHEAD = 14;
 
   protected final AttributeRef powerNetAttributeRef;
   protected final String distroEnergyBaseUrl;
@@ -136,8 +141,9 @@ public class DistroEnergyHandler {
    * Starts the recurring submission.
    *
    * <p>Separate from the constructor so the scheduled task cannot observe a partly constructed
-   * handler: {@link #getFirstRequestDelayMillis()} clamps to zero, so any deploy after the half hour
-   * would otherwise start the task on an executor thread while the constructor was still running.
+   * handler: {@link #getFirstRequestDelayMillis()} clamps to zero, so any deploy after the half
+   * hour would otherwise start the task on an executor thread while the constructor was still
+   * running.
    */
   public void deploy() {
     nextRequestFuture =
@@ -151,13 +157,18 @@ public class DistroEnergyHandler {
 
   protected void submitDayAheadForecasts() {
     LocalDate firstDay = timerService.getNow().atZone(marketZone).toLocalDate().plusDays(1);
+    int submitted = 0;
 
-    for (int day = 0; day < DAYS_AHEAD; day++) {
+    for (int day = 0; day < MAX_DAYS_AHEAD; day++) {
       LocalDate marketDate = firstDay.plusDays(day);
       try {
-        submitDayAheadForecast(marketDate);
+        if (!submitDayAheadForecast(marketDate)) {
+          // First uncovered day is the end of the forecast horizon; nothing beyond it to send.
+          break;
+        }
+        submitted++;
       } catch (Exception e) {
-        // Keep going: one bad day must not lose the other four, nor kill the recurring task.
+        // Keep going: one bad day must not lose the days after it, nor kill the recurring task.
         LOG.log(
             Level.WARNING,
             "Failed to submit day-ahead forecast for portfolio "
@@ -167,9 +178,27 @@ public class DistroEnergyHandler {
             e);
       }
     }
+
+    // Reaching the ceiling means the horizon looked unbounded, which the forecast producer cannot
+    // legitimately do; the run was truncated and later days were not sent.
+    if (submitted >= MAX_DAYS_AHEAD) {
+      LOG.warning(
+          "Day-ahead run for portfolio "
+              + portfolio
+              + " hit the ceiling of "
+              + MAX_DAYS_AHEAD
+              + " days; check the predicted "
+              + powerNetAttributeRef.getName()
+              + " data for far-future values");
+    } else {
+      LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
+    }
   }
 
-  protected void submitDayAheadForecast(LocalDate marketDate) {
+  /**
+   * @return whether a submission was actually POSTed for this day.
+   */
+  protected boolean submitDayAheadForecast(LocalDate marketDate) {
     ZoneId storageZone = ZoneId.systemDefault();
     ZonedDateTime dayStart = marketDate.atStartOfDay(marketZone);
     ZonedDateTime dayEnd = dayStart.plusDays(1);
@@ -190,6 +219,19 @@ public class DistroEnergyHandler {
     List<SubmissionData> submissionData =
         buildSubmissionData(marketDate, marketZone, storageZone, datapoints);
 
+    if (submissionData.isEmpty()) {
+      // Beyond the forecast horizon. The task repeats and the API overwrites a day on every
+      // submission, so the day is sent by the first run after the horizon reaches it; there is no
+      // catch-up state to keep here.
+      LOG.fine(
+          "No forecast yet for portfolio "
+              + portfolio
+              + " and day "
+              + marketDate
+              + "; not sending");
+      return false;
+    }
+
     dayAheadResource.postDayAhead(
         portfolio,
         clientKey,
@@ -197,21 +239,34 @@ public class DistroEnergyHandler {
             submissionData.toArray(new SubmissionData[0]),
             Long.parseLong(marketDate.format(BASIC_ISO_DATE)),
             timerService.getCurrentTimeMillis()));
+    return true;
   }
 
   /**
-   * Builds one submission entry per ISP of the given market day, in ascending position order.
+   * Builds one submission entry per ISP of the given market day, in ascending position order, or an
+   * empty list when the day carries no forecast at all.
    *
    * <p>The entries are driven by a grid of real instants stepping from the start to the end of the
-   * market day, so the count is 92, 96 or 100 depending on whether the day carries a DST
-   * transition. Each instant is mapped back into the frame the predicted datapoint table is written
-   * in, which is the JVM default zone (see {@code AbstractDatapointService}), and looked up there.
+   * market day, so a submitted day is always 92, 96 or 100 entries depending on whether the day
+   * carries a DST transition. Each instant is mapped back into the frame the predicted datapoint
+   * table is written in, which is the JVM default zone (see {@code AbstractDatapointService}), and
+   * looked up there.
+   *
+   * <p>An empty result means "nothing to submit" and cannot be confused with a real day, which is
+   * never shorter than 92 entries. A day beyond the external forecast producer's horizon
+   * legitimately has no data, and submitting it would post a zero net power trading position for a
+   * day we know nothing about. Within a day that does have a forecast every gap is filled with 0.0,
+   * interior and trailing alike, because the API requires the complete day.
+   *
+   * <p>The decision is taken from the ISP grid rather than from whatever the query returned, so a
+   * value belonging to a neighbouring day can never make this day look covered.
    *
    * <p>Under a JVM zone that observes DST the storage frame is not monotonic, so on the fall-back
    * day the two instants of the repeated hour collapse onto a single stored row and both read the
    * same value. That is a consequence of the naive primary key upstream
    * (openremote/openremote#3292); once predicted datapoints are stored in UTC every instant maps to
-   * a distinct row and this method becomes exact without changing.
+   * a distinct row and this method becomes exact without changing. The collapse can only duplicate
+   * a read, never erase one, so it cannot turn a day with a forecast into a skip.
    */
   static List<SubmissionData> buildSubmissionData(
       LocalDate marketDate,
@@ -235,6 +290,7 @@ public class DistroEnergyHandler {
     List<SubmissionData> submissionData = new ArrayList<>();
     Set<LocalDateTime> keysRead = new HashSet<>();
     int missing = 0;
+    int lastRealPosition = 0;
     int position = 1;
 
     for (ZonedDateTime isp = dayStart; isp.isBefore(dayEnd); isp = isp.plus(ISP_DURATION)) {
@@ -243,30 +299,56 @@ public class DistroEnergyHandler {
 
       if (value == null) {
         missing++;
-      } else if (!keysRead.add(storageKey)) {
-        LOG.warning(
-            "Day-ahead position "
-                + position
-                + " on "
-                + marketDate
-                + " reuses the value stored at "
-                + storageKey
-                + " because the repeated DST hour"
-                + " collapses onto one predicted datapoint row (openremote/openremote#3292)");
+      } else {
+        lastRealPosition = position;
+        if (!keysRead.add(storageKey)) {
+          LOG.warning(
+              "Day-ahead position "
+                  + position
+                  + " on "
+                  + marketDate
+                  + " reuses the value stored at "
+                  + storageKey
+                  + " because the repeated DST hour"
+                  + " collapses onto one predicted datapoint row (openremote/openremote#3292)");
+        }
       }
 
       submissionData.add(new SubmissionData(position++, null, null, value != null ? value : 0.0));
     }
 
-    if (missing > 0) {
+    // Nothing at all was forecast for this day. Hand the caller the empty sentinel and stay silent
+    // here: the caller knows the portfolio and owns the log line.
+    if (lastRealPosition == 0) {
+      return List.of();
+    }
+
+    int trailingMissing = submissionData.size() - lastRealPosition;
+    int interiorMissing = missing - trailingMissing;
+
+    if (interiorMissing > 0) {
+      // A hole before the end of the forecast means the producer skipped intervals it did cover,
+      // and those positions go out as 0.0, which is a real trading value.
       LOG.warning(
           "Day-ahead submission for "
               + marketDate
               + " has "
-              + missing
+              + interiorMissing
               + " of "
               + submissionData.size()
-              + " intervals without a forecast; submitted as 0.0");
+              + " intervals with a gap inside the forecast; submitted as 0.0");
+    }
+    if (trailingMissing > 0) {
+      // Expected once the forecast horizon ends inside this day. Logged with the boundary so a
+      // horizon that is systematically short by a fixed number of ISPs is still diagnosable.
+      LOG.fine(
+          "Forecast for "
+              + marketDate
+              + " ends at position "
+              + lastRealPosition
+              + " of "
+              + submissionData.size()
+              + "; the remainder is filled with 0.0 up to midnight");
     }
 
     return submissionData;
