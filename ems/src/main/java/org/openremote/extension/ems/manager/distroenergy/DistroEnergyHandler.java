@@ -73,6 +73,7 @@ public class DistroEnergyHandler {
   protected final String clientKey;
   protected final ZoneId marketZone;
   protected final long requestIntervalMinutes;
+  protected final ResteasyClient client;
   protected final DayAheadResource dayAheadResource;
 
   protected final TimerService timerService;
@@ -121,8 +122,14 @@ public class DistroEnergyHandler {
           DISTRO_ENERGY_CLIENT_KEY + " not defined, cannot use Distro Energy.");
     }
 
-    ResteasyClient client = createClient(org.openremote.container.Container.EXECUTOR);
-    this.dayAheadResource = client.target(this.distroEnergyBaseUrl).proxy(DayAheadResource.class);
+    this.client = createClient(org.openremote.container.Container.EXECUTOR);
+    try {
+      this.dayAheadResource = client.target(this.distroEnergyBaseUrl).proxy(DayAheadResource.class);
+    } catch (RuntimeException e) {
+      // No reference escapes a constructor that threw, so undeploy() can never close this client.
+      client.close();
+      throw e;
+    }
   }
 
   /**
@@ -277,7 +284,11 @@ public class DistroEnergyHandler {
 
   public void undeploy() {
     if (nextRequestFuture != null) {
+      // Interrupt to abort any in-flight HTTP call before closing the client
       nextRequestFuture.cancel(true);
+      nextRequestFuture = null;
     }
+    client.close();
+    LOG.info("Undeployed Distro Energy handler for portfolio: " + portfolio);
   }
 }
