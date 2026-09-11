@@ -123,15 +123,23 @@ public class DistroEnergyHandler {
 
     ResteasyClient client = createClient(org.openremote.container.Container.EXECUTOR);
     this.dayAheadResource = client.target(this.distroEnergyBaseUrl).proxy(DayAheadResource.class);
+  }
 
-    this.nextRequestFuture =
+  /**
+   * Starts the recurring submission.
+   *
+   * <p>Separate from the constructor so the scheduled task cannot observe a partly constructed
+   * handler: {@link #getFirstRequestDelayMillis()} clamps to zero, so any deploy after the half hour
+   * would otherwise start the task on an executor thread while the constructor was still running.
+   */
+  public void deploy() {
+    nextRequestFuture =
         scheduledExecutorService.scheduleAtFixedRate(
             this::submitDayAheadForecasts,
             getFirstRequestDelayMillis(),
             Duration.ofMinutes(requestIntervalMinutes).toMillis(),
             TimeUnit.MILLISECONDS);
-    LOG.info(
-        "DistroEnergyHandler instance for distro energy deployed for portfolio: " + this.portfolio);
+    LOG.info("Deployed Distro Energy handler for portfolio: " + portfolio);
   }
 
   protected void submitDayAheadForecasts() {

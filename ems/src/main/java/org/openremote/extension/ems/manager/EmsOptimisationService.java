@@ -396,19 +396,23 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
 
     LOG.fine("Deploying Distro Energy for portfolio: " + portfolio);
+    DistroEnergyHandler handler;
     try {
-      distroEnergyHandlerMap.put(
-          assetId,
+      handler =
           distroEnergyHandlerFactory.createHandler(
               new AttributeRef(
                   energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_NET.getName()),
-              portfolio));
+              portfolio);
     } catch (Exception e) {
       // A missing client key or an unusable base URL must not take down the rest of the EMS
       // service.
       LOG.log(Level.WARNING, "Failed to deploy Distro Energy for portfolio: " + portfolio, e);
       return;
     }
+    // Registered before the schedule starts, so a handler whose deploy() is rejected during
+    // shutdown is still reachable from stop() and gets its client closed.
+    distroEnergyHandlerMap.put(assetId, handler);
+    handler.deploy();
     LOG.fine("Deployed Distro Energy for portfolio: " + portfolio);
   }
 
