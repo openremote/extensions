@@ -246,5 +246,54 @@
         "column": 1
       }
     ]
+  },
+  "EmsDistroEnergyAsset": {
+    "viewerStyles": {},
+    "panels": [
+      {
+        "type": "info",
+        "hideOnMobile": true,
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["notes"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "location",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["location"],
+          "itemConfig": {
+            "location": {
+              "label": ""
+            }
+          }
+        }
+      },
+      {
+        "type": "info",
+        "title": "Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["portfolio"]
+        }
+      },
+      {
+        "type": "history",
+        "column": 1
+      },
+      {
+        "type": "linkedUsers",
+        "column": 1
+      }
+    ]
   }
 }
