@@ -118,7 +118,7 @@ This convention applies to both the Java package structure and the internal reso
 ### Dependency Management (Build-time)
 
 Extensions are developed as independent Gradle projects.
-To include an extension in an OpenRemote deployment, it is added as a standard dependency in the project's `build.gradle`.
+To include an extension in an OpenRemote deployment, it is added as a standard dependency in the project's `build.gradle` file.
 
 - **Transitive Dependencies**: Gradle handles the resolution of shared libraries between the Core and multiple extensions, ensuring a consistent and conflict-free classpath.
 - **Composition**: Composite Extensions define a collection of dependencies in their `build.gradle`, allowing a developer to include a single "Composite" artifact to pull in a complete suite of functional and data modules.
