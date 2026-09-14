@@ -282,7 +282,7 @@ The trade-off is that changes spanning Core and extensions require more coordina
 ### Repository Structure
 
 The monorepo uses Gradle subprojects to isolate each extension.
-A shared `build.gradle` in the root provides common build logic, ensuring all extensions use the same compiler settings and dependency versions.
+A shared `build.gradle` file in the root provides common build logic, ensuring all extensions use the same compiler settings and dependency versions.
 
 ```text
 openremote-extensions/ (Monorepo Root)
