@@ -251,7 +251,7 @@ The `OR_ENABLED_EXTENSIONS` environment variable is introduced and `ExtensionMet
 - **Discovery**: The Manager discovers the available extensions through the `ExtensionMetadata` SPI.
 - **Activation**: The Manager determines the active extension set from `OR_ENABLED_EXTENSIONS` and automatically includes transitive extension dependencies declared in the metadata.
 - **Component Filtering**: `AssetModelProvider`, `SetupTasks`, `ContainerService`, and other extension components belonging to inactive extensions are not initialized or registered. The existing SPI discovery mechanisms therefore need to become extension-aware.
-- **Validation**: The Manager validates that required extension dependencies are present and detects invalid or circular dependency configurations before initialization.
+- **Validation**: The Manager validates that required extension dependencies are present and detects invalid configurations, including circular dependencies and conflicting extension components, before or during initialization.
 - **Persistence**: The list of active extension IDs is persisted for later configuration through the Manager UI.
 
 #### Stage 3: UI-Driven Configuration
