@@ -139,6 +139,8 @@ To synchronize an OpenRemote asset as a hawkBit target, add the MetaItem `firmwa
 
 When the asset is created or updated in the configured realm, the extension creates a hawkBit target using the OpenRemote asset ID as the hawkBit controller ID. The target security token remains in hawkBit and is not copied into the asset. Trusted provisioning integrations can retrieve it through the administrator-protected `firmware/target/{id}` endpoint.
 
+Targets created through asset synchronization receive hawkBit target metadata `managedBy=openremote`. The `managedBy` key is reserved for this ownership marker and cannot be synchronized from an OpenRemote attribute. An existing hawkBit target without this marker (or with another value) is not automatically adopted or modified by asset synchronization.
+
 ### Firmware Metadata
 
 To sync an attribute value as hawkBit target metadata, add the `firmwareMetadata` meta item to the attribute.
@@ -149,9 +151,9 @@ The parent asset must also be synced as a firmware target with `firmwareTarget`.
 
 ### Lifecycle
 
-Removing a firmware meta item is **non-destructive**: it stops synchronization but leaves hawkBit untouched. Deleting the asset or attribute is the explicit action that also removes the hawkBit counterpart.
+Removing a firmware meta item is **non-destructive**: it stops synchronization but leaves hawkBit untouched. The `managedBy=openremote` marker remains on the target when `firmwareTarget` is removed. Deleting the OpenRemote asset later deletes the hawkBit target only if this ownership marker is still present. Deleting an attribute from an OpenRemote-owned target removes the hawkBit metadata entry with the same name, even if `firmwareMetadata` had previously been removed. Deleting an attribute from a target without the ownership marker does not change hawkBit metadata.
 
-Metadata synchronization is driven by the `firmwareMetadata` meta item alone. Removing `firmwareTarget` stops the asset from being synchronized as a target, but attributes that are still marked with `firmwareMetadata` keep pushing their values to the target that remains in hawkBit. Remove `firmwareMetadata` from those attributes as well to stop synchronization entirely.
+On OpenRemote-owned targets, attribute metadata synchronization is driven by `firmwareMetadata` independently of `firmwareTarget`. Removing `firmwareTarget` stops the asset from being synchronized as a target, but attributes that are still marked with `firmwareMetadata` keep pushing their values to the target that remains in hawkBit. Remove `firmwareMetadata` from those attributes as well to stop synchronization entirely.
 
 Re-adding a removed meta item resumes synchronization against the existing hawkBit target or metadata entry. Since the asset ID is used as the hawkBit controller ID, an asset keeps the same target across such transitions.
 

@@ -43,6 +43,7 @@ import org.openremote.extension.hawkbit.model.FirmwareMetaItemType;
 import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest;
 import org.openremote.extension.hawkbit.model.hawkbit.Target;
 import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest;
+import org.openremote.extension.hawkbit.model.hawkbit.TargetMetadata;
 import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.event.ClientEventService;
@@ -86,6 +87,9 @@ public class HawkbitFirmwareService implements ContainerService {
 
   public static final int CONNECTION_POOL_SIZE = 10;
   public static final int CONNECTION_TIMEOUT_MILLISECONDS = 10000;
+
+  public static final String MANAGED_BY_METADATA_KEY = "managedBy";
+  public static final String MANAGED_BY_METADATA_VALUE = "openremote";
 
   private static final Logger LOG = SyslogCategory.getLogger(API, HawkbitFirmwareService.class);
 
@@ -236,9 +240,23 @@ public class HawkbitFirmwareService implements ContainerService {
    *
    * <p>Removing the {@code firmwareMetadata} meta item is non-destructive: the attribute simply
    * stops synchronizing and the existing hawkBit metadata entry is left in place. Deleting the
-   * attribute itself is the explicit action that removes the hawkBit metadata entry.
+   * attribute itself removes the matching metadata entry when the target is OpenRemote-owned, even
+   * if the meta item was previously removed.
    */
   protected void handleAttributeChange(AttributeEvent attributeEvent) {
+    if (MANAGED_BY_METADATA_KEY.equals(attributeEvent.getName())) {
+      // This key is reserved for target ownership and must not be changed by an asset attribute.
+      return;
+    }
+
+    if (attributeEvent.isDeleted()) {
+      // The firmwareMetadata flag may already have been removed before the attribute is deleted.
+      if (isTargetManagedByOpenRemote(attributeEvent.getId())) {
+        deleteTargetMetadata(attributeEvent.getId(), attributeEvent.getName());
+      }
+      return;
+    }
+
     if (!hasMetadataFlag(
         attributeEvent.getAssetType(), attributeEvent.getName(), attributeEvent.getMeta())) {
       // The attribute is no longer (or was never) marked as firmware metadata; stop synchronizing
@@ -246,8 +264,7 @@ public class HawkbitFirmwareService implements ContainerService {
       return;
     }
 
-    if (attributeEvent.isDeleted()) {
-      deleteTargetMetadata(attributeEvent.getId(), attributeEvent.getName());
+    if (!isTargetManagedByOpenRemote(attributeEvent.getId())) {
       return;
     }
 
@@ -259,22 +276,30 @@ public class HawkbitFirmwareService implements ContainerService {
    * Handles a target sync for a single asset.
    *
    * <p>Removing the {@code firmwareTarget} meta item is non-destructive: the asset simply stops
-   * synchronizing and the existing hawkBit target is left in place. Deleting the asset is the
-   * explicit action that deletes the hawkBit target.
+   * synchronizing and the existing hawkBit target is left in place. Deleting the asset deletes the
+   * hawkBit target only if its ownership marker still identifies OpenRemote.
    */
   protected void handleAssetChange(AssetEvent assetEvent) {
     Asset<?> asset = assetEvent.getAsset();
+    String controllerId = asset.getId();
+
+    if (assetEvent.getCause() == AssetEvent.Cause.DELETE) {
+      // Ownership stays in hawkBit even when firmwareTarget has already been removed.
+      if (isTargetManagedByOpenRemote(controllerId)) {
+        deleteTarget(controllerId);
+      }
+      return;
+    }
+
     Optional<Attribute<?>> targetInfoAttribute = getTargetInfoAttribute(asset);
 
     if (targetInfoAttribute.isEmpty()) {
       // The asset is no longer (or was never) marked as a firmware target; stop synchronizing
-      // without touching what is already in hawkBit. This also applies to a DELETE event, so an
-      // unmarked asset never deletes a hawkBit target.
+      // without touching what is already in hawkBit.
       return;
     }
 
     String attributeName = targetInfoAttribute.get().getName();
-    String controllerId = asset.getId();
     Target target = null;
 
     LOG.fine(
@@ -298,6 +323,10 @@ public class HawkbitFirmwareService implements ContainerService {
         }
 
         if (existingTarget != null) {
+          if (!isTargetManagedByOpenRemote(controllerId)) {
+            LOG.warning("Skipping unowned hawkBit target id=" + controllerId);
+            break;
+          }
           LOG.fine("hawkBit target exists id=" + controllerId);
           target = existingTarget;
           break;
@@ -305,9 +334,15 @@ public class HawkbitFirmwareService implements ContainerService {
 
         LOG.fine("hawkBit target missing id=" + controllerId + ", creating");
         target = createTarget(asset);
+        if (target != null
+            && !putTargetMetadata(
+                controllerId, MANAGED_BY_METADATA_KEY, MANAGED_BY_METADATA_VALUE)) {
+          // Do not leave a target that cannot later be identified as OpenRemote-owned.
+          deleteTarget(controllerId);
+          target = null;
+        }
         break;
-      case DELETE:
-        deleteTarget(controllerId);
+      default:
         break;
     }
 
@@ -321,6 +356,9 @@ public class HawkbitFirmwareService implements ContainerService {
   public void syncTargetMetadata(Asset<?> asset) {
     String controllerId = asset.getId();
     for (Attribute<?> attribute : asset.getAttributes().values()) {
+      if (MANAGED_BY_METADATA_KEY.equals(attribute.getName())) {
+        continue;
+      }
       if (!hasMetadataFlag(asset.getType(), attribute.getName(), attribute.getMeta())) {
         continue;
       }
@@ -334,6 +372,10 @@ public class HawkbitFirmwareService implements ContainerService {
    * value is empty or {@code null}.
    */
   public void syncTargetMetadataValue(String controllerId, String key, Object value) {
+    if (MANAGED_BY_METADATA_KEY.equals(key)) {
+      LOG.warning("Cannot sync reserved hawkBit metadata key=" + key + ", id=" + controllerId);
+      return;
+    }
     if (isEmptyAttributeValue(value)) {
       deleteTargetMetadata(controllerId, key);
       return;
@@ -355,11 +397,16 @@ public class HawkbitFirmwareService implements ContainerService {
 
   /** Updates a single hawkBit target metadata entry. */
   public void updateTargetMetadata(String controllerId, String key, String value) {
+    putTargetMetadata(controllerId, key, value);
+  }
+
+  /** Writes a metadata entry and reports whether hawkBit accepted it. */
+  protected boolean putTargetMetadata(String controllerId, String key, String value) {
     try (Response response =
         targets.updateMetadata(controllerId, key, new MetadataUpdateRequest(value))) {
       if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
         LOG.fine("hawkBit target not found for metadata sync id=" + controllerId + ", key=" + key);
-        return;
+        return false;
       }
       if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
         LOG.warning(
@@ -369,14 +416,42 @@ public class HawkbitFirmwareService implements ContainerService {
                 + key
                 + ", status="
                 + response.getStatus());
-        return;
+        return false;
       }
       LOG.fine("Updated hawkBit metadata id=" + controllerId + ", key=" + key);
+      return true;
     } catch (Exception e) {
       LOG.log(
           Level.WARNING,
           "Failed to update hawkBit metadata id=" + controllerId + ", key=" + key,
           e);
+      return false;
+    }
+  }
+
+  /**
+   * Only a Hawkbit target explicitly marked by OpenRemote may be changed by asset synchronization.
+   */
+  protected boolean isTargetManagedByOpenRemote(String controllerId) {
+    try (Response response = targets.getMetadata(controllerId, MANAGED_BY_METADATA_KEY)) {
+      if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+        return false;
+      }
+      if (response.getStatusInfo().getFamily() != Response.Status.Family.SUCCESSFUL) {
+        LOG.warning(
+            "Failed to check hawkBit target ownership id="
+                + controllerId
+                + ", status="
+                + response.getStatus());
+        return false;
+      }
+      TargetMetadata metadata = response.readEntity(TargetMetadata.class);
+      return metadata != null
+          && MANAGED_BY_METADATA_KEY.equals(metadata.key())
+          && MANAGED_BY_METADATA_VALUE.equals(metadata.value());
+    } catch (Exception e) {
+      LOG.log(Level.WARNING, "Failed to check hawkBit target ownership id=" + controllerId, e);
+      return false;
     }
   }
 

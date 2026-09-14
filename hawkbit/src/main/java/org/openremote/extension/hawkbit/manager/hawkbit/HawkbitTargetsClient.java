@@ -61,6 +61,11 @@ public interface HawkbitTargetsClient {
   @Produces(APPLICATION_JSON)
   Response getMetadata(@PathParam("id") String id);
 
+  @GET
+  @Path("{id}/metadata/{key}")
+  @Produces(APPLICATION_JSON)
+  Response getMetadata(@PathParam("id") String id, @PathParam("key") String key);
+
   @PUT
   @Path("{id}/metadata/{key}")
   @Consumes(APPLICATION_JSON)
