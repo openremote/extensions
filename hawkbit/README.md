@@ -191,8 +191,8 @@ sequenceDiagram
 
 ```
 manager/
-  HawkbitFirmwareService.java                  Starts the integration, syncs assets and registers API resources
-  HawkbitResponseProxy.java                    Proxies hawkBit client responses for OpenRemote APIs
+  HawkbitFirmwareService.java                 Starts the integration, syncs assets and registers API resources
+  HawkbitResponseProxy.java                   Proxies hawkBit client responses for OpenRemote APIs
 
 manager/resource/
   TargetResourceImpl.java                     Proxies target and action requests to hawkBit
@@ -207,8 +207,8 @@ manager/hawkbit/
   HawkbitTargetsClient.java                   RESTEasy client proxy for hawkBit targets
   HawkbitSoftwareModulesClient.java           RESTEasy client proxy for software modules
   HawkbitDistributionSetsClient.java          RESTEasy client proxy for distribution sets
-  HawkbitDistributionSetTypesClient.java       RESTEasy client proxy for distribution set types
-  HawkbitSoftwareModuleTypesClient.java        RESTEasy client proxy for software module types
+  HawkbitDistributionSetTypesClient.java      RESTEasy client proxy for distribution set types
+  HawkbitSoftwareModuleTypesClient.java       RESTEasy client proxy for software module types
   HawkbitTargetFiltersClient.java             RESTEasy client proxy for target filters
   HawkbitRolloutsClient.java                  RESTEasy client proxy for rollouts
   HawkbitBasicAuth.java                       Builds hawkBit basic auth headers
