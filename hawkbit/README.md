@@ -6,9 +6,6 @@
 
 This extension connects OpenRemote Manager to the hawkBit Management API, exposes firmware endpoints in OpenRemote, and syncs selected assets as hawkBit targets.
 
-For a complete local walkthrough with a simulated device, see the
-[OpenRemote + hawkBit demo](demo/README.md).
-
 ## Limitations
 
 **Single realm only.** The extension is bound at startup to one OpenRemote realm, set by `HAWKBIT_REALM` (default `master`). Asset sync, metadata sync, and the firmware API endpoints only operate on that realm. Callers from other realms get `403`.
