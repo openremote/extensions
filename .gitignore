@@ -42,8 +42,6 @@ local.properties
 *.apk
 *.dab
 *.sh
-!hawkbit/demo/*.sh
-hawkbit/demo/.build/
 *.iml
 *.ipr
 *.iws
