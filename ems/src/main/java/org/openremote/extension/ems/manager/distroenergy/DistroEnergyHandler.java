@@ -400,17 +400,19 @@ public class DistroEnergyHandler {
   }
 
   protected long getFirstRequestDelayMillis() {
-    long firstRequestMillis =
-        timerService
-            .getNow()
-            .truncatedTo(ChronoUnit.HOURS)
-            .plus(30, ChronoUnit.MINUTES)
-            .toEpochMilli();
-    return Math.max(0L, firstRequestMillis - timerService.getCurrentTimeMillis());
+    Instant now = timerService.getNow();
+    Instant nextHalfHour = now.truncatedTo(ChronoUnit.HOURS).plus(30, ChronoUnit.MINUTES);
+    // Already past this hour's :30 mark: roll to next hour's, so the first run always lands on :30
+    // rather than firing immediately.
+    if (!nextHalfHour.isAfter(now)) {
+      nextHalfHour = nextHalfHour.plus(1, ChronoUnit.HOURS);
+    }
+    return Math.max(0L, nextHalfHour.toEpochMilli() - timerService.getCurrentTimeMillis());
   }
 
   public void undeploy() {
     if (nextRequestFuture != null) {
+      LOG.fine("Cancelling scheduled day-ahead submissions for portfolio " + portfolio);
       // Interrupt to abort any in-flight HTTP call before closing the client
       nextRequestFuture.cancel(true);
       nextRequestFuture = null;
