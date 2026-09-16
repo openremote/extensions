@@ -122,6 +122,7 @@ public class GOPACSHandler
   protected final ScheduledExecutorService scheduledExecutorService;
   protected final TimerService timerService;
   protected final WebService webService;
+  protected final Container container;
 
   protected final ResteasyClient client;
   protected final GOPACSAddressBookResource gopacsAddressBookResource;
@@ -161,6 +162,7 @@ public class GOPACSHandler
 
   protected GOPACSHandler(
       String contractedEAN, String realm, String electricitySupplierAssetId, Container container) {
+    this.container = container;
     this.devMode = container.isDevMode();
     this.contractedEAN = contractedEAN;
     this.realm = realm;
@@ -252,8 +254,6 @@ public class GOPACSHandler
     this.objectMapper = new ObjectMapper();
     objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-
-    deploy(container);
   }
 
   /**
@@ -281,6 +281,7 @@ public class GOPACSHandler
     this.timerService = timerService;
     this.scheduledExecutorService = scheduledExecutorService;
     this.webService = null;
+    this.container = null;
 
     this.gopacsBrokerUrl = "";
     this.responseDelaySeconds = 0;
@@ -311,7 +312,14 @@ public class GOPACSHandler
     return "GOPACS: " + contractedEAN;
   }
 
-  protected void deploy(Container container) {
+  /**
+   * Deploys the JAX-RS endpoint that receives UFTP messages.
+   *
+   * <p>Separate from the constructor so the endpoint cannot hand a request to a partly constructed
+   * handler: the deployed resource routes straight to {@link #processRawMessage(String)}, which
+   * would otherwise be reachable from Undertow threads before construction completed.
+   */
+  public void deploy() {
     LOG.info("Deploying JAX-RS deployment for instance : " + this);
 
     List<Object> singletons =

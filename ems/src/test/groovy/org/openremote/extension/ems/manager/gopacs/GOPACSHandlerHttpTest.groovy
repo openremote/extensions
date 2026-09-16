@@ -156,6 +156,7 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
       // JAX-RS deployment). EmsOptimisationService is excluded from the service list above so it
       // cannot spin up a second handler on the same /gopacs deployment path.
       handler = new GOPACSHandler(CONTRACTED_EAN, MASTER_REALM, ASSET_ID, runningContainer)
+      handler.deploy()
     }
 
     // Reset cross-test state: the participant cache leaks across features otherwise, and the request

@@ -318,8 +318,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
     LOG.fine("Deploying GOPACS for EAN: " + contractedEan);
-    gopacsHandlerMap.put(
-        contractedEan, gopacsHandlerFactory.createHandler(contractedEan, realm, assetId));
+    GOPACSHandler handler = gopacsHandlerFactory.createHandler(contractedEan, realm, assetId);
+    // Registered before the endpoint deploys, so a handler whose deploy() throws is still reachable
+    // from stop() and gets its client closed.
+    gopacsHandlerMap.put(contractedEan, handler);
+    handler.deploy();
     LOG.fine("Deployed GOPACS for EAN: " + contractedEan);
   }
 
