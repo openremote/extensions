@@ -22,7 +22,9 @@ import jakarta.persistence.Entity;
 import java.util.Optional;
 import org.openremote.model.asset.Asset;
 import org.openremote.model.asset.AssetDescriptor;
+import org.openremote.model.attribute.MetaItem;
 import org.openremote.model.value.AttributeDescriptor;
+import org.openremote.model.value.MetaItemType;
 import org.openremote.model.value.ValueType;
 
 @Entity
@@ -30,6 +32,16 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
 
   public static final AttributeDescriptor<String> PORTFOLIO =
       new AttributeDescriptor<>("portfolio", ValueType.TEXT);
+
+  /** When the last run that submitted at least one market day finished. */
+  public static final AttributeDescriptor<Long> LAST_SUBMISSION =
+      new AttributeDescriptor<>(
+          "lastSubmission", ValueType.TIMESTAMP, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  /** Number of market days the last run submitted, i.e. the forecast horizon in days. */
+  public static final AttributeDescriptor<Integer> DAYS_SUBMITTED =
+      new AttributeDescriptor<>(
+          "daysSubmitted", ValueType.POSITIVE_INTEGER, new MetaItem<>(MetaItemType.READ_ONLY));
 
   public static final AssetDescriptor<EmsDistroEnergyAsset> DESCRIPTOR =
       new AssetDescriptor<>("transmission-tower", null, EmsDistroEnergyAsset.class);

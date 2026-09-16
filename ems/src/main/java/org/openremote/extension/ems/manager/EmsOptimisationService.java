@@ -418,6 +418,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     try {
       handler =
           distroEnergyHandlerFactory.createHandler(
+              assetId,
               new AttributeRef(
                   energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_NET.getName()),
               portfolio);

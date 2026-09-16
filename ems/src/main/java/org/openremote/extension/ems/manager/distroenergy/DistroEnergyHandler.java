@@ -42,14 +42,18 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.openremote.container.timer.TimerService;
+import org.openremote.extension.ems.agent.EmsDistroEnergyAsset;
 import org.openremote.extension.ems.manager.distroenergy.dto.DayAheadSubmission;
 import org.openremote.extension.ems.manager.distroenergy.dto.SubmissionData;
+import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.datapoint.AssetPredictedDatapointService;
 import org.openremote.model.Container;
+import org.openremote.model.attribute.AttributeEvent;
 import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointIntervalQuery;
 import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.value.AttributeDescriptor;
 
 public class DistroEnergyHandler {
 
@@ -72,6 +76,9 @@ public class DistroEnergyHandler {
    */
   protected static final int MAX_DAYS_AHEAD = 14;
 
+  /** The {@link EmsDistroEnergyAsset} this handler reports its status on. */
+  protected final String assetId;
+
   protected final AttributeRef powerNetAttributeRef;
   protected final String distroEnergyBaseUrl;
   protected final String portfolio;
@@ -84,6 +91,7 @@ public class DistroEnergyHandler {
   protected final TimerService timerService;
   protected final ScheduledExecutorService scheduledExecutorService;
   protected final AssetPredictedDatapointService assetPredictedDatapointService;
+  protected final AssetProcessingService assetProcessingService;
   protected ScheduledFuture<?> nextRequestFuture;
 
   public static class Factory {
@@ -93,13 +101,15 @@ public class DistroEnergyHandler {
       this.container = container;
     }
 
-    public DistroEnergyHandler createHandler(AttributeRef powerNetAttributeRef, String portfolio) {
-      return new DistroEnergyHandler(powerNetAttributeRef, portfolio, container);
+    public DistroEnergyHandler createHandler(
+        String assetId, AttributeRef powerNetAttributeRef, String portfolio) {
+      return new DistroEnergyHandler(assetId, powerNetAttributeRef, portfolio, container);
     }
   }
 
   public DistroEnergyHandler(
-      AttributeRef powerNetAttributeRef, String portfolio, Container container) {
+      String assetId, AttributeRef powerNetAttributeRef, String portfolio, Container container) {
+    this.assetId = assetId;
     this.powerNetAttributeRef = powerNetAttributeRef;
     this.portfolio = portfolio;
 
@@ -107,6 +117,7 @@ public class DistroEnergyHandler {
     this.scheduledExecutorService = container.getScheduledExecutor();
     this.assetPredictedDatapointService =
         container.getService(AssetPredictedDatapointService.class);
+    this.assetProcessingService = container.getService(AssetProcessingService.class);
 
     this.distroEnergyBaseUrl =
         container.getConfig().getOrDefault(DISTRO_ENERGY_BASE_URL, DISTRO_ENERGY_BASE_URL_DEFAULT);
@@ -206,6 +217,14 @@ public class DistroEnergyHandler {
                 + marketDate,
             e);
       }
+    }
+
+    // Status on the asset, so a stalled handler is visible without the logs. daysSubmitted is
+    // written on every run; lastSubmission only when something was sent, so a run that found no
+    // forecast at all leaves a fresh daysSubmitted of 0 next to a stale lastSubmission.
+    sendAttributeEvent(EmsDistroEnergyAsset.DAYS_SUBMITTED, submitted);
+    if (submitted > 0) {
+      sendAttributeEvent(EmsDistroEnergyAsset.LAST_SUBMISSION, timerService.getCurrentTimeMillis());
     }
 
     // Reaching the ceiling means the horizon looked unbounded, which the forecast producer cannot
@@ -397,6 +416,11 @@ public class DistroEnergyHandler {
     }
 
     return submissionData;
+  }
+
+  protected <T> void sendAttributeEvent(AttributeDescriptor<T> attribute, T value) {
+    assetProcessingService.sendAttributeEvent(
+        new AttributeEvent(assetId, attribute.getName(), value), getClass().getSimpleName());
   }
 
   protected long getFirstRequestDelayMillis() {

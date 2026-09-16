@@ -22,6 +22,7 @@ import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset
 import org.openremote.extension.ems.manager.distroenergy.DistroEnergyHandler
+import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
 import org.openremote.model.Container
@@ -72,6 +73,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
       getService(TimerService) >> Stub(TimerService)
       getScheduledExecutor() >> Stub(ScheduledExecutorService)
       getService(AssetPredictedDatapointService) >> Stub(AssetPredictedDatapointService)
+      getService(AssetProcessingService) >> Stub(AssetProcessingService)
     }
 
     createdHandlers = []
@@ -80,9 +82,10 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     service.services = Services.builder().withAssetStorageService(assetStorageService).build()
     service.distroEnergyHandlerFactory = new DistroEnergyHandler.Factory(handlerContainer) {
               @Override
-              DistroEnergyHandler createHandler(AttributeRef powerNetAttributeRef, String portfolio) {
-                def handler =
-                        new RecordingDistroEnergyHandler(powerNetAttributeRef, portfolio, handlerContainer)
+              DistroEnergyHandler createHandler(
+                      String assetId, AttributeRef powerNetAttributeRef, String portfolio) {
+                def handler = new RecordingDistroEnergyHandler(
+                        assetId, powerNetAttributeRef, portfolio, handlerContainer)
                 createdHandlers << handler
                 return handler
               }
@@ -140,8 +143,9 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     int deployCount = 0
     int undeployCount = 0
 
-    RecordingDistroEnergyHandler(AttributeRef powerNetAttributeRef, String portfolio, Container container) {
-      super(powerNetAttributeRef, portfolio, container)
+    RecordingDistroEnergyHandler(
+    String assetId, AttributeRef powerNetAttributeRef, String portfolio, Container container) {
+      super(assetId, powerNetAttributeRef, portfolio, container)
     }
 
     @Override

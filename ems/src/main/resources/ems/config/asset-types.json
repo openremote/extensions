@@ -287,6 +287,16 @@
         }
       },
       {
+        "type": "info",
+        "title": "Status",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["lastSubmission", "daysSubmitted"]
+        }
+      },
+      {
         "type": "history",
         "column": 1
       },
