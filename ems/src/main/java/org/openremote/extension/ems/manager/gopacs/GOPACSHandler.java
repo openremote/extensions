@@ -308,6 +308,11 @@ public class GOPACSHandler
     this.objectMapper = new ObjectMapper();
   }
 
+  /** Id of the {@link EmsGOPACSAsset} this handler was deployed for. */
+  public String getAssetId() {
+    return electricitySupplierAssetId;
+  }
+
   protected static String getDeploymentName(String contractedEAN) {
     return "GOPACS: " + contractedEAN;
   }

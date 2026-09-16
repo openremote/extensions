@@ -145,6 +145,21 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     createdHandlers[1].deployCount == 1
   }
 
+  def "UPDATE with a changed EAN undeploys the handler registered under the old EAN"() {
+    given: "a deployed handler for the original EAN"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN)))
+    def original = createdHandlers[0]
+
+    when: "the asset is saved with a different EAN"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(OTHER_EAN)))
+
+    then: "the old handler is stopped rather than left running under the old key"
+    original.undeployCount == 1
+    createdHandlers.size() == 2
+    createdHandlers[1].contractedEAN == OTHER_EAN
+    createdHandlers[1].deployCount == 1
+  }
+
   def "stop undeploys every deployed handler"() {
     given: "handlers for two assets"
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID)))

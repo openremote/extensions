@@ -336,6 +336,22 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  /**
+   * Undeploys every GOPACS handler deployed for the asset, whichever EAN it is registered under.
+   */
+  private void stopGopacsHandlersForAsset(String assetId) {
+    gopacsHandlerMap
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (!assetId.equals(entry.getValue().getAssetId())) {
+                return false;
+              }
+              entry.getValue().undeploy();
+              return true;
+            });
+  }
+
   private void startRedispatchHandler(String contractedEan, String realm, String assetId) {
     if (contractedEan.isBlank()) {
       LOG.warning("Unable to start redispatch handler because EAN is blank");
@@ -381,7 +397,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   }
                 }
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
-                  stopGopacsHandler(contractedEan);
+                  // The entity carries the new EAN, so stopping by EAN would miss a handler
+                  // registered under the previous one and leave it running next to the new one.
+                  stopGopacsHandlersForAsset(emsGOPACSAsset.getId());
                   startGopacsHandler(
                       contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
                   // Redispatch handler is managed via attribute events (redispatchEnabled)
