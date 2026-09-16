@@ -354,6 +354,7 @@ public class DistroEnergyHandler {
     List<SubmissionData> submissionData = new ArrayList<>();
     Set<LocalDateTime> keysRead = new HashSet<>();
     int missing = 0;
+    int collapsed = 0;
     int lastRealPosition = 0;
     int position = 1;
 
@@ -366,15 +367,7 @@ public class DistroEnergyHandler {
       } else {
         lastRealPosition = position;
         if (!keysRead.add(storageKey)) {
-          LOG.warning(
-              "Day-ahead position "
-                  + position
-                  + " on "
-                  + marketDate
-                  + " reuses the value stored at "
-                  + storageKey
-                  + " because the repeated DST hour"
-                  + " collapses onto one predicted datapoint row (openremote/openremote#3292)");
+          collapsed++;
         }
       }
 
@@ -385,6 +378,20 @@ public class DistroEnergyHandler {
     // here: the caller knows the portfolio and owns the log line.
     if (lastRealPosition == 0) {
       return List.of();
+    }
+
+    if (collapsed > 0) {
+      // One line per day rather than per position: on the fall-back day every position in the
+      // repeated hour reads the same stored row.
+      LOG.warning(
+          "Day-ahead submission for "
+              + marketDate
+              + " has "
+              + collapsed
+              + " of "
+              + submissionData.size()
+              + " positions reusing a value from the repeated DST hour, which collapses onto one"
+              + " predicted datapoint row (openremote/openremote#3292)");
     }
 
     int trailingMissing = submissionData.size() - lastRealPosition;
