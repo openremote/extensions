@@ -135,6 +135,16 @@ public class DistroEnergyHandler {
       client.close();
       throw e;
     }
+
+    LOG.fine(
+        "Configured Distro Energy handler for portfolio "
+            + portfolio
+            + ": baseUrl="
+            + distroEnergyBaseUrl
+            + ", marketZone="
+            + marketZone
+            + ", requestIntervalMinutes="
+            + requestIntervalMinutes);
   }
 
   /**
@@ -146,10 +156,21 @@ public class DistroEnergyHandler {
    * running.
    */
   public void deploy() {
+    long firstRequestDelayMillis = getFirstRequestDelayMillis();
+    LOG.fine(
+        "First Distro Energy day-ahead submission for portfolio "
+            + portfolio
+            + " scheduled at "
+            + Instant.ofEpochMilli(timerService.getCurrentTimeMillis() + firstRequestDelayMillis)
+            + " (delay "
+            + firstRequestDelayMillis
+            + "ms), repeating every "
+            + requestIntervalMinutes
+            + " minute(s)");
     nextRequestFuture =
         scheduledExecutorService.scheduleAtFixedRate(
             this::submitDayAheadForecasts,
-            getFirstRequestDelayMillis(),
+            firstRequestDelayMillis,
             Duration.ofMinutes(requestIntervalMinutes).toMillis(),
             TimeUnit.MILLISECONDS);
     LOG.info("Deployed Distro Energy handler for portfolio: " + portfolio);
@@ -157,6 +178,14 @@ public class DistroEnergyHandler {
 
   protected void submitDayAheadForecasts() {
     LocalDate firstDay = timerService.getNow().atZone(marketZone).toLocalDate().plusDays(1);
+    LOG.fine(
+        "Starting day-ahead submission run for portfolio "
+            + portfolio
+            + "; first market day "
+            + firstDay
+            + ", horizon up to "
+            + MAX_DAYS_AHEAD
+            + " day(s)");
     int submitted = 0;
 
     for (int day = 0; day < MAX_DAYS_AHEAD; day++) {
@@ -216,6 +245,14 @@ public class DistroEnergyHandler {
                 AssetDatapointIntervalQuery.Formula.AVG,
                 true));
 
+    LOG.fine(
+        "Queried "
+            + datapoints.size()
+            + " predicted datapoint(s) for portfolio "
+            + portfolio
+            + " and day "
+            + marketDate);
+
     List<SubmissionData> submissionData =
         buildSubmissionData(marketDate, marketZone, storageZone, datapoints);
 
@@ -239,6 +276,14 @@ public class DistroEnergyHandler {
             submissionData.toArray(new SubmissionData[0]),
             Long.parseLong(marketDate.format(BASIC_ISO_DATE)),
             timerService.getCurrentTimeMillis()));
+    LOG.fine(
+        "Submitted day-ahead forecast for portfolio "
+            + portfolio
+            + " and day "
+            + marketDate
+            + " ("
+            + submissionData.size()
+            + " interval(s))");
     return true;
   }
 
