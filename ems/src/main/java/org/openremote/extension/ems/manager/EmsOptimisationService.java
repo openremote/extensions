@@ -194,7 +194,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     String[] assetTypes = {
       EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
       EmsEnergyOptimisationAsset.DESCRIPTOR.getName(),
-      EmsGOPACSAsset.DESCRIPTOR.getName()
+      EmsGOPACSAsset.DESCRIPTOR.getName(),
+      EmsDistroEnergyAsset.DESCRIPTOR.getName(),
     };
 
     // Listen to attribute events of listed asset types
@@ -471,15 +472,22 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 }
               });
     } else if (persistenceEvent.getEntity() instanceof EmsDistroEnergyAsset emsDistroEnergyAsset) {
-      switch (persistenceEvent.getCause()) {
-        case DELETE -> stopDistroEnergyHandler(emsDistroEnergyAsset.getId());
-        case CREATE -> startDistroEnergyHandler(emsDistroEnergyAsset);
-        // Redeploy so a changed portfolio or parent takes effect.
-        case UPDATE -> {
-          stopDistroEnergyHandler(emsDistroEnergyAsset.getId());
-          startDistroEnergyHandler(emsDistroEnergyAsset);
-        }
-      }
+      emsDistroEnergyAsset
+          .getPortfolio()
+          .ifPresent(
+              portfolio -> {
+                if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
+                  stopDistroEnergyHandler(portfolio);
+                }
+                if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
+                  startDistroEnergyHandler(emsDistroEnergyAsset);
+                }
+                if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
+                  stopDistroEnergyHandler(portfolio);
+                  startDistroEnergyHandler(emsDistroEnergyAsset);
+                }
+              }
+          );
     }
   }
 
@@ -494,6 +502,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     if (assetType.equals(EmsGOPACSAsset.DESCRIPTOR.getName())) {
       processAttributeEventEmsGOPACSAsset(attributeEvent);
       return;
+    }
+
+    if (assetType.equals(EmsDistroEnergyAsset.DESCRIPTOR.getName())) {
+      processAttributeEventEmsDistroEnergyAsset(attributeEvent);
     }
   }
 
@@ -889,6 +901,35 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   }
                 });
       }
+    }
+  }
+
+  private void processAttributeEventEmsDistroEnergyAsset(AttributeEvent attributeEvent) {
+    String assetId = attributeEvent.getId();
+
+    // Get asset from database
+    EmsDistroEnergyAsset emsDistroEnergyAsset = (EmsDistroEnergyAsset) services.getAssetStorageService().find(assetId);
+
+    // Check if asset exists
+    if (emsDistroEnergyAsset == null) {
+      return;
+    }
+
+    String attributeName = attributeEvent.getName();
+
+    if (attributeName.equals(EmsDistroEnergyAsset.PORTFOLIO.getName())) {
+      attributeEvent
+              .getOldValue(String.class)
+              .ifPresent(
+                      oldPortfolio -> {
+                        stopDistroEnergyHandler(assetId);
+                      });
+      attributeEvent
+              .getValue(String.class)
+              .ifPresent(
+                      portfolio -> {
+                        startDistroEnergyHandler(emsDistroEnergyAsset);
+                      });
     }
   }
 
