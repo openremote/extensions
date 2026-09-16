@@ -312,6 +312,30 @@ class GOPACSHandlerTest extends Specification {
     handler.pendingTaskCount() == secondBatch.size()
   }
 
+  def "a request still in flight when undeploy starts cannot schedule further work"() {
+    given: "a handler that has been undeployed"
+    handler.undeploy()
+
+    when: "a request that was already being processed reaches a schedule() call"
+    handler.schedule({} as Runnable, 0L)
+
+    then: "nothing is handed to the executor, so no task outlives the handler"
+    scheduledFutures.isEmpty()
+    handler.pendingTaskCount() == 0
+  }
+
+  def "a message processed after undeploy schedules nothing"() {
+    given: "a handler that has been undeployed"
+    handler.undeploy()
+
+    when: "a FlexRequest is processed on a request thread that was already in flight"
+    signAndProcess(flexRequestXml(CONTRACTED_EAN))
+
+    then: "neither the delayed response nor the delayed FlexOffer is scheduled"
+    scheduledFutures.isEmpty()
+    handler.pendingTaskCount() == 0
+  }
+
   // ---- Embedded UFTP payload fixtures (attribute-style XML, matching the example message format) ----
 
   private static String flexRequestXml(String congestionPoint) {

@@ -147,6 +147,11 @@ public class GOPACSHandler
   private final List<ScheduledFuture<?>> scheduledFutureList =
       Collections.synchronizedList(new ArrayList<>());
 
+  // Guarded by the scheduledFutureList monitor, which is what makes the check in schedule() and
+  // the cancel loop in undeploy() exclusive: either the task is tracked and then cancelled, or it
+  // is never scheduled at all.
+  private boolean undeployed;
+
   public static class Factory {
     protected Container container;
 
@@ -351,13 +356,21 @@ public class GOPACSHandler
    * Schedules a task, tracking its {@link ScheduledFuture} so it can be cancelled on {@link
    * #undeploy()}. Already-completed futures are pruned first so the tracked list does not grow
    * unbounded across the handler's lifetime.
+   *
+   * <p>Nothing is scheduled once {@link #undeploy()} has started. A request that was already inside
+   * {@link #processRawMessage(String)} at that point would otherwise queue work that outlives the
+   * handler and later runs against a closed client.
    */
-  protected ScheduledFuture<?> schedule(Runnable task, long delayMillis) {
-    scheduledFutureList.removeIf(ScheduledFuture::isDone);
-    ScheduledFuture<?> future =
-        scheduledExecutorService.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
-    scheduledFutureList.add(future);
-    return future;
+  protected void schedule(Runnable task, long delayMillis) {
+    synchronized (scheduledFutureList) {
+      if (undeployed) {
+        LOG.fine("Handler is undeployed, dropping scheduled task for EAN: " + contractedEAN);
+        return;
+      }
+      scheduledFutureList.removeIf(ScheduledFuture::isDone);
+      scheduledFutureList.add(
+          scheduledExecutorService.schedule(task, delayMillis, TimeUnit.MILLISECONDS));
+    }
   }
 
   protected int pendingTaskCount() {
@@ -365,14 +378,17 @@ public class GOPACSHandler
   }
 
   public void undeploy() {
+    // Undeploy the endpoint first so no further request can reach processRawMessage and start work
+    // that the cancel loop below would then have to race.
+    if (webService != null) {
+      webService.undeploy(getDeploymentName(contractedEAN));
+    }
     synchronized (scheduledFutureList) {
+      undeployed = true;
       for (ScheduledFuture<?> scheduledFuture : scheduledFutureList) {
         scheduledFuture.cancel(true);
       }
       scheduledFutureList.clear();
-    }
-    if (webService != null) {
-      webService.undeploy(getDeploymentName(contractedEAN));
     }
     if (client != null) {
       // createClient(ExecutorService) does not take ownership of the shared Container.EXECUTOR,
@@ -769,19 +785,18 @@ public class GOPACSHandler
               new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
       notifyNewIncomingMessage(incomingUftpMessage);
 
-      // Send response delayed to ensure HTTP response is sent first
+      // Delayed so the HTTP response on the transport call goes out first
       schedule(
           () -> {
             uftpReceivedMessageService.process(incomingUftpMessage);
           },
-          TimeUnit.SECONDS.toMillis(this.responseDelaySeconds)); // 10s delay to ensure HTTP
-      // response is sent
+          TimeUnit.SECONDS.toMillis(this.responseDelaySeconds));
 
       // Check if the message is a FlexRequest and schedule sendFlexOffer with delay
       if (payloadMessage instanceof FlexRequest flexRequest) {
         UftpParticipant participant = new UftpParticipant(signedMessage);
 
-        // Schedule FlexOffer to be sent after a short delay to ensure HTTP response is sent first
+        // Delayed so the FlexRequestResponse is sent and processed by the other party first
         schedule(
             () -> {
               try {
@@ -790,9 +805,7 @@ public class GOPACSHandler
                 LOG.log(Level.SEVERE, "Error sending delayed FlexOffer", e);
               }
             },
-            TimeUnit.SECONDS.toMillis(
-                this.flexOfferDelaySeconds)); // 30s delay to ensure FlexRequestResponse is sent
-        // and processed by the other party
+            TimeUnit.SECONDS.toMillis(this.flexOfferDelaySeconds));
       }
     } catch (UftpConnectorException e) {
       LOG.log(Level.SEVERE, "Error processing raw message", e);
