@@ -472,22 +472,20 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 }
               });
     } else if (persistenceEvent.getEntity() instanceof EmsDistroEnergyAsset emsDistroEnergyAsset) {
-      emsDistroEnergyAsset
-          .getPortfolio()
-          .ifPresent(
-              portfolio -> {
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
-                  stopDistroEnergyHandler(portfolio);
-                }
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
-                  startDistroEnergyHandler(emsDistroEnergyAsset);
-                }
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
-                  stopDistroEnergyHandler(portfolio);
-                  startDistroEnergyHandler(emsDistroEnergyAsset);
-                }
-              }
-          );
+      // distroEnergyHandlerMap is keyed by asset id, not portfolio: stop by asset id so this
+      // actually finds the handler to remove, and so DELETE cleans up even if the portfolio
+      // attribute is absent on the entity snapshot.
+      String assetId = emsDistroEnergyAsset.getId();
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
+        stopDistroEnergyHandler(assetId);
+      }
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
+        startDistroEnergyHandler(emsDistroEnergyAsset);
+      }
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
+        stopDistroEnergyHandler(assetId);
+        startDistroEnergyHandler(emsDistroEnergyAsset);
+      }
     }
   }
 
