@@ -373,6 +373,24 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  /**
+   * Stops every redispatch poller for the asset that is registered under an EAN other than the
+   * current one, and reports whether any was stopped.
+   */
+  private boolean stopStaleRedispatchHandlersForAsset(String assetId, String currentEan) {
+    return gopacsRedispatchHandlerMap
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (currentEan.equals(entry.getKey())
+                  || !assetId.equals(entry.getValue().getAssetId())) {
+                return false;
+              }
+              entry.getValue().stopPolling();
+              return true;
+            });
+  }
+
   protected void processAssetChange(PersistenceEvent<?> persistenceEvent) {
     if (persistenceEvent.getEntity()
         instanceof EmsEnergyOptimisationAsset emsEnergyOptimisationAsset) {
@@ -402,7 +420,15 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   stopGopacsHandlersForAsset(emsGOPACSAsset.getId());
                   startGopacsHandler(
                       contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  // Redispatch handler is managed via attribute events (redispatchEnabled)
+                  // Redispatch polling is otherwise managed via attribute events. A poller
+                  // already running under this EAN is left alone, since its announcement
+                  // bookkeeping is in memory and a restart would re-record history; only one
+                  // stranded under a previous EAN is stopped and, if still enabled, restarted.
+                  if (stopStaleRedispatchHandlersForAsset(emsGOPACSAsset.getId(), contractedEan)
+                      && emsGOPACSAsset.getRedispatchEnabled().orElse(false)) {
+                    startRedispatchHandler(
+                        contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
+                  }
                 }
               });
     }

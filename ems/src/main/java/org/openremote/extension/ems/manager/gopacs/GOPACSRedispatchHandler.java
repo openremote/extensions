@@ -177,6 +177,11 @@ public class GOPACSRedispatchHandler {
             + " min)");
   }
 
+  /** Id of the {@link EmsGOPACSAsset} this poller was started for. */
+  public String getAssetId() {
+    return assetId;
+  }
+
   public void startPolling() {
     if (apiKey == null || apiKey.isBlank()) {
       LOG.severe(
