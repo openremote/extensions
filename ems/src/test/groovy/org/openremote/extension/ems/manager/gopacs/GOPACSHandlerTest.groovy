@@ -64,6 +64,9 @@ class GOPACSHandlerTest extends Specification {
   RecordingGOPACSHandler handler
   String privKeyB64
   String pubB64
+  // Every ScheduledFuture handed back by the executor stub, in schedule() call order, so tests can
+  // verify that undeploy() actually cancels the tasks the handler scheduled.
+  List<ScheduledFuture> scheduledFutures
 
   def setup() {
     assetProcessingService = Mock(AssetProcessingService)
@@ -71,11 +74,15 @@ class GOPACSHandlerTest extends Specification {
     timerService = Stub(TimerService) {
       getCurrentTimeMillis() >> PERIOD.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }
-    // Run every scheduled task inline so processRawMessage is fully synchronous.
+    scheduledFutures = []
+    // Run every scheduled task inline so processRawMessage is fully synchronous, and hand back a
+    // Mock(ScheduledFuture) (rather than a Stub) so a cancel(true) call on it is observable.
     executor = Stub(ScheduledExecutorService) {
       schedule(_ as Runnable, _ as Long, _ as TimeUnit) >> { Runnable r, long d, TimeUnit u ->
         r.run()
-        Stub(ScheduledFuture)
+        def future = Mock(ScheduledFuture)
+        scheduledFutures << future
+        future
       }
     }
 
@@ -251,6 +258,58 @@ class GOPACSHandlerTest extends Specification {
     bareHandler.sent.size() == 2
     bareHandler.sent[0] instanceof FlexRequestResponse
     bareHandler.sent[1] instanceof FlexOffer
+  }
+
+  def "undeploy is a no-op when the handler was built with the test-support constructor"() {
+    when: "undeploy is called on a handler with no webService or client (test-support ctor)"
+    handler.undeploy()
+
+    then: "no exception is thrown"
+    noExceptionThrown()
+  }
+
+  def "undeploy cancels every pending scheduled task, and a second undeploy cancels nothing further"() {
+    given: "a processed FlexRequest that scheduled tasks through the executor stub"
+    signAndProcess(flexRequestXml(CONTRACTED_EAN))
+    def pending = new ArrayList<>(scheduledFutures)
+
+    expect: "at least one task was scheduled"
+    !pending.isEmpty()
+
+    when: "the handler is undeployed"
+    handler.undeploy()
+
+    then: "every scheduled future is cancelled"
+    pending.each { 1 * it.cancel(true) }
+
+    when: "undeploy is called a second time"
+    handler.undeploy()
+
+    then: "nothing is cancelled again, since the tracked list was already cleared"
+    pending.each { 0 * it.cancel(true) }
+  }
+
+  def "a completed scheduled task is pruned from the pending list on the next schedule call"() {
+    given: "a processed FlexRequest that scheduled at least one pending task"
+    signAndProcess(flexRequestXml(CONTRACTED_EAN))
+    def firstBatch = new ArrayList<>(scheduledFutures)
+    assert !firstBatch.isEmpty()
+    assert handler.pendingTaskCount() == firstBatch.size()
+
+    and: "every task from that batch is now already completed"
+    firstBatch.each { it.isDone() >> true }
+
+    when: "a further message triggers another schedule() call"
+    signAndProcess(flexOrderXml(CONTRACTED_EAN, [4000, 8000]))
+
+    then: "the completed tasks were pruned, leaving only the newly scheduled ones"
+    // scheduledFutures only ever grows by appending, so the futures scheduled since firstBatch was
+    // captured are exactly the tail beyond that snapshot. (Not "scheduledFutures - firstBatch":
+    // ScheduledFuture extends Comparable<Delayed>, so Groovy's list minus()/== falls back to
+    // compareTo() rather than equals() for these mocks, and an unstubbed compareTo() always
+    // answers 0 -- making every mock instance compare "equal" to every other one.)
+    def secondBatch = scheduledFutures.subList(firstBatch.size(), scheduledFutures.size())
+    handler.pendingTaskCount() == secondBatch.size()
   }
 
   // ---- Embedded UFTP payload fixtures (attribute-style XML, matching the example message format) ----
