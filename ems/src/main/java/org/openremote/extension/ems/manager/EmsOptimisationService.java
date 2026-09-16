@@ -908,7 +908,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     String assetId = attributeEvent.getId();
 
     // Get asset from database
-    EmsDistroEnergyAsset emsDistroEnergyAsset = (EmsDistroEnergyAsset) services.getAssetStorageService().find(assetId);
+    EmsDistroEnergyAsset emsDistroEnergyAsset =
+        (EmsDistroEnergyAsset) services.getAssetStorageService().find(assetId);
 
     // Check if asset exists
     if (emsDistroEnergyAsset == null) {
@@ -919,17 +920,17 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     if (attributeName.equals(EmsDistroEnergyAsset.PORTFOLIO.getName())) {
       attributeEvent
-              .getOldValue(String.class)
-              .ifPresent(
-                      oldPortfolio -> {
-                        stopDistroEnergyHandler(assetId);
-                      });
+          .getOldValue(String.class)
+          .ifPresent(
+              oldPortfolio -> {
+                stopDistroEnergyHandler(assetId);
+              });
       attributeEvent
-              .getValue(String.class)
-              .ifPresent(
-                      portfolio -> {
-                        startDistroEnergyHandler(emsDistroEnergyAsset);
-                      });
+          .getValue(String.class)
+          .ifPresent(
+              portfolio -> {
+                startDistroEnergyHandler(emsDistroEnergyAsset);
+              });
     }
   }
 
