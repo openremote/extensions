@@ -323,6 +323,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
     LOG.fine("Deploying GOPACS for EAN: " + contractedEan);
+    // Registering over a live handler would leave the displaced one holding its endpoint and
+    // client with no key left to stop it by, which is what happens when two assets share an EAN.
+    stopGopacsHandler(contractedEan);
     GOPACSHandler handler = gopacsHandlerFactory.createHandler(contractedEan, realm, assetId);
     // Registered before the endpoint deploys, so a handler whose deploy() throws is still reachable
     // from stop() and gets its client closed.
@@ -361,6 +364,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
     LOG.fine("Starting redispatch handler for EAN: " + contractedEan);
+    // Same reasoning as startGopacsHandler: the displaced poller would keep polling and never
+    // close its client.
+    stopRedispatchHandler(contractedEan);
     GOPACSRedispatchHandler handler =
         gopacsRedispatchHandlerFactory.createHandler(contractedEan, realm, assetId);
     gopacsRedispatchHandlerMap.put(contractedEan, handler);

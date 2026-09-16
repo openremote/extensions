@@ -273,6 +273,37 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     createdRedispatchHandlers.size() == 1
   }
 
+  def "a handler deployed for an EAN already in use undeploys the one it displaces"() {
+    given: "a deployed handler for the EAN"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID)))
+    def original = createdHandlers[0]
+
+    when: "a second asset is created with the same contracted EAN"
+    service.processAssetChange(
+            event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, OTHER_ASSET_ID)))
+
+    then: "the displaced handler is undeployed instead of being left with no key to stop it by"
+    original.undeployCount == 1
+    createdHandlers.size() == 2
+    createdHandlers[1].assetId == OTHER_ASSET_ID
+  }
+
+  def "a redispatch poller started for an EAN already in use stops the one it displaces"() {
+    given: "a running poller for the EAN"
+    service.processAssetChange(
+            event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true)))
+    def original = createdRedispatchHandlers[0]
+
+    when: "a second asset is created with the same contracted EAN and redispatch enabled"
+    service.processAssetChange(
+            event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, OTHER_ASSET_ID, true)))
+
+    then: "the displaced poller is stopped and its client closed"
+    original.stopCount == 1
+    createdRedispatchHandlers.size() == 2
+    createdRedispatchHandlers[1].assetId == OTHER_ASSET_ID
+  }
+
   def "stop undeploys every deployed handler"() {
     given: "handlers for two assets, one of them polling redispatch"
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true)))
