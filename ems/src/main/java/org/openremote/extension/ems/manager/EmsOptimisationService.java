@@ -187,6 +187,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
   @Override
   public void stop(Container container) throws Exception {
+    gopacsHandlerMap.forEach((ean, handler) -> handler.undeploy());
+    gopacsHandlerMap.clear();
     gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
     gopacsRedispatchHandlerMap.clear();
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
