@@ -383,6 +383,24 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   }
 
   /**
+   * Stops every redispatch poller started for the asset, whichever EAN it is registered under,
+   * except one already polling under {@code keepEan}. Pass {@code null} to stop them all.
+   */
+  private void stopRedispatchHandlersForAsset(String assetId, String keepEan) {
+    gopacsRedispatchHandlerMap
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (!assetId.equals(entry.getValue().getAssetId())
+                  || entry.getKey().equals(keepEan)) {
+                return false;
+              }
+              entry.getValue().stopPolling();
+              return true;
+            });
+  }
+
+  /**
    * Brings the redispatch poller for the asset in line with its saved state: exactly one poller
    * under the current EAN when redispatch is enabled, none otherwise. A poller already running
    * under the current EAN is left alone, since its announcement bookkeeping is in memory only and a
@@ -391,17 +409,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   private void reconcileRedispatchHandler(EmsGOPACSAsset asset, String contractedEan) {
     String assetId = asset.getId();
     boolean enabled = asset.getRedispatchEnabled().orElse(false);
-    gopacsRedispatchHandlerMap
-        .entrySet()
-        .removeIf(
-            entry -> {
-              if (!assetId.equals(entry.getValue().getAssetId())
-                  || (enabled && contractedEan.equals(entry.getKey()))) {
-                return false;
-              }
-              entry.getValue().stopPolling();
-              return true;
-            });
+    stopRedispatchHandlersForAsset(assetId, enabled ? contractedEan : null);
     GOPACSRedispatchHandler current = gopacsRedispatchHandlerMap.get(contractedEan);
     if (enabled && (current == null || !assetId.equals(current.getAssetId()))) {
       startRedispatchHandler(contractedEan, asset.getRealm(), assetId);
@@ -420,8 +428,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
           .ifPresent(
               contractedEan -> {
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
-                  stopGopacsHandler(contractedEan);
-                  stopRedispatchHandler(contractedEan);
+                  // By asset id for the same reason as UPDATE below: the entity carries the EAN as
+                  // saved, which is not necessarily the key the handler is registered under.
+                  stopGopacsHandlersForAsset(emsGOPACSAsset.getId());
+                  stopRedispatchHandlersForAsset(emsGOPACSAsset.getId(), null);
                 }
                 if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
                   startGopacsHandler(

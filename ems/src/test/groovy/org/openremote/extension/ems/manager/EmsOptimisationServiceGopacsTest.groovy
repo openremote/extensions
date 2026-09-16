@@ -175,6 +175,32 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     original.stopCount == 1
   }
 
+  def "DELETE undeploys the handler registered under the EAN it was created with"() {
+    given: "a handler deployed for the original EAN"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN)))
+    def original = createdHandlers[0]
+
+    when: "the asset is deleted carrying a different EAN than the one it was registered under"
+    service.processAssetChange(event(PersistenceEvent.Cause.DELETE, gopacsAsset(OTHER_EAN)))
+
+    then: "the handler is stopped by asset id rather than missed by key"
+    original.undeployCount == 1
+  }
+
+  def "DELETE stops the redispatch poller registered under the EAN it was started with"() {
+    given: "a poller running for the original EAN"
+    service.processAssetChange(
+            event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true)))
+    def original = createdRedispatchHandlers[0]
+
+    when: "the asset is deleted carrying a different EAN than the one it was registered under"
+    service.processAssetChange(
+            event(PersistenceEvent.Cause.DELETE, gopacsAsset(OTHER_EAN, ASSET_ID, true)))
+
+    then: "the poller is stopped by asset id rather than missed by key"
+    original.stopCount == 1
+  }
+
   def "UPDATE with the same EAN undeploys the old handler before deploying its replacement"() {
     given: "a deployed handler"
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset()))
