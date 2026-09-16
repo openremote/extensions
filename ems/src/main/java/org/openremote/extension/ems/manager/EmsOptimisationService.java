@@ -72,8 +72,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap =
       new ConcurrentHashMap<>();
   private final Map<String, Long> energyOptimisationTimersMap = new HashMap<>();
-  private final Map<String, GOPACSHandler> gopacsHandlerMap = new HashMap<>();
-  private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap = new HashMap<>();
+  // Read and written from the persistence route, the attribute event subscription and the container
+  // stop thread, and iterated while entries are removed, so a plain HashMap is not enough.
+  private final Map<String, GOPACSHandler> gopacsHandlerMap = new ConcurrentHashMap<>();
+  private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap =
+      new ConcurrentHashMap<>();
 
   @SuppressWarnings("unchecked")
   @Override
