@@ -217,6 +217,32 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     createdRedispatchHandlers.size() == 1
   }
 
+  def "UPDATE that enables redispatch on save starts a poller"() {
+    given: "an asset without redispatch"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, false)))
+
+    when: "the asset is saved with redispatch switched on"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(EAN, ASSET_ID, true)))
+
+    then:
+    createdRedispatchHandlers.size() == 1
+    createdRedispatchHandlers[0].contractedEAN == EAN
+    createdRedispatchHandlers[0].startCount == 1
+  }
+
+  def "UPDATE that disables redispatch on save stops the poller"() {
+    given: "a running poller"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true)))
+    def original = createdRedispatchHandlers[0]
+
+    when: "the asset is saved with redispatch switched off"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(EAN, ASSET_ID, false)))
+
+    then:
+    original.stopCount == 1
+    createdRedispatchHandlers.size() == 1
+  }
+
   def "UPDATE with a changed EAN re-keys the redispatch poller"() {
     given: "a running poller for the original EAN"
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true)))

@@ -374,21 +374,29 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   }
 
   /**
-   * Stops every redispatch poller for the asset that is registered under an EAN other than the
-   * current one, and reports whether any was stopped.
+   * Brings the redispatch poller for the asset in line with its saved state: exactly one poller
+   * under the current EAN when redispatch is enabled, none otherwise. A poller already running
+   * under the current EAN is left alone, since its announcement bookkeeping is in memory only and a
+   * restart would re-record every open announcement in the history.
    */
-  private boolean stopStaleRedispatchHandlersForAsset(String assetId, String currentEan) {
-    return gopacsRedispatchHandlerMap
+  private void reconcileRedispatchHandler(EmsGOPACSAsset asset, String contractedEan) {
+    String assetId = asset.getId();
+    boolean enabled = asset.getRedispatchEnabled().orElse(false);
+    gopacsRedispatchHandlerMap
         .entrySet()
         .removeIf(
             entry -> {
-              if (currentEan.equals(entry.getKey())
-                  || !assetId.equals(entry.getValue().getAssetId())) {
+              if (!assetId.equals(entry.getValue().getAssetId())
+                  || (enabled && contractedEan.equals(entry.getKey()))) {
                 return false;
               }
               entry.getValue().stopPolling();
               return true;
             });
+    GOPACSRedispatchHandler current = gopacsRedispatchHandlerMap.get(contractedEan);
+    if (enabled && (current == null || !assetId.equals(current.getAssetId()))) {
+      startRedispatchHandler(contractedEan, asset.getRealm(), assetId);
+    }
   }
 
   protected void processAssetChange(PersistenceEvent<?> persistenceEvent) {
@@ -420,15 +428,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   stopGopacsHandlersForAsset(emsGOPACSAsset.getId());
                   startGopacsHandler(
                       contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  // Redispatch polling is otherwise managed via attribute events. A poller
-                  // already running under this EAN is left alone, since its announcement
-                  // bookkeeping is in memory and a restart would re-record history; only one
-                  // stranded under a previous EAN is stopped and, if still enabled, restarted.
-                  if (stopStaleRedispatchHandlersForAsset(emsGOPACSAsset.getId(), contractedEan)
-                      && emsGOPACSAsset.getRedispatchEnabled().orElse(false)) {
-                    startRedispatchHandler(
-                        contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  }
+                  // Redispatch polling is also managed via attribute events, but an asset merge
+                  // emits none, so the saved EAN and redispatchEnabled are applied here too.
+                  reconcileRedispatchHandler(emsGOPACSAsset, contractedEan);
                 }
               });
     }
