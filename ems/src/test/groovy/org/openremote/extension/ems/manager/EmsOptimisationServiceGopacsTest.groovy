@@ -166,15 +166,23 @@ class EmsOptimisationServiceGopacsTest extends Specification {
    * event per attribute. A save that touches anything besides the attributes, a rename for instance,
    * republishes every attribute whether its value changed or not, which is the case these tests are
    * mostly about. {@code oldEan} is the EAN the save replaced, or null when the EAN is unchanged.
+   * {@code oldRedispatchEnabled} is the toggle's previous value, or null when it is unchanged.
    */
-  private void save(PersistenceEvent.Cause cause, EmsGOPACSAsset asset, String oldEan = null) {
+  private void save(
+          PersistenceEvent.Cause cause, EmsGOPACSAsset asset, String oldEan = null,
+          Boolean oldRedispatchEnabled = null) {
     storedAssets[asset.getId()] = asset
     service.processAssetChange(event(cause, asset))
     asset.getAttributes().values().each { attribute ->
-      def oldValue =
-      attribute.getName() == EmsGOPACSAsset.CONTRACTED_EAN.getName() && oldEan != null
-      ? oldEan
-      : attribute.getValue().orElse(null)
+      def oldValue
+      if (attribute.getName() == EmsGOPACSAsset.CONTRACTED_EAN.getName() && oldEan != null) {
+        oldValue = oldEan
+      } else if (attribute.getName() == EmsGOPACSAsset.REDISPATCH_ENABLED.getName()
+              && oldRedispatchEnabled != null) {
+        oldValue = oldRedispatchEnabled
+      } else {
+        oldValue = attribute.getValue().orElse(null)
+      }
       service.processAttributeEvent(attributeEvent(asset, attribute, oldValue))
     }
   }
@@ -402,6 +410,46 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     createdHandlers[1].contractedEAN == OTHER_EAN
     createdHandlers[1].deployCount == 1
     createdHandlers[1].undeployCount == 0
+  }
+
+  def "a save that clears the EAN through the attribute events it raises undeploys the handler without deploying a replacement"() {
+    given: "a deployed handler"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset())
+    def original = createdHandlers[0]
+
+    when: "the asset is saved with the contracted EAN emptied"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset(""), EAN)
+
+    then: "the republished empty EAN does not deploy a handler behind the stop the persistence event already made"
+    original.undeployCount == 1
+    createdHandlers.size() == 1
+  }
+
+  def "a save that enables redispatch through the attribute events it raises starts a poller"() {
+    given: "an asset without redispatch"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, false))
+
+    when: "the asset is saved with redispatch switched on"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset(EAN, ASSET_ID, true), null, false)
+
+    then: "the republished toggle does not stop the poller the persistence event already started"
+    createdRedispatchHandlers.size() == 1
+    createdRedispatchHandlers[0].contractedEAN == EAN
+    createdRedispatchHandlers[0].startCount == 1
+  }
+
+  def "a save that disables redispatch through the attribute events it raises stops the poller"() {
+    given: "a running poller"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true))
+    def original = createdRedispatchHandlers[0]
+
+    when: "the asset is saved with redispatch switched off"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset(EAN, ASSET_ID, false), null, true)
+
+    then: "the republished toggle does not start a second poller behind the stop the persistence event already made"
+    original.stopCount == 1
+    createdRedispatchHandlers.size() == 1
+    createdHandlers[0].undeployCount == 0
   }
 
   def "an attribute write that enables redispatch starts a poller"() {
