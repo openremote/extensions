@@ -201,18 +201,30 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     original.stopCount == 1
   }
 
-  def "UPDATE with the same EAN undeploys the old handler before deploying its replacement"() {
+  def "UPDATE with the same EAN leaves the deployed handler alone"() {
     given: "a deployed handler"
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset()))
     def original = createdHandlers[0]
 
-    when:
+    when: "the asset is saved without changing the EAN, for instance a rename"
     service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset()))
 
-    then: "the old handler is stopped and exactly one new handler replaces it"
+    then: "the handler keeps its participant cache and any UFTP conversation in flight"
+    original.undeployCount == 0
+    createdHandlers.size() == 1
+  }
+
+  def "UPDATE that clears the EAN undeploys the handler without deploying a replacement"() {
+    given: "a deployed handler"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset()))
+    def original = createdHandlers[0]
+
+    when: "the asset is saved with the contracted EAN emptied"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset("")))
+
+    then: "no EAN means no endpoint, so the handler is stopped and none takes its place"
     original.undeployCount == 1
-    createdHandlers.size() == 2
-    createdHandlers[1].deployCount == 1
+    createdHandlers.size() == 1
   }
 
   def "UPDATE with a changed EAN undeploys the handler registered under the old EAN"() {
