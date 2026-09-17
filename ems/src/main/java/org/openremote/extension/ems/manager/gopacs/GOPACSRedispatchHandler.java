@@ -160,10 +160,18 @@ public class GOPACSRedispatchHandler {
         container.getConfig().getOrDefault(GOPACS_REDISPATCH_URL, DEFAULT_GOPACS_REDISPATCH_URL);
 
     this.client = createClient(org.openremote.container.Container.EXECUTOR);
-    this.announcementResource =
-        client.target(redispatchUrl).proxy(GOPACSAnnouncementResource.class);
-    this.eanEffectivityResource =
-        client.target(redispatchUrl).proxy(GOPACSEanEffectivityResource.class);
+
+    try {
+      this.announcementResource =
+          client.target(redispatchUrl).proxy(GOPACSAnnouncementResource.class);
+      this.eanEffectivityResource =
+          client.target(redispatchUrl).proxy(GOPACSEanEffectivityResource.class);
+    } catch (RuntimeException e) {
+      // No reference escapes a constructor that threw, so stopPolling() can never close this
+      // client.
+      client.close();
+      throw e;
+    }
 
     this.objectMapper = new ObjectMapper();
     objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -175,6 +183,11 @@ public class GOPACSRedispatchHandler {
             + " (poll interval: "
             + pollIntervalMinutes
             + " min)");
+  }
+
+  /** Id of the {@link EmsGOPACSAsset} this poller was started for. */
+  public String getAssetId() {
+    return assetId;
   }
 
   public void startPolling() {

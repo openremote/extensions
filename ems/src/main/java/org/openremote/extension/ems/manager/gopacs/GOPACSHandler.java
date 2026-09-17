@@ -122,6 +122,7 @@ public class GOPACSHandler
   protected final ScheduledExecutorService scheduledExecutorService;
   protected final TimerService timerService;
   protected final WebService webService;
+  protected final Container container;
 
   protected final ResteasyClient client;
   protected final GOPACSAddressBookResource gopacsAddressBookResource;
@@ -141,7 +142,15 @@ public class GOPACSHandler
   protected final int flexOfferDelaySeconds;
   protected ObjectMapper objectMapper;
 
-  List<ScheduledFuture<?>> scheduledFutureList = new ArrayList<>();
+  // Scheduled from Undertow request threads (delayed replies, FlexOffers, power updates) and
+  // cancelled from the service thread on undeploy, so the list itself must be thread-safe.
+  private final List<ScheduledFuture<?>> scheduledFutureList =
+      Collections.synchronizedList(new ArrayList<>());
+
+  // Guarded by the scheduledFutureList monitor, which is what makes the check in schedule() and
+  // the cancel loop in undeploy() exclusive: either the task is tracked and then cancelled, or it
+  // is never scheduled at all.
+  private boolean undeployed;
 
   public static class Factory {
     protected Container container;
@@ -158,6 +167,7 @@ public class GOPACSHandler
 
   protected GOPACSHandler(
       String contractedEAN, String realm, String electricitySupplierAssetId, Container container) {
+    this.container = container;
     this.devMode = container.isDevMode();
     this.contractedEAN = contractedEAN;
     this.realm = realm;
@@ -218,14 +228,22 @@ public class GOPACSHandler
 
     this.client = createClient(org.openremote.container.Container.EXECUTOR);
 
-    String addressBookUrl =
-        container.getConfig().getOrDefault(GOPACS_PARTICIPANT_URL, DEFAULT_GOPACS_PARTICIPANT_URL);
-    String oAuth2Url =
-        container.getConfig().getOrDefault(GOPACS_OAUTH2_URL, DEFAULT_GOPACS_OAUTH2_URL);
+    try {
+      String addressBookUrl =
+          container
+              .getConfig()
+              .getOrDefault(GOPACS_PARTICIPANT_URL, DEFAULT_GOPACS_PARTICIPANT_URL);
+      String oAuth2Url =
+          container.getConfig().getOrDefault(GOPACS_OAUTH2_URL, DEFAULT_GOPACS_OAUTH2_URL);
 
-    this.gopacsAddressBookResource =
-        client.target(addressBookUrl).proxy(GOPACSAddressBookResource.class);
-    this.gopacsAuthResource = client.target(oAuth2Url).proxy(GOPACSAuthResource.class);
+      this.gopacsAddressBookResource =
+          client.target(addressBookUrl).proxy(GOPACSAddressBookResource.class);
+      this.gopacsAuthResource = client.target(oAuth2Url).proxy(GOPACSAuthResource.class);
+    } catch (RuntimeException e) {
+      // No reference escapes a constructor that threw, so undeploy() can never close this client.
+      client.close();
+      throw e;
+    }
     this.gopacsServerResource = new GOPACSServerResourceImpl(this::processRawMessage);
 
     this.participantResolutionService = new ParticipantResolutionService(this);
@@ -241,8 +259,6 @@ public class GOPACSHandler
     this.objectMapper = new ObjectMapper();
     objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-
-    deploy(container);
   }
 
   /**
@@ -270,6 +286,7 @@ public class GOPACSHandler
     this.timerService = timerService;
     this.scheduledExecutorService = scheduledExecutorService;
     this.webService = null;
+    this.container = null;
 
     this.gopacsBrokerUrl = "";
     this.responseDelaySeconds = 0;
@@ -296,11 +313,23 @@ public class GOPACSHandler
     this.objectMapper = new ObjectMapper();
   }
 
+  /** Id of the {@link EmsGOPACSAsset} this handler was deployed for. */
+  public String getAssetId() {
+    return electricitySupplierAssetId;
+  }
+
   protected static String getDeploymentName(String contractedEAN) {
     return "GOPACS: " + contractedEAN;
   }
 
-  protected void deploy(Container container) {
+  /**
+   * Deploys the JAX-RS endpoint that receives UFTP messages.
+   *
+   * <p>Separate from the constructor so the endpoint cannot hand a request to a partly constructed
+   * handler: the deployed resource routes straight to {@link #processRawMessage(String)}, which
+   * would otherwise be reachable from Undertow threads before construction completed.
+   */
+  public void deploy() {
     LOG.info("Deploying JAX-RS deployment for instance : " + this);
 
     List<Object> singletons =
@@ -323,12 +352,45 @@ public class GOPACSHandler
             .setCorsAllowedHeaders(CORSConfig.DEFAULT_CORS_ALLOW_ALL));
   }
 
-  public void undeploy() {
-    for (ScheduledFuture<?> scheduledFuture : scheduledFutureList) {
-      scheduledFuture.cancel(true);
+  /**
+   * Schedules a task, tracking its {@link ScheduledFuture} so it can be cancelled on {@link
+   * #undeploy()}. Already-completed futures are pruned first so the tracked list does not grow
+   * unbounded across the handler's lifetime.
+   *
+   * <p>Nothing is scheduled once {@link #undeploy()} has started. A request that was already inside
+   * {@link #processRawMessage(String)} at that point would otherwise queue work that outlives the
+   * handler and later runs against a closed client.
+   */
+  private void schedule(Runnable task, long delayMillis) {
+    synchronized (scheduledFutureList) {
+      if (undeployed) {
+        LOG.fine("Handler is undeployed, dropping scheduled task for EAN: " + contractedEAN);
+        return;
+      }
+      scheduledFutureList.removeIf(ScheduledFuture::isDone);
+      scheduledFutureList.add(
+          scheduledExecutorService.schedule(task, delayMillis, TimeUnit.MILLISECONDS));
     }
-    scheduledFutureList.clear();
-    webService.undeploy(getDeploymentName(contractedEAN));
+  }
+
+  public void undeploy() {
+    // Undeploy the endpoint first so no further request can reach processRawMessage and start work
+    // that the cancel loop below would then have to race.
+    if (webService != null) {
+      webService.undeploy(getDeploymentName(contractedEAN));
+    }
+    synchronized (scheduledFutureList) {
+      undeployed = true;
+      for (ScheduledFuture<?> scheduledFuture : scheduledFutureList) {
+        scheduledFuture.cancel(true);
+      }
+      scheduledFutureList.clear();
+    }
+    if (client != null) {
+      // createClient(ExecutorService) does not take ownership of the shared Container.EXECUTOR,
+      // so closing the client here only releases the client's own HTTP resources.
+      client.close();
+    }
   }
 
   @Override
@@ -613,8 +675,7 @@ public class GOPACSHandler
     long ispStartMillis =
         start.atDate(LocalDate.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     long delay = ispStartMillis - currentTimeMillis;
-    scheduledExecutorService.schedule(
-        () -> updatePowerValues(attributeName, power), delay, TimeUnit.MILLISECONDS);
+    schedule(() -> updatePowerValues(attributeName, power), delay);
   }
 
   protected void updatePowerValues(String attributeName, double power) {
@@ -709,10 +770,9 @@ public class GOPACSHandler
                 payloadMessage.getRecipientDomain(),
                 UftpRoleInformation.getRecipientRoleBySenderRole(sender.role()));
         // Send delayed so the HTTP 200 on the transport call goes out first, like the accepted path
-        scheduledExecutorService.schedule(
+        schedule(
             () -> notifyNewOutgoingMessage(OutgoingUftpMessage.create(responder, rejection)),
-            this.responseDelaySeconds,
-            TimeUnit.SECONDS);
+            TimeUnit.SECONDS.toMillis(this.responseDelaySeconds));
         return;
       }
 
@@ -721,20 +781,19 @@ public class GOPACSHandler
               new UftpParticipant(signedMessage), payloadMessage, transportXml, payloadXml);
       notifyNewIncomingMessage(incomingUftpMessage);
 
-      // Send response delayed to ensure HTTP response is sent first
-      scheduledExecutorService.schedule(
+      // Delayed so the HTTP response on the transport call goes out first
+      schedule(
           () -> {
             uftpReceivedMessageService.process(incomingUftpMessage);
           },
-          this.responseDelaySeconds,
-          TimeUnit.SECONDS); // 10s delay to ensure HTTP response is sent
+          TimeUnit.SECONDS.toMillis(this.responseDelaySeconds));
 
       // Check if the message is a FlexRequest and schedule sendFlexOffer with delay
       if (payloadMessage instanceof FlexRequest flexRequest) {
         UftpParticipant participant = new UftpParticipant(signedMessage);
 
-        // Schedule FlexOffer to be sent after a short delay to ensure HTTP response is sent first
-        scheduledExecutorService.schedule(
+        // Delayed so the FlexRequestResponse is sent and processed by the other party first
+        schedule(
             () -> {
               try {
                 sendFlexOffer(participant, flexRequest);
@@ -742,10 +801,7 @@ public class GOPACSHandler
                 LOG.log(Level.SEVERE, "Error sending delayed FlexOffer", e);
               }
             },
-            this.flexOfferDelaySeconds,
-            TimeUnit
-                .SECONDS); // 30s delay to ensure FlexRequestResponse is sent and processed by the
-        // other party
+            TimeUnit.SECONDS.toMillis(this.flexOfferDelaySeconds));
       }
     } catch (UftpConnectorException e) {
       LOG.log(Level.SEVERE, "Error processing raw message", e);

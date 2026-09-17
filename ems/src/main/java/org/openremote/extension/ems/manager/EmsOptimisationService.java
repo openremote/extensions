@@ -77,8 +77,16 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap =
       new ConcurrentHashMap<>();
   private final Map<String, Long> energyOptimisationTimersMap = new HashMap<>();
-  private final Map<String, GOPACSHandler> gopacsHandlerMap = new HashMap<>();
-  private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap = new HashMap<>();
+  // Read and written from the persistence route, the attribute event subscription and the container
+  // stop thread, and iterated while entries are removed, so a plain HashMap is not enough.
+  private final Map<String, GOPACSHandler> gopacsHandlerMap = new ConcurrentHashMap<>();
+  private final Map<String, GOPACSRedispatchHandler> gopacsRedispatchHandlerMap =
+      new ConcurrentHashMap<>();
+  // Every save of a GOPACS asset reaches this service twice, over two threads: once as a
+  // persistence event and once as the attribute events AssetStorageService raises from it. Held
+  // across a whole transition so the two cannot interleave their stop/start pairs and leave a
+  // handler registered over a live one that never gets undeployed.
+  private final Object gopacsLifecycleLock = new Object();
 
   // Keyed by asset id rather than portfolio: unlike GOPACS there is no external routing key, and
   // the asset id stays stable when the portfolio is edited.
@@ -163,21 +171,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 .attributeName(EmsGOPACSAsset.CONTRACTED_EAN.getName()))
         .stream()
         .map(asset -> (EmsGOPACSAsset) asset)
-        .forEach(
-            gopacsAsset -> {
-              startGopacsHandler(
-                  gopacsAsset.getContractedEan().orElse(""),
-                  gopacsAsset.getRealm(),
-                  gopacsAsset.getId());
-
-              // Start redispatch handler if enabled
-              if (gopacsAsset.getRedispatchEnabled().orElse(false)) {
-                startRedispatchHandler(
-                    gopacsAsset.getContractedEan().orElse(""),
-                    gopacsAsset.getRealm(),
-                    gopacsAsset.getId());
-              }
-            });
+        .forEach(this::reconcileGopacsAsset);
 
     // Start Distro Energy handler for all Distro Energy assets
     services
@@ -209,8 +203,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
   @Override
   public void stop(Container container) throws Exception {
-    gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
-    gopacsRedispatchHandlerMap.clear();
+    synchronized (gopacsLifecycleLock) {
+      gopacsHandlerMap.forEach((ean, handler) -> handler.undeploy());
+      gopacsHandlerMap.clear();
+      gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
+      gopacsRedispatchHandlerMap.clear();
+    }
     distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
     distroEnergyHandlerMap.clear();
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
@@ -342,8 +340,14 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
     LOG.fine("Deploying GOPACS for EAN: " + contractedEan);
-    gopacsHandlerMap.put(
-        contractedEan, gopacsHandlerFactory.createHandler(contractedEan, realm, assetId));
+    // Registering over a live handler would leave the displaced one holding its endpoint and
+    // client with no key left to stop it by, which is what happens when two assets share an EAN.
+    stopGopacsHandler(contractedEan);
+    GOPACSHandler handler = gopacsHandlerFactory.createHandler(contractedEan, realm, assetId);
+    // Registered before the endpoint deploys, so a handler whose deploy() throws is still reachable
+    // from stop() and gets its client closed.
+    gopacsHandlerMap.put(contractedEan, handler);
+    handler.deploy();
     LOG.fine("Deployed GOPACS for EAN: " + contractedEan);
   }
 
@@ -355,12 +359,31 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  /**
+   * Undeploys every GOPACS handler deployed for the asset, whichever EAN it is registered under.
+   */
+  private void stopGopacsHandlersForAsset(String assetId) {
+    gopacsHandlerMap
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (!assetId.equals(entry.getValue().getAssetId())) {
+                return false;
+              }
+              entry.getValue().undeploy();
+              return true;
+            });
+  }
+
   private void startRedispatchHandler(String contractedEan, String realm, String assetId) {
     if (contractedEan.isBlank()) {
       LOG.warning("Unable to start redispatch handler because EAN is blank");
       return;
     }
     LOG.fine("Starting redispatch handler for EAN: " + contractedEan);
+    // Same reasoning as startGopacsHandler: the displaced poller would keep polling and never
+    // close its client.
+    stopRedispatchHandler(contractedEan);
     GOPACSRedispatchHandler handler =
         gopacsRedispatchHandlerFactory.createHandler(contractedEan, realm, assetId);
     gopacsRedispatchHandlerMap.put(contractedEan, handler);
@@ -373,6 +396,76 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     if (existing != null) {
       existing.stopPolling();
       gopacsRedispatchHandlerMap.remove(contractedEan);
+    }
+  }
+
+  /** Stops every redispatch poller started for the asset, whichever EAN it is registered under. */
+  private void stopRedispatchHandlersForAsset(String assetId) {
+    gopacsRedispatchHandlerMap
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (!assetId.equals(entry.getValue().getAssetId())) {
+                return false;
+              }
+              entry.getValue().stopPolling();
+              return true;
+            });
+  }
+
+  /**
+   * Brings the GOPACS handler and the redispatch poller for the asset in line with its saved state.
+   * This is the only thing that starts or stops either of them for a live asset, so the persistence
+   * event and the attribute events raised from the same save converge on one outcome instead of
+   * each running their own stop/start pair.
+   */
+  private void reconcileGopacsAsset(EmsGOPACSAsset asset) {
+    synchronized (gopacsLifecycleLock) {
+      reconcileGopacsHandler(asset);
+      reconcileRedispatchHandler(asset);
+    }
+  }
+
+  /** Undeploys the GOPACS handler and the redispatch poller of a deleted asset. */
+  private void stopGopacsAsset(String assetId) {
+    synchronized (gopacsLifecycleLock) {
+      stopGopacsHandlersForAsset(assetId);
+      stopRedispatchHandlersForAsset(assetId);
+    }
+  }
+
+  /**
+   * Brings the GOPACS handler for the asset in line with its saved state: one handler under the
+   * current EAN, none while the EAN is blank. A handler already deployed for this asset under that
+   * EAN is left alone, because redeploying drops its participant cache and every UFTP conversation
+   * waiting on a delayed response or FlexOffer.
+   */
+  private void reconcileGopacsHandler(EmsGOPACSAsset asset) {
+    String contractedEan = asset.getContractedEan().orElse("");
+    GOPACSHandler current = gopacsHandlerMap.get(contractedEan);
+    if (current != null && asset.getId().equals(current.getAssetId())) {
+      return;
+    }
+    stopGopacsHandlersForAsset(asset.getId());
+    startGopacsHandler(contractedEan, asset.getRealm(), asset.getId());
+  }
+
+  /**
+   * Brings the redispatch poller for the asset in line with its saved state: one poller under the
+   * current EAN when redispatch is enabled, none otherwise. A poller already running for this asset
+   * under that EAN is left alone, because its announcement bookkeeping is in memory only and a
+   * restart would re-record every open announcement in the history.
+   */
+  private void reconcileRedispatchHandler(EmsGOPACSAsset asset) {
+    String contractedEan = asset.getContractedEan().orElse("");
+    boolean enabled = asset.getRedispatchEnabled().orElse(false);
+    GOPACSRedispatchHandler current = gopacsRedispatchHandlerMap.get(contractedEan);
+    if (enabled && current != null && asset.getId().equals(current.getAssetId())) {
+      return;
+    }
+    stopRedispatchHandlersForAsset(asset.getId());
+    if (enabled) {
+      startRedispatchHandler(contractedEan, asset.getRealm(), asset.getId());
     }
   }
 
@@ -449,29 +542,12 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         stopOptimisation(emsEnergyOptimisationAsset.getId());
       }
     } else if (persistenceEvent.getEntity() instanceof EmsGOPACSAsset emsGOPACSAsset) {
-      emsGOPACSAsset
-          .getContractedEan()
-          .ifPresent(
-              contractedEan -> {
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
-                  stopGopacsHandler(contractedEan);
-                  stopRedispatchHandler(contractedEan);
-                }
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
-                  startGopacsHandler(
-                      contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  if (emsGOPACSAsset.getRedispatchEnabled().orElse(false)) {
-                    startRedispatchHandler(
-                        contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  }
-                }
-                if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
-                  stopGopacsHandler(contractedEan);
-                  startGopacsHandler(
-                      contractedEan, emsGOPACSAsset.getRealm(), emsGOPACSAsset.getId());
-                  // Redispatch handler is managed via attribute events (redispatchEnabled)
-                }
-              });
+      switch (persistenceEvent.getCause()) {
+        // Stopping goes by asset id because the entity carries the EAN as saved, which is not
+        // necessarily the key the running handler was registered under.
+        case DELETE -> stopGopacsAsset(emsGOPACSAsset.getId());
+        case CREATE, UPDATE -> reconcileGopacsAsset(emsGOPACSAsset);
+      }
     } else if (persistenceEvent.getEntity() instanceof EmsDistroEnergyAsset emsDistroEnergyAsset) {
       // distroEnergyHandlerMap is keyed by asset id, not portfolio: stop by asset id so this
       // actually finds the handler to remove, and so DELETE cleans up even if the portfolio
@@ -833,42 +909,13 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     String attributeName = attributeEvent.getName();
 
-    if (attributeName.equals(EmsGOPACSAsset.CONTRACTED_EAN.getName())) {
-      attributeEvent
-          .getOldValue(String.class)
-          .ifPresent(
-              oldEan -> {
-                stopGopacsHandler(oldEan);
-                stopRedispatchHandler(oldEan);
-              });
-      attributeEvent
-          .getValue(String.class)
-          .ifPresent(
-              contractedEan -> {
-                startGopacsHandler(
-                    contractedEan, attributeEvent.getRealm(), attributeEvent.getId());
-                if (gopacsAsset.getRedispatchEnabled().orElse(false)) {
-                  startRedispatchHandler(
-                      contractedEan, attributeEvent.getRealm(), attributeEvent.getId());
-                }
-              });
-    }
-
-    // Handle redispatch enabled/disabled toggle
-    if (attributeName.equals(EmsGOPACSAsset.REDISPATCH_ENABLED.getName())) {
-      gopacsAsset
-          .getContractedEan()
-          .ifPresent(
-              contractedEan -> {
-                boolean enabled = (Boolean) attributeEvent.getValue().orElse(false);
-                if (enabled) {
-                  stopRedispatchHandler(contractedEan); // Stop existing if any
-                  startRedispatchHandler(
-                      contractedEan, gopacsAsset.getRealm(), gopacsAsset.getId());
-                } else {
-                  stopRedispatchHandler(contractedEan);
-                }
-              });
+    // A save reaches this service as a persistence event and again as the attribute events
+    // AssetStorageService raises from it, and a save that touches anything besides the attributes
+    // republishes every attribute whether it changed or not. Both paths run the same reconcile, so
+    // whichever arrives second finds the handler already in its target state and leaves it alone.
+    if (attributeName.equals(EmsGOPACSAsset.CONTRACTED_EAN.getName())
+        || attributeName.equals(EmsGOPACSAsset.REDISPATCH_ENABLED.getName())) {
+      reconcileGopacsAsset(gopacsAsset);
     }
 
     // Handle bid confirmation
