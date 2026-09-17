@@ -279,6 +279,7 @@ class DistroEnergyHandlerTest extends Specification {
     data.size() == 100
 
     and: "both passes read the surviving row, so the collapse only ever adds a read"
-    data.findAll { it.volume == 3.25d }*.position == [9, 13]
+    data[8].volume == 3.25d // 02:00 CEST, the pass that wrote the row
+    data[12].volume == 3.25d // 02:00 CET, the same row read a second time
   }
 }
