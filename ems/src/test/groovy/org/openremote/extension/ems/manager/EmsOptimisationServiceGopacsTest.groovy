@@ -28,7 +28,10 @@ import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
 import org.openremote.model.Container
 import org.openremote.model.PersistenceEvent
+import org.openremote.model.attribute.Attribute
+import org.openremote.model.attribute.AttributeEvent
 import org.openremote.model.util.ValueUtil
+import org.openremote.model.value.AttributeDescriptor
 import spock.lang.Shared
 import spock.lang.Specification
 
@@ -45,6 +48,11 @@ import java.util.concurrent.ScheduledExecutorService
  * {@code gopacsHandlerMap} is keyed by contracted EAN. These tests catch stop calls that use a key
  * the running handler was never registered under: {@code Map.remove} with the wrong key is a silent
  * no-op, so the old handler keeps its endpoint and client alive next to its replacement.
+ *
+ * Saving an asset reaches this service twice: once as the persistence event, and again as the
+ * attribute events {@code AssetStorageService.publishModificationEvents()} raises from the same
+ * merge. {@link #save} plays back both, so the tests below cover the whole save rather than the
+ * persistence event on its own.
  */
 class EmsOptimisationServiceGopacsTest extends Specification {
 
@@ -57,6 +65,7 @@ class EmsOptimisationServiceGopacsTest extends Specification {
   @Shared File privateKeyFile
   List<RecordingGOPACSHandler> createdHandlers
   List<RecordingRedispatchHandler> createdRedispatchHandlers
+  Map<String, EmsGOPACSAsset> storedAssets
   EmsOptimisationService service
 
   def setupSpec() {
@@ -91,8 +100,16 @@ class EmsOptimisationServiceGopacsTest extends Specification {
 
     createdHandlers = []
     createdRedispatchHandlers = []
+    storedAssets = [:]
 
     service = new EmsOptimisationService()
+    // The attribute event path reads the saved asset back, so the tests keep the assets they save
+    // in storedAssets and hand them out here.
+    service.services = Services.builder()
+            .withAssetStorageService(Stub(AssetStorageService) {
+              find(_ as String) >> { String assetId -> storedAssets[assetId] }
+            })
+            .build()
     service.gopacsHandlerFactory = new GOPACSHandler.Factory(handlerContainer) {
               @Override
               GOPACSHandler createHandler(String contractedEan, String realm, String assetId) {
@@ -126,6 +143,40 @@ class EmsOptimisationServiceGopacsTest extends Specification {
   private static PersistenceEvent<EmsGOPACSAsset> event(
           PersistenceEvent.Cause cause, EmsGOPACSAsset asset) {
     return new PersistenceEvent<>(cause, asset, null, null, null)
+  }
+
+  /**
+   * The event {@code AssetStorageService.publishModificationEvents()} raises for one attribute of a
+   * saved asset.
+   */
+  private static AttributeEvent attributeEvent(
+          EmsGOPACSAsset asset, Attribute<?> attribute, Object oldValue) {
+    return new AttributeEvent(asset, attribute, "AssetStorageService",
+            attribute.getValue().orElse(null), attribute.getTimestamp().orElse(0L), oldValue, 0L)
+  }
+
+  private static AttributeEvent attributeEvent(
+          EmsGOPACSAsset asset, AttributeDescriptor<?> descriptor, Object oldValue) {
+    return attributeEvent(asset, asset.getAttributes().get(descriptor.getName()).orElseThrow(),
+            oldValue)
+  }
+
+  /**
+   * Saves the asset the way the manager does: the persistence event for the merge, then an attribute
+   * event per attribute. A save that touches anything besides the attributes, a rename for instance,
+   * republishes every attribute whether its value changed or not, which is the case these tests are
+   * mostly about. {@code oldEan} is the EAN the save replaced, or null when the EAN is unchanged.
+   */
+  private void save(PersistenceEvent.Cause cause, EmsGOPACSAsset asset, String oldEan = null) {
+    storedAssets[asset.getId()] = asset
+    service.processAssetChange(event(cause, asset))
+    asset.getAttributes().values().each { attribute ->
+      def oldValue =
+      attribute.getName() == EmsGOPACSAsset.CONTRACTED_EAN.getName() && oldEan != null
+      ? oldEan
+      : attribute.getValue().orElse(null)
+      service.processAttributeEvent(attributeEvent(asset, attribute, oldValue))
+    }
   }
 
   def "CREATE deploys a handler for the asset's EAN"() {
@@ -309,6 +360,79 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     then:
     original.stopCount == 1
     createdRedispatchHandlers.size() == 1
+  }
+
+  def "a save that leaves the EAN alone keeps the handler through the attribute events it raises"() {
+    given: "a deployed handler"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset())
+    def original = createdHandlers[0]
+
+    when: "the asset is saved without changing the EAN, for instance a rename"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset())
+
+    then: "the republished contractedEan does not undo what the persistence event reconciled"
+    original.undeployCount == 0
+    createdHandlers.size() == 1
+  }
+
+  def "a save that leaves redispatch enabled keeps the poller through the attribute events it raises"() {
+    given: "a running poller"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true))
+    def original = createdRedispatchHandlers[0]
+
+    when: "the asset is saved without changing the EAN or the redispatch toggle"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset(EAN, ASSET_ID, true))
+
+    then: "the poller keeps its in-memory announcement bookkeeping"
+    original.stopCount == 0
+    createdRedispatchHandlers.size() == 1
+  }
+
+  def "a save that changes the EAN ends with one handler, for the new EAN"() {
+    given: "a deployed handler for the original EAN"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN))
+    def original = createdHandlers[0]
+
+    when: "the asset is saved with a different EAN"
+    save(PersistenceEvent.Cause.UPDATE, gopacsAsset(OTHER_EAN), EAN)
+
+    then: "the persistence event makes the swap and the attribute event leaves it standing"
+    original.undeployCount == 1
+    createdHandlers.size() == 2
+    createdHandlers[1].contractedEAN == OTHER_EAN
+    createdHandlers[1].deployCount == 1
+    createdHandlers[1].undeployCount == 0
+  }
+
+  def "an attribute write that enables redispatch starts a poller"() {
+    given: "a deployed handler with redispatch off"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, false))
+
+    when: "redispatch is switched on, which raises an attribute event and no persistence event"
+    def asset = gopacsAsset(EAN, ASSET_ID, true)
+    storedAssets[ASSET_ID] = asset
+    service.processAttributeEvent(attributeEvent(asset, EmsGOPACSAsset.REDISPATCH_ENABLED, false))
+
+    then: "the attribute event path still drives the lifecycle on its own"
+    createdRedispatchHandlers.size() == 1
+    createdRedispatchHandlers[0].contractedEAN == EAN
+    createdRedispatchHandlers[0].startCount == 1
+  }
+
+  def "an attribute write that disables redispatch stops the poller"() {
+    given: "a running poller"
+    save(PersistenceEvent.Cause.CREATE, gopacsAsset(EAN, ASSET_ID, true))
+    def original = createdRedispatchHandlers[0]
+
+    when: "redispatch is switched off through an attribute write"
+    def asset = gopacsAsset(EAN, ASSET_ID, false)
+    storedAssets[ASSET_ID] = asset
+    service.processAttributeEvent(attributeEvent(asset, EmsGOPACSAsset.REDISPATCH_ENABLED, true))
+
+    then: "the poller stops and the GOPACS handler is left deployed"
+    original.stopCount == 1
+    createdRedispatchHandlers.size() == 1
+    createdHandlers[0].undeployCount == 0
   }
 
   def "a handler deployed for an EAN already in use undeploys the one it displaces"() {
