@@ -361,7 +361,7 @@ public class GOPACSHandler
    * {@link #processRawMessage(String)} at that point would otherwise queue work that outlives the
    * handler and later runs against a closed client.
    */
-  protected void schedule(Runnable task, long delayMillis) {
+  private void schedule(Runnable task, long delayMillis) {
     synchronized (scheduledFutureList) {
       if (undeployed) {
         LOG.fine("Handler is undeployed, dropping scheduled task for EAN: " + contractedEAN);
@@ -371,10 +371,6 @@ public class GOPACSHandler
       scheduledFutureList.add(
           scheduledExecutorService.schedule(task, delayMillis, TimeUnit.MILLISECONDS));
     }
-  }
-
-  protected int pendingTaskCount() {
-    return scheduledFutureList.size();
   }
 
   public void undeploy() {

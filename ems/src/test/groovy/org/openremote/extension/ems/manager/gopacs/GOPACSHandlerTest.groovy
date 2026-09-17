@@ -294,7 +294,7 @@ class GOPACSHandlerTest extends Specification {
     signAndProcess(flexRequestXml(CONTRACTED_EAN))
     def firstBatch = new ArrayList<>(scheduledFutures)
     assert !firstBatch.isEmpty()
-    assert handler.pendingTaskCount() == firstBatch.size()
+    assert pendingTaskCount(handler) == firstBatch.size()
 
     and: "every task from that batch is now already completed"
     firstBatch.each { it.isDone() >> true }
@@ -309,7 +309,7 @@ class GOPACSHandlerTest extends Specification {
     // compareTo() rather than equals() for these mocks, and an unstubbed compareTo() always
     // answers 0 -- making every mock instance compare "equal" to every other one.)
     def secondBatch = scheduledFutures.subList(firstBatch.size(), scheduledFutures.size())
-    handler.pendingTaskCount() == secondBatch.size()
+    pendingTaskCount(handler) == secondBatch.size()
   }
 
   def "a request still in flight when undeploy starts cannot schedule further work"() {
@@ -317,11 +317,11 @@ class GOPACSHandlerTest extends Specification {
     handler.undeploy()
 
     when: "a request that was already being processed reaches a schedule() call"
-    handler.schedule({} as Runnable, 0L)
+    schedule(handler, {} as Runnable, 0L)
 
     then: "nothing is handed to the executor, so no task outlives the handler"
     scheduledFutures.isEmpty()
-    handler.pendingTaskCount() == 0
+    pendingTaskCount(handler) == 0
   }
 
   def "a message processed after undeploy schedules nothing"() {
@@ -333,10 +333,25 @@ class GOPACSHandlerTest extends Specification {
 
     then: "neither the delayed response nor the delayed FlexOffer is scheduled"
     scheduledFutures.isEmpty()
-    handler.pendingTaskCount() == 0
+    pendingTaskCount(handler) == 0
   }
 
   // ---- Embedded UFTP payload fixtures (attribute-style XML, matching the example message format) ----
+
+  // schedule() and the list of futures it tracks are private to GOPACSHandler, and Groovy will not
+  // dispatch to a private member of a superclass, so these two reach them reflectively rather than
+  // widening the production API for the tests.
+  private static int pendingTaskCount(GOPACSHandler handler) {
+    def field = GOPACSHandler.getDeclaredField("scheduledFutureList")
+    field.setAccessible(true)
+    return (field.get(handler) as List).size()
+  }
+
+  private static void schedule(GOPACSHandler handler, Runnable task, long delayMillis) {
+    def method = GOPACSHandler.getDeclaredMethod("schedule", Runnable, Long.TYPE)
+    method.setAccessible(true)
+    method.invoke(handler, task, delayMillis)
+  }
 
   private static String flexRequestXml(String congestionPoint) {
     """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
