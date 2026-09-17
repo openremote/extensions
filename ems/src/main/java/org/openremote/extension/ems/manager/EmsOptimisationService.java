@@ -33,13 +33,16 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.camel.builder.RouteBuilder;
 import org.openremote.container.message.MessageBrokerService;
 import org.openremote.container.timer.TimerService;
+import org.openremote.extension.ems.agent.EmsDistroEnergyAsset;
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset;
 import org.openremote.extension.ems.agent.EmsGOPACSAsset;
+import org.openremote.extension.ems.manager.distroenergy.DistroEnergyHandler;
 import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
 import org.openremote.extension.ems.manager.gopacs.GOPACSRedispatchHandler;
 import org.openremote.manager.asset.AssetProcessingService;
@@ -55,6 +58,7 @@ import org.openremote.model.asset.Asset;
 import org.openremote.model.asset.AssetFilter;
 import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
+import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointAllQuery;
 import org.openremote.model.query.AssetQuery;
@@ -68,6 +72,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
   protected GOPACSHandler.Factory gopacsHandlerFactory;
   protected GOPACSRedispatchHandler.Factory gopacsRedispatchHandlerFactory;
+  protected DistroEnergyHandler.Factory distroEnergyHandlerFactory;
 
   private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap =
       new ConcurrentHashMap<>();
@@ -82,6 +87,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   // across a whole transition so the two cannot interleave their stop/start pairs and leave a
   // handler registered over a live one that never gets undeployed.
   private final Object gopacsLifecycleLock = new Object();
+
+  // Keyed by asset id rather than portfolio: unlike GOPACS there is no external routing key, and
+  // the asset id stays stable when the portfolio is edited.
+  private final Map<String, DistroEnergyHandler> distroEnergyHandlerMap = new HashMap<>();
 
   @SuppressWarnings("unchecked")
   @Override
@@ -111,6 +120,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     gopacsHandlerFactory = new GOPACSHandler.Factory(container);
     gopacsRedispatchHandlerFactory = new GOPACSRedispatchHandler.Factory(container);
+    distroEnergyHandlerFactory = new DistroEnergyHandler.Factory(container);
   }
 
   @Override
@@ -163,11 +173,23 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         .map(asset -> (EmsGOPACSAsset) asset)
         .forEach(this::reconcileGopacsAsset);
 
+    // Start Distro Energy handler for all Distro Energy assets
+    services
+        .getAssetStorageService()
+        .findAll(
+            new AssetQuery()
+                .types(EmsDistroEnergyAsset.class)
+                .attributeName(EmsDistroEnergyAsset.PORTFOLIO.getName()))
+        .stream()
+        .map(asset -> (EmsDistroEnergyAsset) asset)
+        .forEach(this::startDistroEnergyHandler);
+
     // List of asset types that are part of the core EMS service
     String[] assetTypes = {
       EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
       EmsEnergyOptimisationAsset.DESCRIPTOR.getName(),
-      EmsGOPACSAsset.DESCRIPTOR.getName()
+      EmsGOPACSAsset.DESCRIPTOR.getName(),
+      EmsDistroEnergyAsset.DESCRIPTOR.getName(),
     };
 
     // Listen to attribute events of listed asset types
@@ -187,6 +209,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
       gopacsRedispatchHandlerMap.clear();
     }
+    distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
+    distroEnergyHandlerMap.clear();
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
     energyOptimisationTimersMap.clear();
   }
@@ -445,6 +469,72 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  private void startDistroEnergyHandler(EmsDistroEnergyAsset distroEnergyAsset) {
+    String assetId = distroEnergyAsset.getId();
+    String portfolio = distroEnergyAsset.getPortfolio().orElse("");
+
+    if (portfolio.isBlank()) {
+      LOG.warning(
+          "Unable to deploy Distro Energy because portfolio is blank for asset: " + assetId);
+      return;
+    }
+
+    // The forecast being submitted is the parent optimisation asset's net power.
+    String energyOptimisationAssetId = distroEnergyAsset.getParentId();
+    if (energyOptimisationAssetId == null) {
+      LOG.warning(
+          String.format(
+              "Unable to deploy Distro Energy for portfolio '%s'; asset '%s' has no parent '%s'",
+              portfolio, assetId, EmsEnergyOptimisationAsset.class.getSimpleName()));
+      return;
+    }
+
+    // find(..., EmsEnergyOptimisationAsset.class) returns null both for a missing asset and for one
+    // of the wrong type, which are the same problem here: there is no net power forecast to submit.
+    if (services
+            .getAssetStorageService()
+            .find(energyOptimisationAssetId, false, EmsEnergyOptimisationAsset.class)
+        == null) {
+      LOG.warning(
+          String.format(
+              "Unable to deploy Distro Energy for portfolio '%s'; parent '%s' of asset '%s' is not"
+                  + " an existing '%s'",
+              portfolio,
+              energyOptimisationAssetId,
+              assetId,
+              EmsEnergyOptimisationAsset.class.getSimpleName()));
+      return;
+    }
+
+    LOG.fine("Deploying Distro Energy for portfolio: " + portfolio);
+    DistroEnergyHandler handler;
+    try {
+      handler =
+          distroEnergyHandlerFactory.createHandler(
+              assetId,
+              new AttributeRef(
+                  energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_NET.getName()),
+              portfolio);
+    } catch (Exception e) {
+      // A missing client key or an unusable base URL must not take down the rest of the EMS
+      // service.
+      LOG.log(Level.WARNING, "Failed to deploy Distro Energy for portfolio: " + portfolio, e);
+      return;
+    }
+    // Registered before the schedule starts, so a handler whose deploy() is rejected during
+    // shutdown is still reachable from stop() and gets its client closed.
+    distroEnergyHandlerMap.put(assetId, handler);
+    handler.deploy();
+    LOG.fine("Deployed Distro Energy for portfolio: " + portfolio);
+  }
+
+  private void stopDistroEnergyHandler(String assetId) {
+    DistroEnergyHandler existing = distroEnergyHandlerMap.remove(assetId);
+    if (existing != null) {
+      existing.undeploy();
+    }
+  }
+
   protected void processAssetChange(PersistenceEvent<?> persistenceEvent) {
     if (persistenceEvent.getEntity()
         instanceof EmsEnergyOptimisationAsset emsEnergyOptimisationAsset) {
@@ -457,6 +547,21 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         // necessarily the key the running handler was registered under.
         case DELETE -> stopGopacsAsset(emsGOPACSAsset.getId());
         case CREATE, UPDATE -> reconcileGopacsAsset(emsGOPACSAsset);
+      }
+    } else if (persistenceEvent.getEntity() instanceof EmsDistroEnergyAsset emsDistroEnergyAsset) {
+      // distroEnergyHandlerMap is keyed by asset id, not portfolio: stop by asset id so this
+      // actually finds the handler to remove, and so DELETE cleans up even if the portfolio
+      // attribute is absent on the entity snapshot.
+      String assetId = emsDistroEnergyAsset.getId();
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
+        stopDistroEnergyHandler(assetId);
+      }
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
+        startDistroEnergyHandler(emsDistroEnergyAsset);
+      }
+      if (persistenceEvent.getCause() == PersistenceEvent.Cause.UPDATE) {
+        stopDistroEnergyHandler(assetId);
+        startDistroEnergyHandler(emsDistroEnergyAsset);
       }
     }
   }
@@ -472,6 +577,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     if (assetType.equals(EmsGOPACSAsset.DESCRIPTOR.getName())) {
       processAttributeEventEmsGOPACSAsset(attributeEvent);
       return;
+    }
+
+    if (assetType.equals(EmsDistroEnergyAsset.DESCRIPTOR.getName())) {
+      processAttributeEventEmsDistroEnergyAsset(attributeEvent);
     }
   }
 
@@ -838,6 +947,36 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   }
                 });
       }
+    }
+  }
+
+  private void processAttributeEventEmsDistroEnergyAsset(AttributeEvent attributeEvent) {
+    String assetId = attributeEvent.getId();
+
+    // Get asset from database
+    EmsDistroEnergyAsset emsDistroEnergyAsset =
+        (EmsDistroEnergyAsset) services.getAssetStorageService().find(assetId);
+
+    // Check if asset exists
+    if (emsDistroEnergyAsset == null) {
+      return;
+    }
+
+    String attributeName = attributeEvent.getName();
+
+    if (attributeName.equals(EmsDistroEnergyAsset.PORTFOLIO.getName())) {
+      attributeEvent
+          .getOldValue(String.class)
+          .ifPresent(
+              oldPortfolio -> {
+                stopDistroEnergyHandler(assetId);
+              });
+      attributeEvent
+          .getValue(String.class)
+          .ifPresent(
+              portfolio -> {
+                startDistroEnergyHandler(emsDistroEnergyAsset);
+              });
     }
   }
 
