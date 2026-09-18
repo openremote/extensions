@@ -323,20 +323,30 @@ public class DistroEnergyHandler {
    * and trailing alike, because the API requires the complete day and a volume on every entry.
    *
    * <p>A gap goes out as 0.0, which is a real trading position, except in the repeated hour of the
-   * fall-back day. Those four ISPs exist only because of the transition, and a producer writing a
+   * fall-back day. An ISP qualifies when its market local time occurs more than once in the day's
+   * grid: four ISPs against a whole-hour transition, two against a half-hour one such as
+   * Australia/Lord_Howe. Those ISPs exist only because of the transition, and a producer writing a
    * fixed 96-slot day leaves them without a row of their own, so they reuse the next forecast value
    * of the day rather than trade the hour away. With nothing left in the day to reuse they fall
    * back to 0.0 like any other gap.
+   *
+   * <p>They all reuse that same next value, so the hour goes out flat. That is deliberate.
+   * Borrowing from the ISP that shares the market local time would keep the hour's shape, at the
+   * price of a second fill rule, and one quarter-hour of the repeated hour is no better a guess for
+   * the others than the value that follows them.
    *
    * <p>The decision is taken from the ISP grid rather than from whatever the query returned, so a
    * value belonging to a neighbouring day can never make this day look covered.
    *
    * <p>Under a JVM zone that observes DST the storage frame is not monotonic, so on the fall-back
-   * day the two instants of the repeated hour collapse onto a single stored row and both read the
-   * same value. That is a consequence of the naive primary key upstream
-   * (openremote/openremote#3292); once predicted datapoints are stored in UTC every instant maps to
-   * a distinct row and this method becomes exact without changing. The collapse can only duplicate
-   * a read, never erase one, so it cannot turn a day with a forecast into a skip.
+   * day the two instants of the repeated hour collapse onto a single stored row and both read it.
+   * That is a consequence of the naive primary key upstream (openremote/openremote#3292). The
+   * collapse can only duplicate a read, never erase one, so it cannot turn a day with a forecast
+   * into a skip, and while it lasts the repeated hour is never a gap at all: both passes read the
+   * one surviving row, so the hour carries as many distinct values as it has ISPs. Once predicted
+   * datapoints are stored in UTC every instant maps to a row of its own, a producer that writes the
+   * hour once leaves the other pass empty, and that pass is filled flat as above. The day submitted
+   * on the fall-back date therefore changes when #3292 lands; no other day is affected.
    */
   static List<SubmissionData> buildSubmissionData(
       LocalDate marketDate,
@@ -367,8 +377,9 @@ public class DistroEnergyHandler {
     Set<LocalDateTime> seenLocalTimes = new HashSet<>();
     Set<LocalDateTime> repeatedLocalTimes = new HashSet<>();
     for (ZonedDateTime isp : isps) {
-      if (!seenLocalTimes.add(isp.toLocalDateTime())) {
-        repeatedLocalTimes.add(isp.toLocalDateTime());
+      LocalDateTime localTime = isp.toLocalDateTime();
+      if (!seenLocalTimes.add(localTime)) {
+        repeatedLocalTimes.add(localTime);
       }
     }
 
