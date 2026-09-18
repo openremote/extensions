@@ -319,18 +319,34 @@ public class DistroEnergyHandler {
    * <p>An empty result means "nothing to submit" and cannot be confused with a real day, which is
    * never shorter than 92 entries. A day beyond the external forecast producer's horizon
    * legitimately has no data, and submitting it would post a zero net power trading position for a
-   * day we know nothing about. Within a day that does have a forecast every gap is filled with 0.0,
-   * interior and trailing alike, because the API requires the complete day.
+   * day we know nothing about. Within a day that does have a forecast every gap is filled, interior
+   * and trailing alike, because the API requires the complete day and a volume on every entry.
+   *
+   * <p>A gap goes out as 0.0, which is a real trading position, except in the repeated hour of the
+   * fall-back day. An ISP qualifies when its market local time occurs more than once in the day's
+   * grid: four ISPs against a whole-hour transition, two against a half-hour one such as
+   * Australia/Lord_Howe. Those ISPs exist only because of the transition, and a producer writing a
+   * fixed 96-slot day leaves them without a row of their own, so they reuse the next forecast value
+   * of the day rather than trade the hour away. With nothing left in the day to reuse they fall
+   * back to 0.0 like any other gap.
+   *
+   * <p>They all reuse that same next value, so the hour goes out flat. That is deliberate.
+   * Borrowing from the ISP that shares the market local time would keep the hour's shape, at the
+   * price of a second fill rule, and one quarter-hour of the repeated hour is no better a guess for
+   * the others than the value that follows them.
    *
    * <p>The decision is taken from the ISP grid rather than from whatever the query returned, so a
    * value belonging to a neighbouring day can never make this day look covered.
    *
    * <p>Under a JVM zone that observes DST the storage frame is not monotonic, so on the fall-back
-   * day the two instants of the repeated hour collapse onto a single stored row and both read the
-   * same value. That is a consequence of the naive primary key upstream
-   * (openremote/openremote#3292); once predicted datapoints are stored in UTC every instant maps to
-   * a distinct row and this method becomes exact without changing. The collapse can only duplicate
-   * a read, never erase one, so it cannot turn a day with a forecast into a skip.
+   * day the two instants of the repeated hour collapse onto a single stored row and both read it.
+   * That is a consequence of the naive primary key upstream (openremote/openremote#3292). The
+   * collapse can only duplicate a read, never erase one, so it cannot turn a day with a forecast
+   * into a skip, and while it lasts the repeated hour is never a gap at all: both passes read the
+   * one surviving row, so the hour carries as many distinct values as it has ISPs. Once predicted
+   * datapoints are stored in UTC every instant maps to a row of its own, a producer that writes the
+   * hour once leaves the other pass empty, and that pass is filled flat as above. The day submitted
+   * on the fall-back date therefore changes when #3292 lands; no other day is affected.
    */
   static List<SubmissionData> buildSubmissionData(
       LocalDate marketDate,
@@ -340,7 +356,7 @@ public class DistroEnergyHandler {
 
     Map<LocalDateTime, Double> valuesByStorageKey = new HashMap<>();
     for (ValueDatapoint<?> datapoint : datapoints) {
-      // Gap-filled buckets carry a null value; skip them so they fall through to the default below.
+      // Gap-filled buckets carry a null value; skip them so they fall through to the fill below.
       if (datapoint.getValue() instanceof Number value) {
         valuesByStorageKey.put(
             Instant.ofEpochMilli(datapoint.getTimestamp()).atZone(storageZone).toLocalDateTime(),
@@ -351,33 +367,74 @@ public class DistroEnergyHandler {
     ZonedDateTime dayStart = marketDate.atStartOfDay(marketZone);
     ZonedDateTime dayEnd = dayStart.plusDays(1);
 
-    List<SubmissionData> submissionData = new ArrayList<>();
+    List<ZonedDateTime> isps = new ArrayList<>();
+    for (ZonedDateTime isp = dayStart; isp.isBefore(dayEnd); isp = isp.plus(ISP_DURATION)) {
+      isps.add(isp);
+    }
+
+    // The repeated hour of the fall-back day is the only stretch whose market local time is not
+    // unique within the day, so on every other day this stays empty and nothing borrows a value.
+    Set<LocalDateTime> seenLocalTimes = new HashSet<>();
+    Set<LocalDateTime> repeatedLocalTimes = new HashSet<>();
+    for (ZonedDateTime isp : isps) {
+      LocalDateTime localTime = isp.toLocalDateTime();
+      if (!seenLocalTimes.add(localTime)) {
+        repeatedLocalTimes.add(localTime);
+      }
+    }
+
+    Double[] values = new Double[isps.size()];
     Set<LocalDateTime> keysRead = new HashSet<>();
-    int missing = 0;
     int collapsed = 0;
     int lastRealPosition = 0;
-    int position = 1;
 
-    for (ZonedDateTime isp = dayStart; isp.isBefore(dayEnd); isp = isp.plus(ISP_DURATION)) {
-      LocalDateTime storageKey = isp.withZoneSameInstant(storageZone).toLocalDateTime();
+    for (int i = 0; i < isps.size(); i++) {
+      LocalDateTime storageKey = isps.get(i).withZoneSameInstant(storageZone).toLocalDateTime();
       Double value = valuesByStorageKey.get(storageKey);
+      values[i] = value;
 
-      if (value == null) {
-        missing++;
-      } else {
-        lastRealPosition = position;
+      if (value != null) {
+        lastRealPosition = i + 1;
         if (!keysRead.add(storageKey)) {
           collapsed++;
         }
       }
-
-      submissionData.add(new SubmissionData(position++, null, null, value != null ? value : 0.0));
     }
 
     // Nothing at all was forecast for this day. Hand the caller the empty sentinel and stay silent
     // here: the caller knows the portfolio and owns the log line.
     if (lastRealPosition == 0) {
       return List.of();
+    }
+
+    // Walk backwards so every gap has the next forecast value of the day to hand. Only the repeated
+    // DST hour takes it. A filled position never becomes a source, so what is borrowed is always a
+    // real forecast value rather than another gap's 0.0.
+    int dstFilled = 0;
+    int interiorMissing = 0;
+    int trailingMissing = 0;
+    Double nextRealValue = null;
+
+    for (int i = values.length - 1; i >= 0; i--) {
+      if (values[i] != null) {
+        nextRealValue = values[i];
+      } else if (nextRealValue != null
+          && repeatedLocalTimes.contains(isps.get(i).toLocalDateTime())) {
+        values[i] = nextRealValue;
+        dstFilled++;
+      } else {
+        values[i] = 0.0;
+        if (i + 1 > lastRealPosition) {
+          trailingMissing++;
+        } else {
+          interiorMissing++;
+        }
+      }
+    }
+
+    List<SubmissionData> submissionData = new ArrayList<>(values.length);
+    for (int i = 0; i < values.length; i++) {
+      submissionData.add(new SubmissionData(i + 1, null, null, values[i]));
     }
 
     if (collapsed > 0) {
@@ -394,8 +451,19 @@ public class DistroEnergyHandler {
               + " predicted datapoint row (openremote/openremote#3292)");
     }
 
-    int trailingMissing = submissionData.size() - lastRealPosition;
-    int interiorMissing = missing - trailingMissing;
+    if (dstFilled > 0) {
+      // Expected against a producer that writes a fixed 96-slot day: the four extra ISPs of the
+      // fall-back hour have no row of their own to read.
+      LOG.warning(
+          "Day-ahead submission for "
+              + marketDate
+              + " has "
+              + dstFilled
+              + " of "
+              + submissionData.size()
+              + " positions in the repeated DST hour without a predicted datapoint; each reuses the"
+              + " next forecast value of the day");
+    }
 
     if (interiorMissing > 0) {
       // A hole before the end of the forecast means the producer skipped intervals it did cover,

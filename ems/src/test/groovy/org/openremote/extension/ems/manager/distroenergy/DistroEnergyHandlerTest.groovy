@@ -82,6 +82,19 @@ class DistroEnergyHandlerTest extends Specification {
     new ArrayList<>(byStorageKey.values())
   }
 
+  /**
+   * The same datapoints with the given ISP indices of the day removed, the way a producer that
+   * writes a fixed 96-slot day leaves the extra ISPs of the fall-back hour unwritten.
+   *
+   * Only meaningful under a storage zone that keeps every ISP on its own row, so the index dropped
+   * is the position emptied.
+   */
+  static List<ValueDatapoint<?>> withoutIsps(List<ValueDatapoint<?>> datapoints, LocalDate marketDate,
+          List<Integer> indices) {
+    def dropped = indices.collect { ispInstants(marketDate)[it].toInstant().toEpochMilli() } as Set
+    datapoints.findAll { !dropped.contains(it.timestamp) }
+  }
+
   static long expectedIsps(LocalDate marketDate) {
     DateTimeCalculation.numberOfIspsOnDay(marketDate, ISP, MARKET.id)
   }
@@ -138,6 +151,87 @@ class DistroEnergyHandlerTest extends Specification {
 
     and: "and none of them defaulted to 0.0, they reuse the surviving twin"
     data*.volume.every { it != 0.0d }
+
+    and: "each pass carries the four distinct values of the row that survived the collapse"
+    data[8..11]*.volume == [13.0d, 14.0d, 15.0d, 16.0d]
+    data[12..15]*.volume == [13.0d, 14.0d, 15.0d, 16.0d]
+  }
+
+  @Unroll
+  def "a repeated DST hour with no datapoints of its own reuses the next forecast value: #label"() {
+    given: "a UTC storage frame, where the two passes of the fall-back hour keep separate rows"
+    def datapoints = withoutIsps(datapointsFor(FALL_BACK, UTC_STORAGE), FALL_BACK, dropped)
+
+    expect: "the producer covered 96 of the 100 ISPs, as a fixed 96-slot day would"
+    datapoints.size() == 96
+
+    when:
+    def data = DistroEnergyHandler.buildSubmissionData(FALL_BACK, MARKET, UTC_STORAGE, datapoints)
+
+    then: "the submission is still the full 100 entries the API requires"
+    data.size() == 100
+
+    and: "the emptied positions all took the next real value rather than trading the hour away"
+    data[dropped]*.volume == [expectedVolume] * dropped.size()
+
+    and: "the pass that kept its rows is untouched, so the fill never overwrites a real value"
+    data[kept]*.volume == kept.collect { (it + 1) * 1.0d }
+
+    and: "nothing outside the repeated hour moved"
+    data[0..7]*.volume == (1..8).collect { it * 1.0d }
+    data[16..99]*.volume == (17..100).collect { it * 1.0d }
+
+    where:
+    label | dropped | kept || expectedVolume
+    "first pass, 02:00-02:45 CEST" | [8, 9, 10, 11] | [12, 13, 14, 15] || 13.0d
+    "second pass, 02:00-02:45 CET" | [12, 13, 14, 15] | [8, 9, 10, 11] || 17.0d
+  }
+
+  def "the repeated hour looks past filled 0.0 positions for a real value"() {
+    given: "the repeated hour and the two ISPs after it are both unwritten"
+    def datapoints = withoutIsps(datapointsFor(FALL_BACK, UTC_STORAGE), FALL_BACK,
+            [12, 13, 14, 15, 16, 17])
+
+    when:
+    def data = DistroEnergyHandler.buildSubmissionData(FALL_BACK, MARKET, UTC_STORAGE, datapoints)
+
+    then: "03:00 and 03:15 are ordinary gaps, so they are 0.0 and not a source to borrow from"
+    data[16..17]*.volume == [0.0d, 0.0d]
+
+    and: "the repeated hour reaches past them to 03:30, the next value that is real"
+    data[12..15]*.volume == [19.0d, 19.0d, 19.0d, 19.0d]
+    data[18].volume == 19.0d
+  }
+
+  def "a repeated DST hour with nothing left to reuse falls back to 0.0"() {
+    given: "the forecast horizon ends before the repeated hour begins"
+    def datapoints = datapointsFor(FALL_BACK, UTC_STORAGE).take(8)
+
+    when:
+    def data = DistroEnergyHandler.buildSubmissionData(FALL_BACK, MARKET, UTC_STORAGE, datapoints)
+
+    then: "the day is still submitted in full"
+    data.size() == 100
+
+    and: "the API requires a volume, so the repeated hour is 0.0 like the rest of the tail"
+    data[8..15]*.volume.every { it == 0.0d }
+    data[16..99]*.volume.every { it == 0.0d }
+  }
+
+  def "a gap outside the repeated hour is still 0.0 on the fall-back day"() {
+    given: "one afternoon ISP is missing on a day that does carry a DST transition"
+    def datapoints = withoutIsps(datapointsFor(FALL_BACK, UTC_STORAGE), FALL_BACK, [60])
+
+    when:
+    def data = DistroEnergyHandler.buildSubmissionData(FALL_BACK, MARKET, UTC_STORAGE, datapoints)
+
+    then: "only the repeated hour borrows a neighbour; an ordinary gap is a real trading position"
+    data.size() == 100
+    data[60].volume == 0.0d
+
+    and: "its neighbours are untouched"
+    data[59].volume == 60.0d
+    data[61].volume == 62.0d
   }
 
   def "spring-forward day never looks up the non-existent local hour"() {
@@ -279,6 +373,7 @@ class DistroEnergyHandlerTest extends Specification {
     data.size() == 100
 
     and: "both passes read the surviving row, so the collapse only ever adds a read"
-    data.findAll { it.volume == 3.25d }*.position == [9, 13]
+    data[8].volume == 3.25d // 02:00 CEST, the pass that wrote the row
+    data[12].volume == 3.25d // 02:00 CET, the same row read a second time
   }
 }
