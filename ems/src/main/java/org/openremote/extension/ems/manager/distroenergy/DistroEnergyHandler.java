@@ -62,7 +62,7 @@ public class DistroEnergyHandler {
   public static final String DISTRO_ENERGY_CLIENT_KEY = "DISTRO_ENERGY_CLIENT_KEY";
   public static final String DISTRO_ENERGY_BASE_URL = "DISTRO_ENERGY_BASE_URL";
   public static final String DISTRO_ENERGY_BASE_URL_DEFAULT =
-          "https://ibt.dev.distro.energy/api/v1";
+      "https://ibt.dev.distro.energy/api/v1";
   public static final String DISTRO_ENERGY_TIMEZONE = "DISTRO_ENERGY_TIMEZONE";
   public static final String DISTRO_ENERGY_TIMEZONE_DEFAULT = "Europe/Amsterdam";
   public static final String REQUEST_INTERVAL_MINUTES = "REQUEST_INTERVAL";
