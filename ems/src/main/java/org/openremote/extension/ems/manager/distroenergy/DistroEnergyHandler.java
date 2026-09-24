@@ -53,6 +53,7 @@ import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointIntervalQuery;
 import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.util.ValueUtil;
 import org.openremote.model.value.AttributeDescriptor;
 
 public class DistroEnergyHandler {
@@ -288,13 +289,27 @@ public class DistroEnergyHandler {
       return false;
     }
 
-    dayAheadResource.postDayAhead(
-        portfolio,
-        clientKey,
+    DayAheadSubmission submission =
         new DayAheadSubmission(
             submissionData.toArray(new SubmissionData[0]),
             Long.parseLong(marketDate.format(BASIC_ISO_DATE)),
-            timerService.getCurrentTimeMillis()));
+            timerService.getCurrentTimeMillis());
+    LOG.fine(
+        "Posting day-ahead forecast for portfolio "
+            + portfolio
+            + " and day "
+            + submission.day()
+            + " ("
+            + submission.submissionData().length
+            + " interval(s), creationTimestamp "
+            + submission.creationTimestamp()
+            + ")");
+    LOG.finest(
+        "Day-ahead payload for portfolio "
+            + portfolio
+            + ": "
+            + ValueUtil.asJSON(submission).orElse("<unserializable>"));
+    dayAheadResource.postDayAhead(portfolio, clientKey, submission);
     LOG.fine(
         "Submitted day-ahead forecast for portfolio "
             + portfolio
