@@ -95,6 +95,24 @@ class DistroEnergyHandlerTest extends Specification {
     datapoints.findAll { !dropped.contains(it.timestamp) }
   }
 
+  /** The volume a forecast value goes out as; the fill tests below reason in forecast kW. */
+  static double volume(double powerNetKw) {
+    DistroEnergyHandler.toVolume(powerNetKw)
+  }
+
+  @Unroll
+  def "a forecast of #powerNetKw kW over one ISP goes out as #expected kWh"() {
+    expect: "energy over 15 minutes, import signed as a buy (negative), in 0.01 kWh steps"
+    DistroEnergyHandler.toVolume(powerNetKw) == expected
+
+    where:
+    powerNetKw | expected
+    40.0d | -10.0d
+    -12.0d | 3.0d
+    53.18236237777778d | -13.3d
+    0.0d | 0.0d
+  }
+
   static long expectedIsps(LocalDate marketDate) {
     DateTimeCalculation.numberOfIspsOnDay(marketDate, ISP, MARKET.id)
   }
@@ -133,7 +151,7 @@ class DistroEnergyHandlerTest extends Specification {
 
     then: "no row collision, so all 100 forecast values survive"
     datapoints.size() == 100
-    data*.volume == (1..100).collect { it * 1.0d }
+    data*.volume == (1..100).collect { volume(it) }
   }
 
   def "Amsterdam storage still fills 100 entries when the repeated hour collapses"() {
@@ -153,8 +171,8 @@ class DistroEnergyHandlerTest extends Specification {
     data*.volume.every { it != 0.0d }
 
     and: "each pass carries the four distinct values of the row that survived the collapse"
-    data[8..11]*.volume == [13.0d, 14.0d, 15.0d, 16.0d]
-    data[12..15]*.volume == [13.0d, 14.0d, 15.0d, 16.0d]
+    data[8..11]*.volume == [13, 14, 15, 16].collect { volume(it) }
+    data[12..15]*.volume == [13, 14, 15, 16].collect { volume(it) }
   }
 
   @Unroll
@@ -172,17 +190,17 @@ class DistroEnergyHandlerTest extends Specification {
     data.size() == 100
 
     and: "the emptied positions all took the next real value rather than trading the hour away"
-    data[dropped]*.volume == [expectedVolume] * dropped.size()
+    data[dropped]*.volume == [volume(expectedKw)] * dropped.size()
 
     and: "the pass that kept its rows is untouched, so the fill never overwrites a real value"
-    data[kept]*.volume == kept.collect { (it + 1) * 1.0d }
+    data[kept]*.volume == kept.collect { volume(it + 1) }
 
     and: "nothing outside the repeated hour moved"
-    data[0..7]*.volume == (1..8).collect { it * 1.0d }
-    data[16..99]*.volume == (17..100).collect { it * 1.0d }
+    data[0..7]*.volume == (1..8).collect { volume(it) }
+    data[16..99]*.volume == (17..100).collect { volume(it) }
 
     where:
-    label | dropped | kept || expectedVolume
+    label | dropped | kept || expectedKw
     "first pass, 02:00-02:45 CEST" | [8, 9, 10, 11] | [12, 13, 14, 15] || 13.0d
     "second pass, 02:00-02:45 CET" | [12, 13, 14, 15] | [8, 9, 10, 11] || 17.0d
   }
@@ -199,8 +217,8 @@ class DistroEnergyHandlerTest extends Specification {
     data[16..17]*.volume == [0.0d, 0.0d]
 
     and: "the repeated hour reaches past them to 03:30, the next value that is real"
-    data[12..15]*.volume == [19.0d, 19.0d, 19.0d, 19.0d]
-    data[18].volume == 19.0d
+    data[12..15]*.volume == [volume(19)] * 4
+    data[18].volume == volume(19)
   }
 
   def "a repeated DST hour with nothing left to reuse falls back to 0.0"() {
@@ -230,8 +248,8 @@ class DistroEnergyHandlerTest extends Specification {
     data[60].volume == 0.0d
 
     and: "its neighbours are untouched"
-    data[59].volume == 60.0d
-    data[61].volume == 62.0d
+    data[59].volume == volume(60)
+    data[61].volume == volume(62)
   }
 
   def "spring-forward day never looks up the non-existent local hour"() {
@@ -246,7 +264,7 @@ class DistroEnergyHandlerTest extends Specification {
 
     then: "so nothing is filled and every value is real"
     data.size() == 92
-    data*.volume == (1..92).collect { it * 1.0d }
+    data*.volume == (1..92).collect { volume(it) }
   }
 
   def "missing forecast intervals become 0.0 rather than throwing"() {
@@ -308,7 +326,7 @@ class DistroEnergyHandlerTest extends Specification {
     data*.position == (1..96).toList()
 
     and: "the covered intervals keep their real values"
-    data[0..39]*.volume == (1..40).collect { it * 1.0d }
+    data[0..39]*.volume == (1..40).collect { volume(it) }
 
     and: "and the tail to midnight is filled with 0.0"
     data[40..95]*.volume.every { it == 0.0d }
@@ -325,7 +343,7 @@ class DistroEnergyHandlerTest extends Specification {
 
     then: "the day is complete, with that one value in place and the rest filled"
     data.size() == 96
-    data[realPosition - 1].volume == 7.5d
+    data[realPosition - 1].volume == volume(7.5)
     data.findAll { it.volume == 0.0d }.size() == 95
 
     where:
@@ -373,7 +391,7 @@ class DistroEnergyHandlerTest extends Specification {
     data.size() == 100
 
     and: "both passes read the surviving row, so the collapse only ever adds a read"
-    data[8].volume == 3.25d // 02:00 CEST, the pass that wrote the row
-    data[12].volume == 3.25d // 02:00 CET, the same row read a second time
+    data[8].volume == volume(3.25) // 02:00 CEST, the pass that wrote the row
+    data[12].volume == volume(3.25) // 02:00 CET, the same row read a second time
   }
 }

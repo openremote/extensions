@@ -308,6 +308,16 @@ public class DistroEnergyHandler {
   }
 
   /**
+   * Converts the forecast average net power over one ISP to the order volume the API expects:
+   * energy in kWh, signed from the market's side. Positive powerNet is import, which is a buy, and
+   * the API signs buys negative. Rounded to the 0.01 kWh steps the API accepts.
+   */
+  static double toVolume(double powerNetKw) {
+    double kWh = -powerNetKw * ISP_DURATION.toMinutes() / 60.0;
+    return Math.round(kWh * 100) / 100.0;
+  }
+
+  /**
    * Builds one submission entry per ISP of the given market day, in ascending position order, or an
    * empty list when the day carries no forecast at all.
    *
@@ -435,9 +445,7 @@ public class DistroEnergyHandler {
 
     List<SubmissionData> submissionData = new ArrayList<>(values.length);
     for (int i = 0; i < values.length; i++) {
-      // The API only accepts volumes that are a multiple of 0.01.
-      submissionData.add(
-          new SubmissionData(i + 1, null, null, Math.round(values[i] * 100) / 100.0));
+      submissionData.add(new SubmissionData(i + 1, null, null, toVolume(values[i])));
     }
 
     if (collapsed > 0) {
