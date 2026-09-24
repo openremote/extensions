@@ -71,11 +71,10 @@ public class DistroEnergyHandler {
   protected static final Duration ISP_DURATION = Duration.ofMinutes(15);
 
   /**
-   * Defensive ceiling on one run, not a business window. The loop stops at the first day with no
-   * forecast, so this only bounds the damage if a stray far-future datapoint makes the horizon look
-   * unbounded.
+   * How far ahead the API accepts a delivery day: at most five days after today, market time. The
+   * loop also stops at the first day with no forecast, so a shorter horizon ends the run earlier.
    */
-  protected static final int MAX_DAYS_AHEAD = 14;
+  protected static final int MAX_DAYS_AHEAD = 5;
 
   /** The {@link EmsDistroEnergyAsset} this handler reports its status on. */
   protected final String assetId;
@@ -228,20 +227,7 @@ public class DistroEnergyHandler {
       sendAttributeEvent(EmsDistroEnergyAsset.LAST_SUBMISSION, timerService.getCurrentTimeMillis());
     }
 
-    // Reaching the ceiling means the horizon looked unbounded, which the forecast producer cannot
-    // legitimately do; the run was truncated and later days were not sent.
-    if (submitted >= MAX_DAYS_AHEAD) {
-      LOG.warning(
-          "Day-ahead run for portfolio "
-              + portfolio
-              + " hit the ceiling of "
-              + MAX_DAYS_AHEAD
-              + " days; check the predicted "
-              + powerNetAttributeRef.getName()
-              + " data for far-future values");
-    } else {
-      LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
-    }
+    LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
   }
 
   /**
@@ -293,14 +279,14 @@ public class DistroEnergyHandler {
         new DayAheadSubmission(
             submissionData.toArray(new SubmissionData[0]),
             Long.parseLong(marketDate.format(BASIC_ISO_DATE)),
-            timerService.getCurrentTimeMillis());
+            timerService.getNow().getEpochSecond());
     LOG.fine(
         "Posting day-ahead forecast for portfolio "
             + portfolio
             + " and day "
             + submission.day()
             + " ("
-            + submission.submissionData().length
+            + submission.data().length
             + " interval(s), creationTimestamp "
             + submission.creationTimestamp()
             + ")");
@@ -449,7 +435,9 @@ public class DistroEnergyHandler {
 
     List<SubmissionData> submissionData = new ArrayList<>(values.length);
     for (int i = 0; i < values.length; i++) {
-      submissionData.add(new SubmissionData(i + 1, null, null, values[i]));
+      // The API only accepts volumes that are a multiple of 0.01.
+      submissionData.add(
+          new SubmissionData(i + 1, null, null, Math.round(values[i] * 100) / 100.0));
     }
 
     if (collapsed > 0) {
