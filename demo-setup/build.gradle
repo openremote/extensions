@@ -13,10 +13,6 @@ dependencies {
   implementation project(":energy")
 }
 
-jar {
-  from sourceSets.main.allJava
-}
-
 javadoc {
   failOnError = false
 }
