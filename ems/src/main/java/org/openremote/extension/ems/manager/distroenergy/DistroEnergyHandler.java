@@ -53,6 +53,7 @@ import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointIntervalQuery;
 import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.util.ValueUtil;
 import org.openremote.model.value.AttributeDescriptor;
 
 public class DistroEnergyHandler {
@@ -60,7 +61,8 @@ public class DistroEnergyHandler {
   private static final Logger LOG = SyslogCategory.getLogger(API, DistroEnergyHandler.class);
   public static final String DISTRO_ENERGY_CLIENT_KEY = "DISTRO_ENERGY_CLIENT_KEY";
   public static final String DISTRO_ENERGY_BASE_URL = "DISTRO_ENERGY_BASE_URL";
-  public static final String DISTRO_ENERGY_BASE_URL_DEFAULT = "https://ibt.dev.distro.energy/";
+  public static final String DISTRO_ENERGY_BASE_URL_DEFAULT =
+      "https://ibt.dev.distro.energy/api/v1";
   public static final String DISTRO_ENERGY_TIMEZONE = "DISTRO_ENERGY_TIMEZONE";
   public static final String DISTRO_ENERGY_TIMEZONE_DEFAULT = "Europe/Amsterdam";
   public static final String REQUEST_INTERVAL_MINUTES = "REQUEST_INTERVAL";
@@ -70,11 +72,10 @@ public class DistroEnergyHandler {
   protected static final Duration ISP_DURATION = Duration.ofMinutes(15);
 
   /**
-   * Defensive ceiling on one run, not a business window. The loop stops at the first day with no
-   * forecast, so this only bounds the damage if a stray far-future datapoint makes the horizon look
-   * unbounded.
+   * How far ahead the API accepts a delivery day: at most five days after today, market time. The
+   * loop also stops at the first day with no forecast, so a shorter horizon ends the run earlier.
    */
-  protected static final int MAX_DAYS_AHEAD = 14;
+  protected static final int MAX_DAYS_AHEAD = 5;
 
   /** The {@link EmsDistroEnergyAsset} this handler reports its status on. */
   protected final String assetId;
@@ -227,20 +228,7 @@ public class DistroEnergyHandler {
       sendAttributeEvent(EmsDistroEnergyAsset.LAST_SUBMISSION, timerService.getCurrentTimeMillis());
     }
 
-    // Reaching the ceiling means the horizon looked unbounded, which the forecast producer cannot
-    // legitimately do; the run was truncated and later days were not sent.
-    if (submitted >= MAX_DAYS_AHEAD) {
-      LOG.warning(
-          "Day-ahead run for portfolio "
-              + portfolio
-              + " hit the ceiling of "
-              + MAX_DAYS_AHEAD
-              + " days; check the predicted "
-              + powerNetAttributeRef.getName()
-              + " data for far-future values");
-    } else {
-      LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
-    }
+    LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
   }
 
   /**
@@ -288,13 +276,27 @@ public class DistroEnergyHandler {
       return false;
     }
 
-    dayAheadResource.postDayAhead(
-        portfolio,
-        clientKey,
+    DayAheadSubmission submission =
         new DayAheadSubmission(
             submissionData.toArray(new SubmissionData[0]),
             Long.parseLong(marketDate.format(BASIC_ISO_DATE)),
-            timerService.getCurrentTimeMillis()));
+            timerService.getNow().getEpochSecond());
+    LOG.fine(
+        "Posting day-ahead forecast for portfolio "
+            + portfolio
+            + " and day "
+            + submission.day()
+            + " ("
+            + submission.data().length
+            + " interval(s), creationTimestamp "
+            + submission.creationTimestamp()
+            + ")");
+    LOG.finest(
+        "Day-ahead payload for portfolio "
+            + portfolio
+            + ": "
+            + ValueUtil.asJSON(submission).orElse("<unserializable>"));
+    dayAheadResource.postDayAhead(portfolio, clientKey, submission);
     LOG.fine(
         "Submitted day-ahead forecast for portfolio "
             + portfolio
@@ -304,6 +306,16 @@ public class DistroEnergyHandler {
             + submissionData.size()
             + " interval(s))");
     return true;
+  }
+
+  /**
+   * Converts the forecast average net power over one ISP to the order volume the API expects:
+   * energy in kWh, signed from the market's side. Positive powerNet is import, which is a buy, and
+   * the API signs buys negative. Rounded to the 0.01 kWh steps the API accepts.
+   */
+  static double toVolume(double powerNetKw) {
+    double kWh = -powerNetKw * ISP_DURATION.toMinutes() / 60.0;
+    return Math.round(kWh * 100) / 100.0;
   }
 
   /**
@@ -434,7 +446,7 @@ public class DistroEnergyHandler {
 
     List<SubmissionData> submissionData = new ArrayList<>(values.length);
     for (int i = 0; i < values.length; i++) {
-      submissionData.add(new SubmissionData(i + 1, null, null, values[i]));
+      submissionData.add(new SubmissionData(i + 1, null, null, toVolume(values[i])));
     }
 
     if (collapsed > 0) {
