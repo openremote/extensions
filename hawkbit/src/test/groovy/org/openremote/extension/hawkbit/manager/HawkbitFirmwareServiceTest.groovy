@@ -1,0 +1,675 @@
+/*
+ * Copyright 2025, OpenRemote Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+package org.openremote.extension.hawkbit.manager
+
+import groovy.json.JsonSlurper
+import jakarta.ws.rs.core.Response
+import org.openremote.extension.hawkbit.manager.hawkbit.HawkbitTargetsClient
+import org.openremote.extension.hawkbit.model.FirmwareMetaItemType
+import org.openremote.extension.hawkbit.model.hawkbit.MetadataUpdateRequest
+import org.openremote.extension.hawkbit.model.hawkbit.Target
+import org.openremote.extension.hawkbit.model.hawkbit.TargetCreateRequest
+import org.openremote.extension.hawkbit.model.hawkbit.TargetMetadata
+import org.openremote.extension.hawkbit.model.hawkbit.TargetUpdateRequest
+import org.openremote.model.asset.Asset
+import org.openremote.model.asset.AssetEvent
+import org.openremote.model.attribute.*
+import org.openremote.manager.asset.AssetProcessingService
+import org.openremote.model.value.ValueType
+import org.openremote.test.ManagerContainerTrait
+import spock.lang.Specification
+
+import static org.openremote.model.value.ValueType.TEXT
+
+class HawkbitFirmwareServiceTest extends Specification implements ManagerContainerTrait {
+
+  private static final String CONTROLLER_ID = "test-asset-id"
+
+  /**
+   * Subclass that bypasses asset type descriptor lookup so asset sync logic can be tested
+   * with any asset type.
+   */
+  static class TestableHawkbitFirmwareService extends HawkbitFirmwareService {
+    TestableHawkbitFirmwareService() {
+      hawkbitRealm = "test-realm"
+    }
+
+    Optional<Attribute<?>> getTargetInfoAttribute(Asset asset) {
+      return Optional.of(new Attribute<String>("firmwareTarget", TEXT))
+    }
+
+    boolean isTargetManagedByOpenRemote(String controllerId) {
+      return true
+    }
+  }
+
+  def "getTargetInfoAttribute accepts one marked TEXT attribute"() {
+    given: "an asset with exactly one TEXT attribute marked as a firmware target"
+    def service = new HawkbitFirmwareService()
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+    def targetInfoAttribute = new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta)
+
+    def asset = Mock(Asset)
+    asset.getAttributes() >> new AttributeMap([targetInfoAttribute])
+
+    when: "the firmware target attribute is resolved"
+    def result = service.getTargetInfoAttribute(asset)
+
+    then: "the marked TEXT attribute is returned"
+    result.isPresent()
+    result.get().is(targetInfoAttribute)
+  }
+
+  def "getTargetInfoAttribute rejects a marked non-TEXT attribute"() {
+    given: "an asset with an INTEGER attribute marked as a firmware target"
+    def service = new HawkbitFirmwareService()
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", ValueType.INTEGER).setMeta(meta)])
+
+    expect: "the invalid attribute is ignored"
+    service.getTargetInfoAttribute(asset) == Optional.empty()
+  }
+
+  def "getTargetInfoAttribute rejects multiple marked attributes"() {
+    given: "an asset with multiple attributes marked as firmware target"
+    def service = new HawkbitFirmwareService()
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+    def asset = Mock(Asset)
+    asset.getType() >> "unknown:asset:type"
+    asset.getAttributes() >> new AttributeMap([
+      new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta),
+      new Attribute<>("otherFirmwareTargetInfo", TEXT).setMeta(meta)
+    ])
+
+    expect: "ambiguous firmware target info attributes are ignored"
+    service.getTargetInfoAttribute(asset) == Optional.empty()
+  }
+
+  def "handleAssetChange does not call hawkBit for a marked non-TEXT attribute"() {
+    given: "an asset with an invalid firmware target attribute"
+    def service = new HawkbitFirmwareService()
+    def targets = Mock(HawkbitTargetsClient)
+    service.targets = targets
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", ValueType.INTEGER).setMeta(meta)])
+
+    when: "the asset is synchronized"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+    then: "validation stops processing before any hawkBit request"
+    0 * targets._
+  }
+
+  def "handleAssetChange with CREATE cause creates target when it does not exist"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getAttributes() >> new AttributeMap()
+
+    when: "handling an asset CREATE event"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+    then: "hawkBit checks (404), creates, then uses the created target to update target info"
+    1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
+    1 * service.targets.create({ TargetCreateRequest[] targets ->
+      targets.length == 1 && targets[0].securityToken() == null
+    }) >> Response.ok(new Target[]{
+      createdTarget
+    }).build()
+    1 * service.targets.updateMetadata(CONTROLLER_ID, "managedBy", { MetadataUpdateRequest metadata ->
+      metadata.value() == "openremote"
+    }) >> Response.ok().build()
+  }
+
+  def "handleAssetChange with CREATE cause skips create when target already exists"() {
+    given: "a service with mocked targets client returning an existing target"
+    def service = new TestableHawkbitFirmwareService()
+    def existingTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getAttributes() >> new AttributeMap()
+
+    when: "handling an asset CREATE event for an already-existing target"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+    then: "hawkBit is queried but create is not called"
+    1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+    0 * service.targets.create(_)
+  }
+
+  def "handleAssetChange with UPDATE cause skips create when target already exists"() {
+    given: "a service with mocked targets client returning an existing target"
+    def service = new TestableHawkbitFirmwareService()
+    def existingTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getAttributes() >> new AttributeMap()
+
+    when: "handling an asset UPDATE event"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then: "hawkBit is queried but create is not called"
+    1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+    0 * service.targets.create(_)
+  }
+
+  def "handleAssetChange with UPDATE cause creates target when it is missing"() {
+    given: "a service with mocked targets client returning 404 then creating the target"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getAttributes() >> new AttributeMap()
+
+    when: "handling an asset UPDATE event for a missing target"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then: "hawkBit queries (404), creates, then uses the created target for info update"
+    1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
+    1 * service.targets.create({ TargetCreateRequest[] targets ->
+      targets.length == 1 && targets[0].securityToken() == null
+    }) >> Response.ok(new Target[]{
+      createdTarget
+    }).build()
+    1 * service.targets.updateMetadata(CONTROLLER_ID, "managedBy", { MetadataUpdateRequest metadata ->
+      metadata.value() == "openremote"
+    }) >> Response.ok().build()
+  }
+
+  def "handleAssetChange with UPDATE cause logs warning when getTarget throws exception"() {
+    given: "a service with mocked targets client that throws"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+
+    when: "handling an asset UPDATE event when hawkBit query fails"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then: "hawkBit is queried but throws, no create is attempted"
+    1 * service.targets.get(CONTROLLER_ID) >> {
+      throw new RuntimeException("connection failed")
+    }
+    0 * service.targets.create(_)
+    0 * service.targets.delete(_)
+  }
+
+  def "updateTargetInfoForAttribute excludes the target security token"() {
+    given: "a hawkBit target containing a device credential"
+    def service = new TestableHawkbitFirmwareService()
+    service.assetProcessingService = Mock(AssetProcessingService)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    def target = new Target(CONTROLLER_ID, null, null, "sensitive-token", null, null, null, null, null, null, null, null, null)
+
+    when: "the target information is written to the OpenRemote attribute"
+    service.updateTargetInfoForAttribute(asset, "firmwareTargetInfo", target)
+
+    then: "only the non-secret controller ID is stored"
+    1 * service.assetProcessingService.sendAttributeEvent({ AttributeEvent event ->
+      def targetInfo = new JsonSlurper().parseText(event.getValue().orElseThrow() as String) as Map
+      event.getId() == CONTROLLER_ID &&
+              event.getName() == "firmwareTargetInfo" &&
+              targetInfo == [controllerId: CONTROLLER_ID] &&
+              !targetInfo.containsKey("securityToken")
+    }, _)
+  }
+
+  def "createTarget with security token forwards token in create request"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def createdTarget = new Target(CONTROLLER_ID, null, null, "custom-token", null, null, null, null, null, null, null, null, null)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAssetType() >> "test:asset:type"
+    asset.getRealm() >> "test-realm"
+
+    when: "creating a target with a custom security token"
+    def result = service.createTarget(asset, "custom-token")
+
+    then: "the token is forwarded to hawkBit"
+    1 * service.targets.create({ TargetCreateRequest[] targets ->
+      targets.length == 1 &&
+      targets[0].controllerId() == CONTROLLER_ID &&
+      targets[0].securityToken() == "custom-token"
+    }) >> Response.ok(new Target[]{
+      createdTarget
+    }).build()
+    result == createdTarget
+  }
+
+  def "createUpdateTarget updates token when target exists"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def existingTarget = new Target(CONTROLLER_ID, null, null, "old-token", null, null, null, null, null, null, null, null, null)
+    def updatedTarget = new Target(CONTROLLER_ID, null, null, "new-token", null, null, null, null, null, null, null, null, null)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAssetType() >> "test:asset:type"
+    asset.getRealm() >> "test-realm"
+
+    when: "creating or updating a target with a custom security token"
+    def result = service.createUpdateTarget(asset, "new-token")
+
+    then: "the existing target is updated with the new token"
+    1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+    1 * service.targets.update(CONTROLLER_ID, { TargetUpdateRequest target ->
+      target.securityToken() == "new-token"
+    }) >> Response.ok(updatedTarget).build()
+    0 * service.targets.create(_)
+    result == updatedTarget
+  }
+
+  def "handleAssetChange with DELETE cause deletes target"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+
+    when: "handling an asset DELETE event"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))
+
+    then: "the delete endpoint is invoked"
+    1 * service.targets.delete(CONTROLLER_ID) >> Response.ok().build()
+  }
+
+  def "handleAssetChange deletes an owned target after firmwareTarget was removed"() {
+    given: "an unmarked asset with a target that still has the ownership marker"
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", TEXT)])
+
+    when:
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))
+
+    then:
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.ok(new TargetMetadata("managedBy", "openremote")).build()
+    1 * service.targets.delete(CONTROLLER_ID) >> Response.ok().build()
+  }
+
+  def "handleAssetChange does not delete a target owned by someone else"() {
+    given:
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAttributes() >> new AttributeMap()
+
+    when:
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))
+
+    then:
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.ok(new TargetMetadata("managedBy", "other-system")).build()
+    0 * service.targets.delete(_)
+  }
+
+  def "handleAssetChange does not delete when ownership lookup fails"() {
+    given:
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+
+    when:
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))
+
+    then:
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >> Response.serverError().build()
+    0 * service.targets.delete(_)
+  }
+
+  def "handleAssetChange does not claim an existing unowned target"() {
+    given:
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, true))
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta)])
+    def existingTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+
+    when:
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then:
+    1 * service.targets.get(CONTROLLER_ID) >> Response.ok(existingTarget).build()
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.status(Response.Status.NOT_FOUND).build()
+    0 * service.targets.create(_)
+    0 * service.targets.updateMetadata(_, _, _)
+  }
+
+  def "handleAssetChange removes a new target if its ownership marker cannot be written"() {
+    given:
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    def createdTarget = new Target(CONTROLLER_ID, null, null, "token", null, null, null, null, null, null, null, null, null)
+
+    when:
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.CREATE, asset))
+
+    then:
+    1 * service.targets.get(CONTROLLER_ID) >> Response.status(Response.Status.NOT_FOUND).build()
+    1 * service.targets.create(_) >> Response.ok(new Target[]{
+              createdTarget
+            }).build()
+    1 * service.targets.updateMetadata(CONTROLLER_ID, "managedBy", _) >>
+            Response.serverError().build()
+    1 * service.targets.delete(CONTROLLER_ID) >> Response.ok().build()
+  }
+
+  def "handleAssetChange leaves the hawkBit target alone when firmwareTarget is removed"() {
+    given: "an asset whose attribute is no longer marked as a firmware target"
+    def service = new HawkbitFirmwareService()
+    service.hawkbitRealm = "test-realm"
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getType() >> "unknown:asset:type"
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", TEXT)])
+
+    when: "the asset is updated after the meta item was removed"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then: "synchronization stops without deleting or modifying the existing target"
+    0 * service.targets._
+  }
+
+  def "handleAssetChange leaves the hawkBit target alone when firmwareTarget is set to false"() {
+    given: "an asset whose firmwareTarget meta item is explicitly disabled"
+    def service = new HawkbitFirmwareService()
+    service.hawkbitRealm = "test-realm"
+    service.targets = Mock(HawkbitTargetsClient)
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_TARGET, false))
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getType() >> "unknown:asset:type"
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", TEXT).setMeta(meta)])
+
+    when: "the asset is updated"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.UPDATE, asset))
+
+    then: "synchronization stops without deleting or modifying the existing target"
+    0 * service.targets._
+  }
+
+  def "handleAssetChange does not delete the hawkBit target when an unmarked asset is deleted"() {
+    given: "an asset that is not marked as a firmware target"
+    def service = new HawkbitFirmwareService()
+    service.hawkbitRealm = "test-realm"
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getRealm() >> "test-realm"
+    asset.getType() >> "unknown:asset:type"
+    asset.getAttributes() >> new AttributeMap([new Attribute<>("firmwareTargetInfo", TEXT)])
+
+    when: "the asset is deleted"
+    service.handleAssetChange(new AssetEvent(AssetEvent.Cause.DELETE, asset))
+
+    then: "a target without the ownership marker is left alone"
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.status(Response.Status.NOT_FOUND).build()
+    0 * service.targets.delete(_)
+  }
+
+  def "handleAttributeChange leaves hawkBit metadata alone when firmwareMetadata is removed"() {
+    given: "an attribute event carrying meta without the firmware metadata item"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(new MetaMap())
+
+    when: "the attribute changes after the meta item was removed"
+    service.handleAttributeChange(event)
+
+    then: "synchronization stops without deleting the existing metadata entry"
+    0 * service.targets._
+  }
+
+  def "handleAttributeChange leaves hawkBit metadata alone when firmwareMetadata is set to false"() {
+    given: "an attribute whose firmware metadata meta item is explicitly disabled"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, false))
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(meta)
+
+    when: "the attribute changes"
+    service.handleAttributeChange(event)
+
+    then: "synchronization stops without deleting the existing metadata entry"
+    0 * service.targets._
+  }
+
+  def "handleAttributeChange deletes hawkBit metadata when an unmarked attribute is deleted from an owned target"() {
+    given: "a deleted attribute whose firmware metadata marker was removed earlier"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(new MetaMap())
+    event.setDeleted(true)
+
+    when: "handling the deleted attribute event"
+    service.handleAttributeChange(event)
+
+    then: "the previously synced metadata entry is deleted"
+    1 * service.targets.deleteMetadata(CONTROLLER_ID, "temp") >> Response.ok().build()
+  }
+
+  def "handleAttributeChange does not delete metadata from an unowned target"() {
+    given:
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", null)
+    event.setDeleted(true)
+
+    when:
+    service.handleAttributeChange(event)
+
+    then:
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.status(Response.Status.NOT_FOUND).build()
+    0 * service.targets.deleteMetadata(_, _)
+  }
+
+  def "handleAttributeChange does not update metadata on an unowned target"() {
+    given:
+    def service = new HawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(meta)
+
+    when:
+    service.handleAttributeChange(event)
+
+    then:
+    1 * service.targets.getMetadata(CONTROLLER_ID, "managedBy") >>
+            Response.ok(new TargetMetadata("managedBy", "other-system")).build()
+    0 * service.targets.updateMetadata(_, _, _)
+  }
+
+  def "handleAttributeChange cannot overwrite the ownership marker"() {
+    given:
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+    def event = new AttributeEvent(CONTROLLER_ID, "managedBy", "other-system")
+    event.setMeta(meta)
+
+    when:
+    service.handleAttributeChange(event)
+
+    then:
+    0 * service.targets._
+  }
+
+  def "syncTargetMetadata skips attributes that are not marked as firmware metadata"() {
+    given: "an asset with one marked and one unmarked attribute"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient) {
+      updateMetadata(_ as String, _ as String, _ as MetadataUpdateRequest) >> Response.ok().build()
+    }
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+
+    def asset = Mock(Asset)
+    asset.getId() >> CONTROLLER_ID
+    asset.getType() >> "unknown:asset:type"
+    asset.getAttributes() >> new AttributeMap([
+      new Attribute<>("marked", TEXT, "synced").setMeta(meta),
+      new Attribute<>("unmarked", TEXT, "ignored")
+    ])
+
+    when: "the asset metadata is synchronized"
+    service.syncTargetMetadata(asset)
+
+    then: "only the marked attribute is pushed to hawkBit"
+    1 * service.targets.updateMetadata(CONTROLLER_ID, "marked", _)
+    0 * service.targets.updateMetadata(CONTROLLER_ID, "unmarked", _)
+    0 * service.targets.deleteMetadata(CONTROLLER_ID, "unmarked")
+  }
+
+  def "handleAttributeChange returns early when attribute has no firmware metadata"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient)
+
+    when: "handling an attribute event without firmware metadata"
+    service.handleAttributeChange(new AttributeEvent(CONTROLLER_ID, "temp", 25))
+
+    then: "no hawkBit calls are made"
+    0 * service.targets.updateMetadata(_, _, _)
+    0 * service.targets.deleteMetadata(_, _)
+  }
+
+  def "handleAttributeChange deletes metadata when attribute event is marked deleted"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient) {
+      deleteMetadata(_ as String, _ as String) >> Response.ok().build()
+    }
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(meta)
+    event.setDeleted(true)
+
+    when: "handling a deleted attribute event with firmware metadata"
+    service.handleAttributeChange(event)
+
+    then: "deleteMetadata is called and updateMetadata is not"
+    1 * service.targets.deleteMetadata(CONTROLLER_ID, "temp")
+    0 * service.targets.updateMetadata(_, _, _)
+  }
+
+  def "handleAttributeChange updates metadata when attribute has firmware metadata"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient) {
+      updateMetadata(_ as String, _ as String, _ as MetadataUpdateRequest) >> Response.ok().build()
+    }
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", 25)
+    event.setMeta(meta)
+
+    when: "handling an attribute event with a metadata value"
+    service.handleAttributeChange(event)
+
+    then: "updateMetadata is called with the string coerced value"
+    1 * service.targets.updateMetadata(CONTROLLER_ID, "temp", _)
+  }
+
+  def "handleAttributeChange deletes metadata when attribute value is empty"() {
+    given: "a service with mocked targets client"
+    def service = new TestableHawkbitFirmwareService()
+    service.targets = Mock(HawkbitTargetsClient) {
+      deleteMetadata(_ as String, _ as String) >> Response.ok().build()
+    }
+    def meta = new MetaMap()
+    meta.put(new MetaItem<>(FirmwareMetaItemType.FIRMWARE_METADATA, true))
+
+    def event = new AttributeEvent(CONTROLLER_ID, "temp", "")
+    event.setMeta(meta)
+
+    when: "handling an attribute event with an empty value"
+    service.handleAttributeChange(event)
+
+    then: "deleteMetadata is called"
+    1 * service.targets.deleteMetadata(CONTROLLER_ID, "temp")
+  }
+}
