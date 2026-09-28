@@ -18,5 +18,8 @@
  */
 package org.openremote.extension.ems.manager.distroenergy.dto;
 
-public record DayAheadSubmission(
-    SubmissionData[] submissionData, long day, long creationTimestamp) {}
+/**
+ * Wire format of a day-ahead submission. Component names are the JSON keys, and {@code
+ * creationTimestamp} is in epoch seconds.
+ */
+public record DayAheadSubmission(SubmissionData[] data, long day, long creationTimestamp) {}
