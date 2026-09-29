@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -76,6 +77,12 @@ public class DistroEnergyHandler {
    * loop also stops at the first day with no forecast, so a shorter horizon ends the run earlier.
    */
   protected static final int MAX_DAYS_AHEAD = 5;
+
+  /**
+   * Day-ahead gate closure, market time. From this moment tomorrow is closed and the API rejects a
+   * submission for it, so a run at or after it starts at the day after tomorrow.
+   */
+  protected static final LocalTime GATE_CLOSURE = LocalTime.of(9, 0);
 
   /** The {@link EmsDistroEnergyAsset} this handler reports its status on. */
   protected final String assetId;
@@ -189,19 +196,22 @@ public class DistroEnergyHandler {
   }
 
   protected void submitDayAheadForecasts() {
-    LocalDate firstDay = timerService.getNow().atZone(marketZone).toLocalDate().plusDays(1);
+    LocalDateTime marketNow = timerService.getNow().atZone(marketZone).toLocalDateTime();
+    LocalDate today = marketNow.toLocalDate();
+    LocalDate firstDay = today.plusDays(marketNow.toLocalTime().isBefore(GATE_CLOSURE) ? 1 : 2);
+    LocalDate lastDay = today.plusDays(MAX_DAYS_AHEAD);
     LOG.fine(
         "Starting day-ahead submission run for portfolio "
             + portfolio
-            + "; first market day "
+            + "; market days "
             + firstDay
-            + ", horizon up to "
-            + MAX_DAYS_AHEAD
-            + " day(s)");
+            + " to "
+            + lastDay);
     int submitted = 0;
 
-    for (int day = 0; day < MAX_DAYS_AHEAD; day++) {
-      LocalDate marketDate = firstDay.plusDays(day);
+    for (LocalDate marketDate = firstDay;
+        !marketDate.isAfter(lastDay);
+        marketDate = marketDate.plusDays(1)) {
       try {
         if (!submitDayAheadForecast(marketDate)) {
           // First uncovered day is the end of the forecast horizon; nothing beyond it to send.
