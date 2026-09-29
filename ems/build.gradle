@@ -23,10 +23,6 @@ dependencies {
   testImplementation libs.wireMock
 }
 
-jar {
-  from sourceSets.main.allJava
-}
-
 javadoc {
   failOnError = false
 }

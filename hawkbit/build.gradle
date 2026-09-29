@@ -19,10 +19,6 @@ dependencies {
   testImplementation libs.openremote.test
 }
 
-jar {
-  from sourceSets.main.allJava
-}
-
 javadoc {
   failOnError = false
 }
