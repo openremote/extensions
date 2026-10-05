@@ -1,5 +1,5 @@
 [versions]
-axionRelease = "1.21.2"
+axionRelease = "1.21.4"
 camel = "4.22.0"
 jackson = "2.21.4"
 jacoco = "0.8.14"
