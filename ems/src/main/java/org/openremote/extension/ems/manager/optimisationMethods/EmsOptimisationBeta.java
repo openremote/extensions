@@ -482,7 +482,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
       Double powerLimitMaximum = (Double) dp.getValue();
       Double powerLimitMaximumVirtual =
           calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximum, "max");
-      
+
       powerLimitMaximumVirtualList.add(powerLimitMaximumVirtual);
     }
 
