@@ -17,3 +17,7 @@
 **GOPACS**
 
 - [GOPACS Integration](docs/GopacsIntegration.md)
+
+**Distro Energy**
+
+- [Distro Energy Integration](docs/DistroEnergyIntegration.md)

@@ -63,11 +63,11 @@ public class DistroEnergyHandler {
   public static final String DISTRO_ENERGY_CLIENT_KEY = "DISTRO_ENERGY_CLIENT_KEY";
   public static final String DISTRO_ENERGY_BASE_URL = "DISTRO_ENERGY_BASE_URL";
   public static final String DISTRO_ENERGY_BASE_URL_DEFAULT =
-      "https://ibt.dev.distro.energy/api/v1";
+      "https://ibt.prod.distro.energy/api/v1";
   public static final String DISTRO_ENERGY_TIMEZONE = "DISTRO_ENERGY_TIMEZONE";
   public static final String DISTRO_ENERGY_TIMEZONE_DEFAULT = "Europe/Amsterdam";
-  public static final String REQUEST_INTERVAL_MINUTES = "REQUEST_INTERVAL";
-  public static final String REQUEST_INTERVAL_MINUTES_DEFAULT = "60";
+  public static final String DISTRO_ENERGY_REQUEST_INTERVAL = "DISTRO_ENERGY_REQUEST_INTERVAL";
+  public static final String DISTRO_ENERGY_REQUEST_INTERVAL_DEFAULT = "60";
 
   /** Market settlement interval. One submission entry per ISP. */
   protected static final Duration ISP_DURATION = Duration.ofMinutes(15);
@@ -138,7 +138,8 @@ public class DistroEnergyHandler {
         Integer.parseInt(
             container
                 .getConfig()
-                .getOrDefault(REQUEST_INTERVAL_MINUTES, REQUEST_INTERVAL_MINUTES_DEFAULT));
+                .getOrDefault(
+                    DISTRO_ENERGY_REQUEST_INTERVAL, DISTRO_ENERGY_REQUEST_INTERVAL_DEFAULT));
     this.clientKey = container.getConfig().get(DISTRO_ENERGY_CLIENT_KEY);
 
     if (clientKey == null) {
