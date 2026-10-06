@@ -43,13 +43,14 @@ class DistroEnergyHandlerStatusTest extends Specification {
 
   AssetProcessingService assetProcessingService
   Container container
+  long now = NOW
   FixedHorizonHandler handler
 
   def setup() {
     assetProcessingService = Mock(AssetProcessingService)
     def timerService = Stub(TimerService) {
-      getCurrentTimeMillis() >> NOW
-      getNow() >> Instant.ofEpochMilli(NOW)
+      getCurrentTimeMillis() >> { now }
+      getNow() >> { Instant.ofEpochMilli(now) }
     }
     container = Stub(Container) {
       getConfig() >> [(DistroEnergyHandler.DISTRO_ENERGY_CLIENT_KEY): "test-key"]
@@ -96,10 +97,29 @@ class DistroEnergyHandlerStatusTest extends Specification {
     0 * assetProcessingService._
   }
 
+  def "a run before gate closure starts at tomorrow, from gate closure at the day after"() {
+    given: "a handler whose forecast covers every day"
+    now = Instant.parse(instant).toEpochMilli()
+    handler = new FixedHorizonHandler(Integer.MAX_VALUE, container)
+
+    when:
+    handler.submitDayAheadForecasts()
+
+    then: "the run ends five days after today, market time, either way"
+    handler.marketDates.first() == LocalDate.parse(firstDay)
+    handler.marketDates.last() == LocalDate.parse("2026-10-04")
+
+    where: "09:00 Europe/Amsterdam is 07:00Z during CEST"
+    instant | firstDay
+    "2026-09-29T06:59:59Z" | "2026-09-30"
+    "2026-09-29T07:00:00Z" | "2026-10-01"
+    "2026-09-29T21:59:59Z" | "2026-10-01"
+  }
+
   // Reports a forecast covering exactly `horizonDays` market days without touching the API.
   static class FixedHorizonHandler extends DistroEnergyHandler {
     final int horizonDays
-    int calls = 0
+    final List<LocalDate> marketDates = []
 
     FixedHorizonHandler(int horizonDays, Container container) {
       super(ASSET_ID, new AttributeRef("parent", "powerNet"), "portfolio-a", container)
@@ -108,7 +128,8 @@ class DistroEnergyHandlerStatusTest extends Specification {
 
     @Override
     protected boolean submitDayAheadForecast(LocalDate marketDate) {
-      return calls++ <horizonDays
+      marketDates << marketDate
+      return marketDates.size() <= horizonDays
     }
   }
 }
