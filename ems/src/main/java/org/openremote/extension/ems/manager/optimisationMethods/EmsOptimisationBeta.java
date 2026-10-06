@@ -95,23 +95,25 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     String advancedSettingsAttributes =
         energyOptimisationAsset.getAdvancedSettingsAttributes().orElse("");
 
-    if (advancedSettingsAttributes.isBlank()) {
-      StringBuilder advancedSettingsAttributesBody = new StringBuilder();
+    StringBuilder advancedSettingsAttributesBody = new StringBuilder();
 
-      String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
-      advancedSettingsAttributesBody.append(firstRow);
+    String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
+    advancedSettingsAttributesBody.append(firstRow);
 
-      for (String[] row : advancedSettingsAttributesInfo) {
-        advancedSettingsAttributesBody.append(String.join(",", row)).append("\n");
-      }
+    for (String[] row : advancedSettingsAttributesInfo) {
+      advancedSettingsAttributesBody.append(String.join(",", row)).append("\n");
+    }
 
+    String advancedSettingsAttributesNew = advancedSettingsAttributesBody.toString();
+
+    if (!advancedSettingsAttributes.equals(advancedSettingsAttributesNew)) {
       services
           .getAssetProcessingService()
           .sendAttributeEvent(
               new AttributeEvent(
                   energyOptimisationAssetId,
                   EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES,
-                  advancedSettingsAttributesBody.toString()),
+                  advancedSettingsAttributesNew),
               getClass().getSimpleName());
     }
 
@@ -475,15 +477,15 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                 assetDatapointQueryPeriodPredicted);
 
     // Calculate virtual power limit forecast
-    List<Double> powerLimitMaximumVirtualList = new ArrayList<>();
-    List<Double> powerLimitMinimumVirtualList = new ArrayList<>();
+    Map<Long, Double> powerLimitMaximumVirtualList = new HashMap<>();
+    Map<Long, Double> powerLimitMinimumVirtualList = new HashMap<>();
 
     for (ValueDatapoint<?> dp : energyOptimisationPowerLimitMaximumPredicted) {
       Double powerLimitMaximum = (Double) dp.getValue();
       Double powerLimitMaximumVirtual =
           calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximum, "max");
 
-      powerLimitMaximumVirtualList.add(powerLimitMaximumVirtual);
+      powerLimitMaximumVirtualList.put(dp.getTimestamp(), powerLimitMaximumVirtual);
     }
 
     for (ValueDatapoint<?> dp : energyOptimisationPowerLimitMinimumPredicted) {
@@ -491,7 +493,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
       Double powerLimitMinimumVirtual =
           calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMinimum, "min");
 
-      powerLimitMinimumVirtualList.add(powerLimitMinimumVirtual);
+      powerLimitMinimumVirtualList.put(dp.getTimestamp(), powerLimitMinimumVirtual);
     }
 
     List<Double> chargePowerAvailableTotalList = new ArrayList<>();
@@ -545,10 +547,13 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
       // Calculate total available charge and discharge power
       for (int i = 0; i < numberOfTimestamps; i++) {
+        long timestampMillis = timestampsMillisList.get(i);
         double totalPower = totalPowerConsumptionProductionFlexibleList.get(i);
 
-        Double powerLimitMaximumVirtual = powerLimitMaximumVirtualList.get(i);
-        Double powerLimitMinimumVirtual = powerLimitMinimumVirtualList.get(i);
+        Double powerLimitMaximumVirtual =
+            powerLimitMaximumVirtualList.getOrDefault(timestampMillis, null);
+        Double powerLimitMinimumVirtual =
+            powerLimitMinimumVirtualList.getOrDefault(timestampMillis, null);
 
         if (powerLimitMaximumVirtual != null) {
           double chargePowerTotalAvailable = powerLimitMaximumVirtual - totalPower;
