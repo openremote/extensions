@@ -52,6 +52,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
   // Default EMS power limit settings
   private final int POWER_LIMIT_FLUCTUATION_MARGIN_PERCENTAGE_DEFAULT = 10;
+  private final int POWER_UNCERTAINTY_MARGIN_PERCENTAGE_DEFAULT = 2;
 
   // Default battery settings
   private final int BATTERY_ENERGY_LEVEL_PERCENTAGE_DEFAULT = 50;
@@ -63,10 +64,16 @@ public class EmsOptimisationBeta implements OptimisationMethod {
       "powerLimitMaximumFluctuationMargin";
   private final String POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME =
       "powerLimitMinimumFluctuationMargin";
+  private final String POWER_CONSUMPTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME =
+      "powerConsumptionUncertaintyMargin";
+  private final String POWER_PRODUCTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME =
+      "powerProductionUncertaintyMargin";
 
   private final String[][] advancedSettingsAttributesInfo = {
     {POWER_LIMIT_MAXIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()},
-    {POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()}
+    {POWER_LIMIT_MINIMUM_FLUCTUATION_MARGIN_ATTRIBUTE_NAME, ValueType.POSITIVE_NUMBER.getName()},
+    {POWER_CONSUMPTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME, ValueType.NUMBER.getName()},
+    {POWER_PRODUCTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME, ValueType.NUMBER.getName()}
   };
 
   @Override
@@ -88,23 +95,25 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     String advancedSettingsAttributes =
         energyOptimisationAsset.getAdvancedSettingsAttributes().orElse("");
 
-    if (advancedSettingsAttributes.isBlank()) {
-      StringBuilder advancedSettingsAttributesBody = new StringBuilder();
+    StringBuilder advancedSettingsAttributesBody = new StringBuilder();
 
-      String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
-      advancedSettingsAttributesBody.append(firstRow);
+    String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
+    advancedSettingsAttributesBody.append(firstRow);
 
-      for (String[] row : advancedSettingsAttributesInfo) {
-        advancedSettingsAttributesBody.append(String.join(",", row)).append("\n");
-      }
+    for (String[] row : advancedSettingsAttributesInfo) {
+      advancedSettingsAttributesBody.append(String.join(",", row)).append("\n");
+    }
 
+    String advancedSettingsAttributesNew = advancedSettingsAttributesBody.toString();
+
+    if (!advancedSettingsAttributes.equals(advancedSettingsAttributesNew)) {
       services
           .getAssetProcessingService()
           .sendAttributeEvent(
               new AttributeEvent(
                   energyOptimisationAssetId,
                   EmsEnergyOptimisationAsset.ADVANCED_SETTINGS_ATTRIBUTES,
-                  advancedSettingsAttributesBody.toString()),
+                  advancedSettingsAttributesNew),
               getClass().getSimpleName());
     }
 
@@ -419,8 +428,8 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                   Collectors.toMap(ValueDatapoint::getTimestamp, dp -> ((Double) dp.getValue())));
     }
 
-    // List to store the sum of total power consumption, production and flexible
-    List<Double> totalPowerConsumptionProductionFlexibleList = new ArrayList<>();
+    // List to store the sum of total power consumption and production
+    List<Double> totalPowerConsumptionProductionList = new ArrayList<>();
 
     // Sum total power consumption and production
     for (int i = 0; i < numberOfTimestamps; i++) {
@@ -429,16 +438,27 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
       if (powerProduction != null) {
         double sum = powerConsumption + powerProduction;
-        totalPowerConsumptionProductionFlexibleList.add(sum);
+        totalPowerConsumptionProductionList.add(sum);
       } else {
-        totalPowerConsumptionProductionFlexibleList.add(powerConsumption);
+        totalPowerConsumptionProductionList.add(powerConsumption);
       }
     }
 
     infoStr.append(
         String.format(
-            "totalPowerConsumptionProductionFlexibleList = %s \n",
-            totalPowerConsumptionProductionFlexibleList));
+            "totalPowerConsumptionProductionList = %s \n", totalPowerConsumptionProductionList));
+
+    // List to store the sum of total power consumption, production and flexible
+    List<Double> totalPowerConsumptionProductionFlexibleList = new ArrayList<>();
+
+    // Add a margin to the summed consumption-production forecast. This accounts for possible
+    // underestimation of the forecast, which could lead to premature battery depletion
+    for (Double power : totalPowerConsumptionProductionList) {
+      double uncertaintyMargin = calculateForecastUncertaintyMargin(energyOptimisationAsset, power);
+      double powerPlusMargin = power + uncertaintyMargin;
+
+      totalPowerConsumptionProductionFlexibleList.add(powerPlusMargin);
+    }
 
     // Get power limit forecasts
     List<ValueDatapoint<?>> energyOptimisationPowerLimitMaximumPredicted =
@@ -456,15 +476,24 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                 EmsEnergyOptimisationAsset.POWER_LIMIT_MINIMUM_PROFILE_TOTAL.getName(),
                 assetDatapointQueryPeriodPredicted);
 
-    Map<Long, Double> powerLimitMaximumMap = new HashMap<>();
-    Map<Long, Double> powerLimitMinimumMap = new HashMap<>();
+    // Calculate virtual power limit forecast
+    Map<Long, Double> powerLimitMaximumVirtualList = new HashMap<>();
+    Map<Long, Double> powerLimitMinimumVirtualList = new HashMap<>();
 
     for (ValueDatapoint<?> dp : energyOptimisationPowerLimitMaximumPredicted) {
-      powerLimitMaximumMap.put(dp.getTimestamp(), (Double) dp.getValue());
+      Double powerLimitMaximum = (Double) dp.getValue();
+      Double powerLimitMaximumVirtual =
+          calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximum, "max");
+
+      powerLimitMaximumVirtualList.put(dp.getTimestamp(), powerLimitMaximumVirtual);
     }
 
     for (ValueDatapoint<?> dp : energyOptimisationPowerLimitMinimumPredicted) {
-      powerLimitMinimumMap.put(dp.getTimestamp(), (Double) dp.getValue());
+      Double powerLimitMinimum = (Double) dp.getValue();
+      Double powerLimitMinimumVirtual =
+          calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMinimum, "min");
+
+      powerLimitMinimumVirtualList.put(dp.getTimestamp(), powerLimitMinimumVirtual);
     }
 
     List<Double> chargePowerAvailableTotalList = new ArrayList<>();
@@ -516,24 +545,15 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         continue;
       }
 
-      List<Double> powerLimitMaximumVirtualList = new ArrayList<>();
-      List<Double> powerLimitMinimumVirtualList = new ArrayList<>();
-
       // Calculate total available charge and discharge power
       for (int i = 0; i < numberOfTimestamps; i++) {
         long timestampMillis = timestampsMillisList.get(i);
         double totalPower = totalPowerConsumptionProductionFlexibleList.get(i);
 
-        Double powerLimitMaximum = powerLimitMaximumMap.getOrDefault(timestampMillis, null);
-        Double powerLimitMinimum = powerLimitMinimumMap.getOrDefault(timestampMillis, null);
-
         Double powerLimitMaximumVirtual =
-            calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMaximum, "max");
+            powerLimitMaximumVirtualList.getOrDefault(timestampMillis, null);
         Double powerLimitMinimumVirtual =
-            calculatePowerLimitVirtual(energyOptimisationAsset, powerLimitMinimum, "min");
-
-        powerLimitMaximumVirtualList.add(powerLimitMaximumVirtual);
-        powerLimitMinimumVirtualList.add(powerLimitMinimumVirtual);
+            powerLimitMinimumVirtualList.getOrDefault(timestampMillis, null);
 
         if (powerLimitMaximumVirtual != null) {
           double chargePowerTotalAvailable = powerLimitMaximumVirtual - totalPower;
@@ -571,21 +591,6 @@ public class EmsOptimisationBeta implements OptimisationMethod {
       //            System.out.println("chargeNeededTotalList = " + chargeNeededTotalList);
       //            System.out.println("dischargeNeededTotalList = " + dischargeNeededTotalList);
 
-      List<Double> chargePowerAvailableBatteryList =
-          chargePowerAvailableTotalList.stream()
-              .map(x -> x > 0 ? Math.min(x, chargePowerMaximumBattery) : 0)
-              .toList();
-      List<Double> dischargePowerAvailableBatteryList =
-          dischargePowerAvailableTotalList.stream()
-              .map(x -> x < 0 ? Math.max(x, dischargePowerMaximumBattery) : 0)
-              .toList();
-
-      //            System.out.println("chargeAvailableBatteryList = " +
-      // chargePowerAvailableBatteryList);
-      //            System.out.println("dischargeAvailableBatteryList = " +
-      // dischargePowerAvailableBatteryList);
-      //            System.out.println();
-
       // Convert power to energy level percentage
       List<Double> chargePercentageNeededTotalList = new ArrayList<>();
       List<Double> dischargePercentageNeededTotalList = new ArrayList<>();
@@ -609,6 +614,21 @@ public class EmsOptimisationBeta implements OptimisationMethod {
       // chargePercentageNeededTotalList);
       //            System.out.println("dischargePercentageNeededTotalList = " +
       // dischargePercentageNeededTotalList);
+
+      List<Double> chargePowerAvailableBatteryList =
+          chargePowerAvailableTotalList.stream()
+              .map(x -> x > 0 ? Math.min(x, chargePowerMaximumBattery) : 0)
+              .toList();
+      List<Double> dischargePowerAvailableBatteryList =
+          dischargePowerAvailableTotalList.stream()
+              .map(x -> x < 0 ? Math.max(x, dischargePowerMaximumBattery) : 0)
+              .toList();
+
+      //            System.out.println("chargeAvailableBatteryList = " +
+      // chargePowerAvailableBatteryList);
+      //            System.out.println("dischargeAvailableBatteryList = " +
+      // dischargePowerAvailableBatteryList);
+      //            System.out.println();
 
       List<Double> chargePercentageAvailableBatteryList = new ArrayList<>();
       List<Double> dischargePercentageAvailableBatteryList = new ArrayList<>();
@@ -2078,6 +2098,36 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                   powerSetpointNew),
               getClass().getSimpleName());
     }
+  }
+
+  private double calculateForecastUncertaintyMargin(
+      EmsEnergyOptimisationAsset energyOptimisationAsset, Double power) {
+    if (power == null) {
+      return 0.0;
+    }
+
+    String uncertaintyMarginAttributeName = POWER_CONSUMPTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME;
+
+    if (power < 0.0) {
+      uncertaintyMarginAttributeName = POWER_PRODUCTION_UNCERTAINTY_MARGIN_ATTRIBUTE_NAME;
+    }
+
+    Double uncertaintyMargin =
+        (Double)
+            energyOptimisationAsset
+                .getAttribute(uncertaintyMarginAttributeName)
+                .flatMap(Attribute::getValue)
+                .orElse(null);
+
+    if (uncertaintyMargin == null) {
+      uncertaintyMargin = power * POWER_UNCERTAINTY_MARGIN_PERCENTAGE_DEFAULT * 0.01;
+
+      if (uncertaintyMargin < 0.0) {
+        uncertaintyMargin = -uncertaintyMargin;
+      }
+    }
+
+    return round(Math.abs(uncertaintyMargin), 3);
   }
 
   private double calculatePowerFluctuationMargin(
