@@ -398,7 +398,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     then: "predicted datapoints are written using period start and resolution"
     conditions.eventually {
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef)
-      assert datapoints.size() == 4
+      assert datapoints.size() == 96
 
       def asc = datapoints.sort { it.timestamp }
       def start = Instant.parse(DATASET_START).toEpochMilli()
@@ -413,6 +413,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       assert (asc[1].value as BigDecimal).compareTo(69.79G) == 0
       assert (asc[2].value as BigDecimal).compareTo(65.84G) == 0
       assert (asc[3].value as BigDecimal).compareTo(65.05G) == 0
+      assert asc[95].timestamp == start + (95 * step)
+      assert asc.drop(3).every { (it.value as BigDecimal).compareTo(65.05G) == 0 }
     }
 
     cleanup: "remove created assets and mock client"
@@ -481,7 +483,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
         it.timestamp
       }
-      assert datapoints.size() == 2
+      assert datapoints.size() == 94
 
       def start = Instant.parse(DATASET_START).toEpochMilli()
       def step = 15 * 60 * 1000L
@@ -572,8 +574,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         it.timestamp
       }
 
-      assert beDatapoints.size() == 4
-      assert nlDatapoints.size() == 4
+      assert beDatapoints.size() == 96
+      assert nlDatapoints.size() == 96
 
       assert (beDatapoints[0].value as BigDecimal).compareTo(73.24G) == 0
       assert (beDatapoints[1].value as BigDecimal).compareTo(69.79G) == 0
@@ -670,8 +672,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         it.timestamp
       }
 
-      assert datapointsOne.size() == 4
-      assert datapointsTwo.size() == 4
+      assert datapointsOne.size() == 96
+      assert datapointsTwo.size() == 96
       assert datapointsOne.collect {
         [it.timestamp, it.value]
       } == datapointsTwo.collect {
@@ -1061,7 +1063,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
         it.timestamp
       }
-      assert datapoints.size() == 4
+      assert datapoints.size() == 8
 
       def firstPeriodStart = Instant.parse(DATASET_START).toEpochMilli()
       def secondPeriodStart = Instant.parse("2026-02-17T00:00:00.000Z").toEpochMilli()
@@ -1069,13 +1071,13 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
 
       assert datapoints[0].timestamp == firstPeriodStart
       assert datapoints[1].timestamp == firstPeriodStart + step
-      assert datapoints[2].timestamp == secondPeriodStart
-      assert datapoints[3].timestamp == secondPeriodStart + step
+      assert datapoints[4].timestamp == secondPeriodStart
+      assert datapoints[5].timestamp == secondPeriodStart + step
 
       assert (datapoints[0].value as BigDecimal).compareTo(51.11G) == 0
       assert (datapoints[1].value as BigDecimal).compareTo(52.22G) == 0
-      assert (datapoints[2].value as BigDecimal).compareTo(53.33G) == 0
-      assert (datapoints[3].value as BigDecimal).compareTo(54.44G) == 0
+      assert (datapoints[4].value as BigDecimal).compareTo(53.33G) == 0
+      assert (datapoints[5].value as BigDecimal).compareTo(54.44G) == 0
     }
 
     cleanup: "remove created assets and mock client"

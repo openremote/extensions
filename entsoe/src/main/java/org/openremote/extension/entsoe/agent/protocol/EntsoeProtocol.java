@@ -473,6 +473,11 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           continue;
         }
 
+        if ("A03".equals(timeSeries.getCurveType())) {
+          addVariableBlockDatapoints(period, start, resolution, nowMillis, values);
+          continue;
+        }
+
         period.getPoints().stream()
             .filter(
                 point ->
@@ -493,6 +498,59 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
 
     values.sort(Comparator.comparingLong(ValueDatapoint::getTimestamp));
     return values;
+  }
+
+  protected void addVariableBlockDatapoints(
+      PublicationMarketDocument.Period period,
+      Instant start,
+      Duration resolution,
+      long nowMillis,
+      List<ValueDatapoint<?>> values) {
+    if (resolution.isZero() || resolution.isNegative()) {
+      LOG.warning("Cannot expand ENTSO-E A03 period with non-positive resolution");
+      return;
+    }
+    if (period.getTimeInterval() == null || period.getTimeInterval().getEnd() == null) {
+      LOG.warning("Cannot expand ENTSO-E A03 period without its end time");
+      return;
+    }
+
+    final Instant end;
+    try {
+      end = parseEntsoeInstant(period.getTimeInterval().getEnd());
+    } catch (Exception e) {
+      LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E A03 period end");
+      return;
+    }
+
+    // Keep price-less points: they mark where the preceding price stops being available.
+    List<PublicationMarketDocument.Point> points =
+        period.getPoints().stream()
+            .filter(point -> point.getPosition() != null && point.getPosition() > 0)
+            .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
+            .toList();
+
+    for (int i = 0; i < points.size(); i++) {
+      PublicationMarketDocument.Point point = points.get(i);
+      if (point.getPriceAmount() == null) {
+        continue;
+      }
+      Instant blockStart = start.plus(resolution.multipliedBy(point.getPosition() - 1L));
+      Instant blockEnd = end;
+      if (i + 1 < points.size()) {
+        Instant nextStart =
+            start.plus(resolution.multipliedBy(points.get(i + 1).getPosition() - 1L));
+        if (nextStart.isBefore(blockEnd)) {
+          blockEnd = nextStart;
+        }
+      }
+      for (Instant time = blockStart; time.isBefore(blockEnd); time = time.plus(resolution)) {
+        long timestamp = time.toEpochMilli();
+        if (timestamp >= nowMillis) {
+          values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
+        }
+      }
+    }
   }
 
   protected Instant parseEntsoeInstant(String value) {
