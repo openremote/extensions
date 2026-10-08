@@ -185,13 +185,13 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
   <period.timeInterval>
     <start>2026-02-16T23:00Z</start>
-    <end>2026-02-17T23:00Z</end>
+    <end>2026-02-17T00:00Z</end>
   </period.timeInterval>
   <TimeSeries>
     <Period>
       <timeInterval>
         <start>2026-02-16T23:00Z</start>
-        <end>2026-02-17T23:00Z</end>
+        <end>2026-02-17T00:00Z</end>
       </timeInterval>
       <resolution>PT15M</resolution>
       <Point>
@@ -259,13 +259,14 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
   <period.timeInterval>
     <start>2026-02-16T23:00Z</start>
-    <end>2026-02-17T23:00Z</end>
+    <end>2026-02-17T00:00Z</end>
   </period.timeInterval>
   <TimeSeries>
+    <curveType>A01</curveType>
     <Period>
       <timeInterval>
         <start>2026-02-16T23:00Z</start>
-        <end>2026-02-17T23:00Z</end>
+        <end>2026-02-17T00:00Z</end>
       </timeInterval>
       <resolution>PT15M</resolution>
       <Point>
@@ -927,7 +928,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  def "ENTSO-E integration test keeps position timing when intermediate point is missing"() {
+  def "ENTSO-E integration test rejects an A01 period with a missing intermediate position"() {
     given: "the container environment is started"
     requestCountByZone.clear()
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
@@ -977,25 +978,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     when: "a polling update is triggered"
     protocol.updateAllLinkedAttributes()
 
-    then: "only provided points are stored and their timestamps follow position offsets"
-    conditions.eventually {
-      List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
-        it.timestamp
-      }
-      assert datapoints.size() == 3
-
-      def start = Instant.parse(DATASET_START).toEpochMilli()
-      def step = 15 * 60 * 1000L
-
-      assert datapoints[0].timestamp == start
-      assert datapoints[1].timestamp == start + step
-      assert datapoints[2].timestamp == start + (3 * step)
-      assert datapoints[2].timestamp - datapoints[1].timestamp == 2 * step
-
-      assert (datapoints[0].value as BigDecimal).compareTo(81.11G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(82.22G) == 0
-      assert (datapoints[2].value as BigDecimal).compareTo(84.44G) == 0
-    }
+    then: "the incomplete A01 period produces no predicted datapoints"
+    assetPredictedDatapointService.getDatapoints(attributeRef).isEmpty()
 
     cleanup: "remove created assets and mock client"
     if (asset?.id) {

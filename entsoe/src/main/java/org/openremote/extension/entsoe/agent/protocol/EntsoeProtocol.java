@@ -36,9 +36,11 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -460,38 +462,54 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           continue;
         }
 
-        PublicationMarketDocument.PeriodTimeInterval timeInterval =
-            period.getTimeInterval() != null
-                ? period.getTimeInterval()
-                : document.getPeriodTimeInterval();
+        PublicationMarketDocument.PeriodTimeInterval timeInterval = period.getTimeInterval();
         if (timeInterval == null
             || timeInterval.getStart() == null
+            || timeInterval.getEnd() == null
             || period.getResolution() == null) {
+          LOG.warning("Skipping ENTSO-E period without its own start, end, or resolution");
           continue;
         }
 
         final Instant start;
+        final Instant end;
         final Duration resolution;
+        final long intervalCount;
         try {
           start = parseEntsoeInstant(timeInterval.getStart());
+          end = parseEntsoeInstant(timeInterval.getEnd());
           resolution = Duration.parse(period.getResolution());
+          if (!end.isAfter(start) || resolution.isZero() || resolution.isNegative()) {
+            LOG.warning("Skipping ENTSO-E period with non-positive duration or resolution");
+            continue;
+          }
+          Duration duration = Duration.between(start, end);
+          intervalCount = duration.dividedBy(resolution);
+          if (intervalCount == 0 || !resolution.multipliedBy(intervalCount).equals(duration)) {
+            LOG.warning(
+                "Skipping ENTSO-E period whose duration is not a multiple of its resolution");
+            continue;
+          }
         } catch (Exception e) {
           LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E timeseries time data");
           continue;
         }
 
+        if (!hasValidPeriodPositions(period.getPoints(), curveType, intervalCount)) {
+          continue;
+        }
+        List<PublicationMarketDocument.Point> points =
+            period.getPoints().stream()
+                .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
+                .toList();
+
         if ("A03".equals(curveType)) {
-          addVariableBlockDatapoints(period, start, resolution, nowMillis, values);
+          addVariableBlockDatapoints(points, start, end, resolution, nowMillis, values);
           continue;
         }
 
-        period.getPoints().stream()
-            .filter(
-                point ->
-                    point.getPosition() != null
-                        && point.getPosition() > 0
-                        && point.getPriceAmount() != null)
-            .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
+        points.stream()
+            .filter(point -> point.getPriceAmount() != null)
             .forEach(
                 point -> {
                   long timestamp =
@@ -507,50 +525,50 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
     return values;
   }
 
+  protected boolean hasValidPeriodPositions(
+      List<PublicationMarketDocument.Point> points, String curveType, long intervalCount) {
+    Set<Integer> positions = new HashSet<>();
+    for (PublicationMarketDocument.Point point : points) {
+      Integer position = point != null ? point.getPosition() : null;
+      if (position == null
+          || position < 1
+          || position > intervalCount
+          || !positions.add(position)) {
+        LOG.warning("Skipping ENTSO-E period with missing, duplicate, or out-of-range positions");
+        return false;
+      }
+    }
+
+    if (!positions.contains(1)) {
+      LOG.warning("Skipping ENTSO-E period without position 1");
+      return false;
+    }
+    // Unique positions in [1, intervalCount] cover A01 completely only when all are present.
+    if ("A01".equals(curveType) && positions.size() != intervalCount) {
+      LOG.warning("Skipping incomplete ENTSO-E A01 period");
+      return false;
+    }
+    return true;
+  }
+
   protected void addVariableBlockDatapoints(
-      PublicationMarketDocument.Period period,
+      List<PublicationMarketDocument.Point> points,
       Instant start,
+      Instant end,
       Duration resolution,
       long nowMillis,
       List<ValueDatapoint<?>> values) {
-    if (resolution.isZero() || resolution.isNegative()) {
-      LOG.warning("Cannot expand ENTSO-E A03 period with non-positive resolution");
-      return;
-    }
-    if (period.getTimeInterval() == null || period.getTimeInterval().getEnd() == null) {
-      LOG.warning("Cannot expand ENTSO-E A03 period without its end time");
-      return;
-    }
-
-    final Instant end;
-    try {
-      end = parseEntsoeInstant(period.getTimeInterval().getEnd());
-    } catch (Exception e) {
-      LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E A03 period end");
-      return;
-    }
-
-    // Keep price-less points: they mark where the preceding price stops being available.
-    List<PublicationMarketDocument.Point> points =
-        period.getPoints().stream()
-            .filter(point -> point.getPosition() != null && point.getPosition() > 0)
-            .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
-            .toList();
-
+    // Validated, sorted points include price-less boundaries so prices never extend through them.
     for (int i = 0; i < points.size(); i++) {
       PublicationMarketDocument.Point point = points.get(i);
       if (point.getPriceAmount() == null) {
         continue;
       }
       Instant blockStart = start.plus(resolution.multipliedBy(point.getPosition() - 1L));
-      Instant blockEnd = end;
-      if (i + 1 < points.size()) {
-        Instant nextStart =
-            start.plus(resolution.multipliedBy(points.get(i + 1).getPosition() - 1L));
-        if (nextStart.isBefore(blockEnd)) {
-          blockEnd = nextStart;
-        }
-      }
+      Instant blockEnd =
+          i + 1 < points.size()
+              ? start.plus(resolution.multipliedBy(points.get(i + 1).getPosition() - 1L))
+              : end;
       for (Instant time = blockStart; time.isBefore(blockEnd); time = time.plus(resolution)) {
         long timestamp = time.toEpochMilli();
         if (timestamp >= nowMillis) {

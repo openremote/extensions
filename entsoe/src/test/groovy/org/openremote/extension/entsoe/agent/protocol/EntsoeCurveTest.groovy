@@ -124,9 +124,11 @@ class EntsoeCurveTest extends Specification {
     values.collect { it.value } == [80G, 80G, 90G]
   }
 
-  def "#curveType keeps fixed-size point behavior"() {
+  def "complete fixed-size periods support #curveType at #resolution resolution"() {
     given:
-    def document = document(curveType, period(START, START.plusSeconds(3600), "PT15M", [[1, 80], [3, 90]]))
+    def step = Duration.parse(resolution)
+    def document = document(curveType, period(START, START.plus(step.multipliedBy(4)), resolution,
+            [[4, 90], [2, 0], [1, -5], [3, 80]]))
 
     when:
     def values = protocol.buildPredictedDatapoints(document)
@@ -134,32 +136,156 @@ class EntsoeCurveTest extends Specification {
     then:
     values.collect {
       it.timestamp
-    } == [START.toEpochMilli(), START.plusSeconds(1800).toEpochMilli()]
-    values.collect { it.value } == [80G, 90G]
+    } == (0..3).collect {
+      START.plus(step.multipliedBy(it)).toEpochMilli()
+    }
+    values.collect { it.value } == [-5G, 0G, 80G, 90G]
 
     where:
-    curveType << ["A01", null]
+    [curveType, resolution] << [["A01", null], ["PT15M", "PT30M", "PT60M"]].combinations()
   }
 
-  def "A03 does not expand a non-positive resolution #resolution"() {
+  def "A01 filters past intervals after validating the complete period"() {
     given:
-    def document = document("A03", period(START, START.plusSeconds(3600), resolution, [[1, 80]]))
+    setNow(START.plusSeconds(1200))
+    def document = document("A01", period(START, START.plusSeconds(3600), "PT15M",
+            [[1, 80], [2, 81], [3, 82], [4, 83]]))
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then:
+    values.collect { it.timestamp } == [1800, 2700].collect { START.plusSeconds(it).toEpochMilli() }
+    values.collect { it.value } == [82G, 83G]
+  }
+
+  def "incomplete fixed-size periods are rejected for #curveType and positions #positions"() {
+    given:
+    def document = document(curveType, period(START, START.plusSeconds(3600), "PT15M",
+            positions.collect { [it, 80] }))
 
     expect:
     protocol.buildPredictedDatapoints(document).isEmpty()
 
     where:
-    resolution << ["PT0S", "PT-15M"]
+    [curveType, positions] << [["A01", null], [[2, 3, 4], [1, 3, 4], [1, 2, 3]]].combinations()
   }
 
-  def "A03 does not expand a period without an end"() {
+  def "#curveType rejects invalid positions #positions without partial output"() {
     given:
-    def periodXml = period(START, START.plusSeconds(3600), "PT15M", [[1, 80]])
-    .replace("<end>${START.plusSeconds(3600)}</end>", "")
-    def document = document("A03", periodXml)
+    def periodXml = period(START, START.plusSeconds(3600), "PT15M", positions.collect { [it, 80] })
+    .replace("<position>null</position>", "")
+    def document = document(curveType, periodXml)
 
     expect:
     protocol.buildPredictedDatapoints(document).isEmpty()
+
+    where:
+    [curveType, positions] << [
+      ["A01", "A03"],
+      [[1, 2, 2, 4], [0, 2, 3, 4], [-1, 2, 3, 4], [1, 2, 3, 5], [1, 2, 3, 2147483647], [1, 2, 3, null]]
+    ].combinations()
+  }
+
+  def "A03 requires a block starting at position one"() {
+    given:
+    def document = document("A03", period(START, START.plusSeconds(3600), "PT15M", [[2, 80], [4, 90]]))
+
+    expect:
+    protocol.buildPredictedDatapoints(document).isEmpty()
+  }
+
+  def "#curveType rejects invalid period timing: #description"() {
+    given:
+    def periodXml = period(START, START.plusSeconds(endOffset), resolution, [[1, 80], [2, 81], [3, 82], [4, 83]])
+    def document = document(curveType, periodXml)
+
+    expect:
+    protocol.buildPredictedDatapoints(document).isEmpty()
+
+    where:
+    [curveType, description, endOffset, resolution] << ["A01", "A03"].collectMany { type ->
+      [
+        [type, "end equals start", 0, "PT15M"],
+        [type, "end precedes start", -3600, "PT15M"],
+        [type, "end is off the resolution grid", 3500, "PT15M"],
+        [type, "period is shorter than resolution", 600, "PT15M"],
+        [type, "zero resolution", 3600, "PT0S"],
+        [type, "negative resolution", 3600, "PT-15M"],
+        [type, "unparseable resolution", 3600, "invalid"]
+      ]
+    }
+  }
+
+  def "#curveType requires its own complete time interval and resolution: #description"() {
+    given:
+    def periodXml = period(START, START.plusSeconds(3600), "PT15M", [[1, 80], [2, 81], [3, 82], [4, 83]])
+    .replace(removedXml, replacementXml)
+    def header = "<period.timeInterval><start>${START}</start><end>${START.plusSeconds(3600)}</end></period.timeInterval>"
+    def document = document(curveType, periodXml, header)
+
+    expect:
+    protocol.buildPredictedDatapoints(document).isEmpty()
+
+    where:
+    [curveType, description, removedXml, replacementXml] << ["A01", "A03"].collectMany { type ->
+      [
+        [
+          type,
+          "missing interval",
+          "<timeInterval><start>${START}</start><end>${START.plusSeconds(3600)}</end></timeInterval>",
+          ""
+        ],
+        [type, "missing start", "<start>${START}</start>", ""],
+        [type, "missing end", "<end>${START.plusSeconds(3600)}</end>", ""],
+        [type, "missing resolution", "<resolution>PT15M</resolution>", ""],
+        [type, "unparseable start", "<start>${START}</start>", "<start>invalid</start>"],
+        [type, "unparseable end", "<end>${START.plusSeconds(3600)}</end>", "<end>invalid</end>"]
+      ]
+    }
+  }
+
+  def "invalid #curveType periods do not prevent valid periods in the same series from being decoded"() {
+    given:
+    def document = document(curveType,
+            period(START, START.plusSeconds(1800), "PT15M", [[1, 80], [2, 81]]) +
+            period(START.plusSeconds(1800), START.plusSeconds(3600), "PT15M", [[1, 999], [1, 999]]) +
+            period(START.plusSeconds(3600), START.plusSeconds(5400), "PT15M", [[1, 90], [2, 91]]))
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then:
+    values.collect {
+      it.timestamp
+    } == [0, 900, 3600, 4500].collect {
+      START.plusSeconds(it).toEpochMilli()
+    }
+    values.collect { it.value } == [80G, 81G, 90G, 91G]
+
+    where:
+    curveType << ["A01", "A03"]
+  }
+
+  def "#curveType supports a #hours hour period without assuming 24 hours"() {
+    given:
+    def points = curveType == "A01" ? (1..hours).collect { [it, 80] } : [[1, 80]]
+    def document = document(curveType, period(START, START.plusSeconds(hours * 3600L), "PT60M", points))
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then:
+    values.size() == hours
+    values.collect {
+      it.timestamp
+    } == (0..<hours).collect {
+      START.plusSeconds(it * 3600L).toEpochMilli()
+    }
+    values.every { it.value == 80G }
+
+    where:
+    [curveType, hours] << [["A01", "A03"], [23, 25]].combinations()
   }
 
   def "unsupported or empty curve type '#curveType' produces no predictions"() {
@@ -216,10 +342,11 @@ class EntsoeCurveTest extends Specification {
     }
   }
 
-  private PublicationMarketDocument document(String curveType, String periods) {
+  private PublicationMarketDocument document(String curveType, String periods, String header = "") {
     def curveTypeXml = curveType == null ? "" : "<curveType>${curveType}</curveType>"
     def xml = """
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  ${header}
   <TimeSeries>
     ${curveTypeXml}
     ${periods}
