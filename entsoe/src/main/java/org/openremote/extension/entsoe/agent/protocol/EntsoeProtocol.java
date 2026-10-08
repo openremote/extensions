@@ -508,16 +508,15 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           continue;
         }
 
-        points.stream()
-            .filter(point -> point.getPriceAmount() != null)
-            .forEach(
-                point -> {
-                  long timestamp =
-                      start.plus(resolution.multipliedBy(point.getPosition() - 1L)).toEpochMilli();
-                  if (timestamp >= nowMillis) {
-                    values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
-                  }
-                });
+        // Persist explicit unavailability so a later publication can clear stale prices.
+        points.forEach(
+            point -> {
+              long timestamp =
+                  start.plus(resolution.multipliedBy(point.getPosition() - 1L)).toEpochMilli();
+              if (timestamp >= nowMillis) {
+                values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
+              }
+            });
       }
     }
 
@@ -558,12 +557,9 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       Duration resolution,
       long nowMillis,
       List<ValueDatapoint<?>> values) {
-    // Validated, sorted points include price-less boundaries so prices never extend through them.
+    // Expand unavailable blocks as nulls too, replacing any previously stored prices.
     for (int i = 0; i < points.size(); i++) {
       PublicationMarketDocument.Point point = points.get(i);
-      if (point.getPriceAmount() == null) {
-        continue;
-      }
       Instant blockStart = start.plus(resolution.multipliedBy(point.getPosition() - 1L));
       Instant blockEnd =
           i + 1 < points.size()

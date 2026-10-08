@@ -108,9 +108,9 @@ class EntsoeCurveTest extends Specification {
     values.collect { it.value } == [80G, 80G, 90G, 90G]
   }
 
-  def "a price-less A03 point stops the preceding price block"() {
+  def "#curveType emits unavailable intervals for price-less points: #description"() {
     given:
-    def document = document("A03", period(START, START.plusSeconds(4500), "PT15M", [[1, 80], [3, null], [5, 90]]))
+    def document = document(curveType, period(START, START.plusSeconds(3600), "PT15M", points))
 
     when:
     def values = protocol.buildPredictedDatapoints(document)
@@ -118,10 +118,38 @@ class EntsoeCurveTest extends Specification {
     then:
     values.collect {
       it.timestamp
-    } == [0, 900, 3600].collect {
-      START.plusSeconds(it).toEpochMilli()
+    } == (0..3).collect {
+      START.plusSeconds(it * 900L).toEpochMilli()
     }
-    values.collect { it.value } == [80G, 80G, 90G]
+    values.collect { it.value } == expected
+
+    where:
+    curveType | description | points | expected
+    "A01" | "middle" | [[1, 80], [2, null], [3, null], [4, 90]] | [80G, null, null, 90G]
+    null | "default curve" | [[1, 80], [2, null], [3, null], [4, 90]] | [80G, null, null, 90G]
+    "A01" | "whole period" | [[1, null], [2, null], [3, null], [4, null]] | [null, null, null, null]
+    "A03" | "middle block" | [[1, 80], [2, null], [4, 90]] | [80G, null, null, 90G]
+    "A03" | "first block" | [[1, null], [3, 90]] | [null, null, 90G, 90G]
+    "A03" | "final block" | [[1, 80], [3, null]] | [80G, 80G, null, null]
+    "A03" | "whole period" | [[1, null]] | [null, null, null, null]
+  }
+
+  def "#curveType filters past unavailable intervals"() {
+    given:
+    setNow(START.plusSeconds(1200))
+    def document = document(curveType, period(START, START.plusSeconds(3600), "PT15M", points))
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then:
+    values.collect { it.timestamp } == [1800, 2700].collect { START.plusSeconds(it).toEpochMilli() }
+    values.collect { it.value } == [null, null]
+
+    where:
+    curveType | points
+    "A01" | [[1, null], [2, null], [3, null], [4, null]]
+    "A03" | [[1, null]]
   }
 
   def "complete fixed-size periods support #curveType at #resolution resolution"() {

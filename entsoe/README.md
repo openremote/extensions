@@ -37,3 +37,20 @@ You'll for instance find that `10YNL----------L` is the code to use for The Neth
 Make sure to also add the `Has predicted data points` configuration to your attribute.
 
 ![](img/ENTSO-E-agent-link.png)
+
+### Unavailable prices and null predictions
+
+**An unavailable price is stored as a predicted datapoint with a timestamp and a `null` value. The datapoint entry is not deleted.**
+
+When a point in an otherwise valid returned period has no `price.amount`:
+
+- For `A01`, the agent writes `null` for that point's interval.
+- For `A03`, the agent writes `null` at each resolution interval from that point up to the next point, or the period end if it is the final point. The end boundary is excluded.
+
+For example, if a stored prediction at `12:15` has price `80` and a later publication explicitly marks that interval unavailable, the stored prediction becomes `(12:15, null)`. If no prediction exists at that timestamp, a null-valued entry is inserted. A later publication with an available price can replace the null value.
+
+Reading predicted datapoints still returns these timestamped null entries. Consumers must treat `null` as **unavailable**, not as zero, and must not carry a previous price forward through those intervals. Code that expects every prediction to contain a number must handle null values explicitly.
+
+Only intervals whose start timestamp is at or after the current time are updated. Historical predictions are left unchanged.
+
+This behavior applies to explicitly present points without a price. An omitted position in `A03` continues the preceding block; it does not by itself mean unavailable. Incomplete `A01` periods are rejected. Fetch failures, no-data acknowledgements, and rejected periods do not clear existing predictions. Gaps between separate returned periods currently produce no updates, so previously stored predictions in those gaps can remain; clearing those stale values is a pending improvement.

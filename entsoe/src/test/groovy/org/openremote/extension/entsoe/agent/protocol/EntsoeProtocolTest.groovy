@@ -23,6 +23,7 @@ import jakarta.ws.rs.client.ClientRequestContext
 import jakarta.ws.rs.client.ClientRequestFilter
 import jakarta.ws.rs.core.MediaType
 import jakarta.ws.rs.core.Response
+import org.openremote.container.timer.TimerService
 import org.openremote.manager.agent.AgentService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
@@ -784,6 +785,83 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       assetStorageService.delete([agent.id])
     }
     closeClient()
+  }
+
+  def "#curveType unavailable prices replace stored predictions and can become available again"() {
+    given: "a real prediction store and a protocol with a fixed clock"
+    def container = startContainer(defaultConfig(), defaultServices())
+    setPseudoClock(BEFORE_DATASET_START)
+    def assetStorageService = container.getService(AssetStorageService.class)
+    def predictionService = container.getService(AssetPredictedDatapointService.class)
+    def protocol = new EntsoeProtocol(new EntsoeAgent())
+    protocol.timerService = container.getService(TimerService.class)
+    protocol.predictedDatapointService = predictionService
+    def attribute = new Attribute<>("energyPrice", NUMBER)
+    def asset = assetStorageService.merge(new ThingAsset("Unavailable Price Asset")
+            .setRealm(MASTER_REALM).addOrReplaceAttributes(attribute))
+    def ref = new AttributeRef(asset.id, attribute.name)
+    def linkedAttributes = [new AbstractMap.SimpleEntry<>(ref, attribute)]
+    def start = Instant.parse(DATASET_START)
+    def timestamp = { long offset -> start.plusSeconds(offset).toEpochMilli() }
+    def document = { List<List> points ->
+      def pointXml = points.collect { point ->
+        "<Point><position>${point[0]}</position>" +
+        (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
+      }.join("")
+      def xml = """
+        <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+          <TimeSeries><curveType>${curveType}</curveType><Period>
+            <timeInterval><start>${start}</start><end>${start.plusSeconds(3600)}</end></timeInterval>
+            <resolution>PT15M</resolution>${pointXml}
+          </Period></TimeSeries>
+        </Publication_MarketDocument>
+      """
+      protocol.unmarshalPublicationMarketDocument(xml)
+    }
+    def snapshot = {
+      predictionService.getDatapoints(ref).sort { it.timestamp }.collect {
+        [it.timestamp, it.value as BigDecimal]
+      }
+    }
+    def initialPoints = [[1, 80], [2, 81], [3, 82], [4, 83]]
+    predictionService.updateValues(ref.id, ref.name, [
+      new ValueDatapoint<>(timestamp(-900), 70G),
+      new ValueDatapoint<>(timestamp(3600), 100G)
+    ])
+    protocol.applyPricingInformation("test-zone", document(initialPoints), linkedAttributes)
+    def expectedTimes = [-900, 0, 900, 1800, 2700, 3600].collect { timestamp(it) }
+
+    expect: "the initial prices are persisted"
+    snapshot() == [expectedTimes, [70G, 80G, 81G, 82G, 83G, 100G]].transpose()
+
+    when: "a subsequent publication explicitly marks middle intervals unavailable"
+    protocol.applyPricingInformation("test-zone", document(unavailablePoints), linkedAttributes)
+
+    then: "null values replace stale prices, preserving values outside the period"
+    snapshot() == [expectedTimes, [70G, 80G, null, null, 90G, 100G]].transpose()
+
+    when: "the whole period becomes unavailable"
+    protocol.applyPricingInformation("test-zone", document(allUnavailablePoints), linkedAttributes)
+
+    then: "all its prices are cleared, including when there are no available prices to write"
+    snapshot() == [expectedTimes, [70G, null, null, null, null, 100G]].transpose()
+
+    when: "prices become available again"
+    protocol.applyPricingInformation("test-zone", document(initialPoints), linkedAttributes)
+
+    then: "prices replace the unavailable values"
+    snapshot() == [expectedTimes, [70G, 80G, 81G, 82G, 83G, 100G]].transpose()
+
+    cleanup:
+    if (asset?.id) {
+      assetStorageService.delete([asset.id])
+    }
+    closeClient()
+
+    where:
+    curveType | unavailablePoints | allUnavailablePoints
+    "A01" | [[1, 80], [2, null], [3, null], [4, 90]] | [[1, null], [2, null], [3, null], [4, null]]
+    "A03" | [[1, 80], [2, null], [4, 90]] | [[1, null]]
   }
 
   def "ENTSO-E integration test handles no-data acknowledgement response cleanly"() {
