@@ -444,6 +444,13 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
     }
 
     for (PublicationMarketDocument.TimeSeries timeSeries : document.getTimeSeries()) {
+      String curveType = timeSeries.getCurveType();
+      if (!"A01".equals(curveType) && !"A03".equals(curveType)) {
+        LOG.warning(
+            "Skipping ENTSO-E time series with unsupported curve type: '" + curveType + "'");
+        continue;
+      }
+
       if (timeSeries.getPeriods() == null || timeSeries.getPeriods().isEmpty()) {
         continue;
       }
@@ -473,7 +480,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           continue;
         }
 
-        if ("A03".equals(timeSeries.getCurveType())) {
+        if ("A03".equals(curveType)) {
           addVariableBlockDatapoints(period, start, resolution, nowMillis, values);
           continue;
         }

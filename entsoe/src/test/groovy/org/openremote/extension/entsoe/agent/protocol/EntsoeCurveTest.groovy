@@ -162,6 +162,54 @@ class EntsoeCurveTest extends Specification {
     protocol.buildPredictedDatapoints(document).isEmpty()
   }
 
+  def "unsupported or empty curve type '#curveType' produces no predictions"() {
+    given:
+    def document = document(curveType, period(START, START.plusSeconds(3600), "PT15M", [[1, 80]]))
+
+    expect:
+    protocol.buildPredictedDatapoints(document).isEmpty()
+
+    where:
+    curveType << ["A02", "A04", "A05", "A99", "", " "]
+  }
+
+  def "rejected series do not prevent valid series in the same document from being decoded"() {
+    given:
+    def xml = """
+<Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  <TimeSeries>
+    <curveType>A01</curveType>
+    ${period(START, START.plusSeconds(1800), "PT15M", [[1, 80], [2, 81]])}
+  </TimeSeries>
+  <TimeSeries>
+    <curveType>A99</curveType>
+    ${period(START.plusSeconds(1800), START.plusSeconds(3600), "PT15M", [[1, 999]])}
+  </TimeSeries>
+  <TimeSeries>
+    <curveType>A03</curveType>
+    ${period(START.plusSeconds(3600), START.plusSeconds(5400), "PT15M", [[1, 90]])}
+  </TimeSeries>
+  <TimeSeries>
+    <curveType/>
+    ${period(START.plusSeconds(5400), START.plusSeconds(7200), "PT15M", [[1, 999]])}
+  </TimeSeries>
+  <TimeSeries>
+    ${period(START.plusSeconds(7200), START.plusSeconds(9000), "PT15M", [[1, 100], [2, 101]])}
+  </TimeSeries>
+</Publication_MarketDocument>
+"""
+    def document = protocol.unmarshalPublicationMarketDocument(xml)
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then:
+    values.collect { it.timestamp } == [0, 900, 3600, 4500, 7200, 8100].collect {
+      START.plusSeconds(it).toEpochMilli()
+    }
+    values.collect { it.value } == [80G, 81G, 90G, 90G, 100G, 101G]
+  }
+
   private void setNow(Instant now) {
     protocol.timerService = Stub(TimerService) {
       getCurrentTimeMillis() >> now.toEpochMilli()
