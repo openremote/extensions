@@ -57,8 +57,16 @@ public class PublicationMarketDocument {
   @XmlAccessorType(XmlAccessType.FIELD)
   public static class TimeSeries {
 
+    // ENTSO-E time series guide section 2: an omitted curve type defaults to A01.
+    @XmlElement(name = "curveType", namespace = NS)
+    private String curveType = "A01";
+
     @XmlElement(name = "Period", namespace = NS)
     private List<Period> periods;
+
+    public String getCurveType() {
+      return curveType;
+    }
 
     public List<Period> getPeriods() {
       return periods;
