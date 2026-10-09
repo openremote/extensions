@@ -1,7 +1,7 @@
 ## Introduction
 
 The OpenRemote platform is designed for versatility, supporting diverse domains such as energy management, smart cities, and fleet management.
-As the platform scales, it is no longer practical or efficient for the Core repository ([openremote/openremote](https://github.com/openremote/openremote/)) to natively support every specific protocol, UI widget or business logic requirement.
+As the platform scales, it is no longer practical or efficient for the Core repository ([openremote/core](https://github.com/openremote/core/)) to natively support every specific protocol, UI widget or business logic requirement.
 
 ## Purpose
 

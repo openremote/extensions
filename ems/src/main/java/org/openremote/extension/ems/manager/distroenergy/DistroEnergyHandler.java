@@ -363,7 +363,7 @@ public class DistroEnergyHandler {
    *
    * <p>Under a JVM zone that observes DST the storage frame is not monotonic, so on the fall-back
    * day the two instants of the repeated hour collapse onto a single stored row and both read it.
-   * That is a consequence of the naive primary key upstream (openremote/openremote#3292). The
+   * That is a consequence of the naive primary key upstream (openremote/core#3292). The
    * collapse can only duplicate a read, never erase one, so it cannot turn a day with a forecast
    * into a skip, and while it lasts the repeated hour is never a gap at all: both passes read the
    * one surviving row, so the hour carries as many distinct values as it has ISPs. Once predicted
@@ -471,7 +471,7 @@ public class DistroEnergyHandler {
               + " of "
               + submissionData.size()
               + " positions reusing a value from the repeated DST hour, which collapses onto one"
-              + " predicted datapoint row (openremote/openremote#3292)");
+              + " predicted datapoint row (openremote/core#3292)");
     }
 
     if (dstFilled > 0) {

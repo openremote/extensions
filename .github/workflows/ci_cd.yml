@@ -50,9 +50,9 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: openremote/openremote
+          repository: openremote/core
           path: openremote
-          ref: master
+          ref: main
           sparse-checkout: profile
           sparse-checkout-cone-mode: false
 
@@ -178,9 +178,9 @@ jobs:
         if: ${{ steps.is_publish_event.outputs.value == 'true' }}
         run: |
           if [ "$IS_RELEASE" == true ]; then
-            gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="demo" -f MANAGER_TAG="latest" -f CLEAN_INSTALL="true"
+            gh workflow run deploy.yml -R openremote/core -f ENVIRONMENT="demo" -f MANAGER_TAG="latest" -f CLEAN_INSTALL="true"
           else 
-            gh workflow run deploy.yml -R openremote/openremote -f ENVIRONMENT="staging" -f MANAGER_TAG="develop" -f CLEAN_INSTALL="true"
+            gh workflow run deploy.yml -R openremote/core -f ENVIRONMENT="staging" -f MANAGER_TAG="develop" -f CLEAN_INSTALL="true"
           fi
         env:
           GH_TOKEN: ${{ steps.deployment-token.outputs.token }}
