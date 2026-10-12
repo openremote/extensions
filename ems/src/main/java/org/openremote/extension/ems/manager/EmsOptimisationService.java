@@ -536,9 +536,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                   energyOptimisationAssetId, EmsEnergyOptimisationAsset.POWER_NET.getName()),
               portfolio);
     } catch (Exception e) {
-      // A missing client key or an unusable base URL must not take down the rest of the EMS
-      // service.
-      LOG.log(Level.WARNING, "Failed to deploy Distro Energy for portfolio: " + portfolio, e);
+      // A missing client key, an invalid request interval or an unusable base URL must not take
+      // down the rest of the EMS service.
+      LOG.log(Level.SEVERE, "Failed to deploy Distro Energy for portfolio: " + portfolio, e);
       return;
     }
     // Registered before the schedule starts, so a handler whose deploy() is rejected during

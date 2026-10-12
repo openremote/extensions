@@ -53,6 +53,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   static final String PARENT_ID = "optimisationAsset1"
 
   List<RecordingDistroEnergyHandler> createdHandlers
+  Map<String, String> handlerConfig
   EmsOptimisationService service
 
   def setupSpec() {
@@ -68,8 +69,9 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     assetStorageService.find(PARENT_ID, false, EmsEnergyOptimisationAsset.class) >>
             new EmsEnergyOptimisationAsset("parent")
 
+    handlerConfig = [(DistroEnergyHandler.DISTRO_ENERGY_CLIENT_KEY): "test-key"]
     def handlerContainer = Stub(Container) {
-      getConfig() >> [(DistroEnergyHandler.DISTRO_ENERGY_CLIENT_KEY): "test-key"]
+      getConfig() >> { handlerConfig }
       getService(TimerService) >> Stub(TimerService)
       getScheduledExecutor() >> Stub(ScheduledExecutorService)
       getService(AssetPredictedDatapointService) >> Stub(AssetPredictedDatapointService)
@@ -136,6 +138,25 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     original.undeployCount == 1
     createdHandlers.size() == 2
     createdHandlers[1].deployCount == 1
+  }
+
+  def "config the handler rejects is caught by the service rather than failing it: #label"() {
+    given:
+    handlerConfig[key] = value
+
+    when:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, distroAsset()))
+
+    then: "the constructor throws before a handler exists, and the service keeps going"
+    noExceptionThrown()
+    createdHandlers.isEmpty()
+
+    where:
+    label | key | value
+    "blank client key" | DistroEnergyHandler.DISTRO_ENERGY_CLIENT_KEY | "  "
+    "zero interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "0"
+    "negative interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "-5"
+    "non-numeric interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "hourly"
   }
 
   // Records deploy()/undeploy() calls instead of scheduling submissions or closing a real client.
