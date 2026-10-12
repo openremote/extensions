@@ -343,11 +343,25 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     // Registering over a live handler would leave the displaced one holding its endpoint and
     // client with no key left to stop it by, which is what happens when two assets share an EAN.
     stopGopacsHandler(contractedEan);
-    GOPACSHandler handler = gopacsHandlerFactory.createHandler(contractedEan, realm, assetId);
-    // Registered before the endpoint deploys, so a handler whose deploy() throws is still reachable
-    // from stop() and gets its client closed.
+    GOPACSHandler handler;
+    try {
+      handler = gopacsHandlerFactory.createHandler(contractedEan, realm, assetId);
+    } catch (Exception e) {
+      // Missing OAuth credentials or private key, or an unusable client. GOPACS stays down for this
+      // EAN, but this runs from start() too, so it must not take down the rest of the EMS service.
+      LOG.log(Level.SEVERE, "Failed to deploy GOPACS for EAN: " + contractedEan, e);
+      return;
+    }
+    try {
+      handler.deploy();
+    } catch (Exception e) {
+      LOG.log(Level.SEVERE, "Failed to deploy GOPACS endpoint for EAN: " + contractedEan, e);
+      // Closes the client. Left unregistered so the next reconcile retries, instead of finding a
+      // handler for this asset and leaving it in place without an endpoint.
+      handler.undeploy();
+      return;
+    }
     gopacsHandlerMap.put(contractedEan, handler);
-    handler.deploy();
     LOG.fine("Deployed GOPACS for EAN: " + contractedEan);
   }
 
@@ -384,8 +398,14 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     // Same reasoning as startGopacsHandler: the displaced poller would keep polling and never
     // close its client.
     stopRedispatchHandler(contractedEan);
-    GOPACSRedispatchHandler handler =
-        gopacsRedispatchHandlerFactory.createHandler(contractedEan, realm, assetId);
+    GOPACSRedispatchHandler handler;
+    try {
+      handler = gopacsRedispatchHandlerFactory.createHandler(contractedEan, realm, assetId);
+    } catch (Exception e) {
+      // Same reasoning as startGopacsHandler: an unusable client must not fail start().
+      LOG.log(Level.SEVERE, "Failed to start redispatch handler for EAN: " + contractedEan, e);
+      return;
+    }
     gopacsRedispatchHandlerMap.put(contractedEan, handler);
     handler.startPolling();
     LOG.fine("Started redispatch handler for EAN: " + contractedEan);

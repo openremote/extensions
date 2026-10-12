@@ -67,6 +67,9 @@ class EmsOptimisationServiceGopacsTest extends Specification {
   List<RecordingRedispatchHandler> createdRedispatchHandlers
   Map<String, EmsGOPACSAsset> storedAssets
   EmsOptimisationService service
+  // Set by a test to make the next handler fail: in its constructor, or in deploy().
+  RuntimeException createFailure
+  RuntimeException deployFailure
 
   def setupSpec() {
     // Populates the asset model registry from this extension's own AssetModelProvider SPI
@@ -113,8 +116,12 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     service.gopacsHandlerFactory = new GOPACSHandler.Factory(handlerContainer) {
               @Override
               GOPACSHandler createHandler(String contractedEan, String realm, String assetId) {
+                if (createFailure != null) {
+                  throw createFailure
+                }
                 def handler =
                         new RecordingGOPACSHandler(contractedEan, realm, assetId, handlerContainer)
+                handler.deployFailure = deployFailure
                 createdHandlers << handler
                 return handler
               }
@@ -530,10 +537,53 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     createdRedispatchHandlers[0].stopCount == 1
   }
 
+  def "a handler that fails to construct does not throw out of the service"() {
+    given: "GOPACS config the handler constructor rejects, such as missing OAuth credentials"
+    createFailure = new RuntimeException("GOPACS_CLIENT_ID or GOPACS_CLIENT_SECRET not defined")
+
+    when:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset()))
+
+    then: "the failure stays inside the service, which start() relies on to keep starting"
+    noExceptionThrown()
+    createdHandlers.isEmpty()
+
+    when: "the config is fixed and the asset saved again"
+    createFailure = null
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset()))
+
+    then: "nothing was registered for the EAN, so the handler deploys"
+    createdHandlers.size() == 1
+    createdHandlers[0].deployCount == 1
+  }
+
+  def "a handler whose deploy throws is undeployed and left unregistered so the next save retries"() {
+    given:
+    deployFailure = new RuntimeException("deployment failed")
+
+    when:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset()))
+
+    then: "the failure stays inside the service and the handler's client is closed"
+    noExceptionThrown()
+    createdHandlers.size() == 1
+    createdHandlers[0].undeployCount == 1
+
+    when: "the asset is saved again once deploy succeeds"
+    deployFailure = null
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset()))
+
+    then: "a fresh handler deploys instead of the failed one being kept"
+    createdHandlers.size() == 2
+    createdHandlers[1].deployCount == 1
+    createdHandlers[1].undeployCount == 0
+  }
+
   // Records deploy()/undeploy() calls instead of deploying the JAX-RS endpoint or closing the client.
   static class RecordingGOPACSHandler extends GOPACSHandler {
     int deployCount = 0
     int undeployCount = 0
+    RuntimeException deployFailure
 
     RecordingGOPACSHandler(
     String contractedEan, String realm, String assetId, Container container) {
@@ -543,6 +593,9 @@ class EmsOptimisationServiceGopacsTest extends Specification {
     @Override
     void deploy() {
       deployCount++
+      if (deployFailure != null) {
+        throw deployFailure
+      }
     }
 
     @Override
