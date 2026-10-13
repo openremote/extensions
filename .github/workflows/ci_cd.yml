@@ -171,7 +171,7 @@ jobs:
           client-id: ${{ secrets._TEMP_CI_AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets._TEMP_CI_AUTOMATION_APP_PRIVATE_KEY }}
           owner: openremote
-          repositories: openremote
+          repositories: core
           permission-actions: write
 
       - name: Run deployment
