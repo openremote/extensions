@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: openremote/core
-          path: openremote
+          path: core
           ref: main
           sparse-checkout: profile
           sparse-checkout-cone-mode: false
@@ -87,7 +87,7 @@ jobs:
           mkdir -pm 777 tmp
 
           # Start the dev-testing stack
-          docker compose -f openremote/profile/dev-testing.yml up -d --no-build
+          docker compose -f core/profile/dev-testing.yml up -d --no-build
 
           ./gradlew test
 

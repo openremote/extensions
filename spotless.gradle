@@ -41,7 +41,7 @@ def prettierIgnorePatterns = readIgnorePatterns(rootProject.file('tools/spotless
 def targetWithIgnores = { Collection<String> includes, Collection<String> excludes = [] ->
   rootProject.fileTree(rootProject.projectDir) {
     includes.each { include it }
-    (prettierIgnorePatterns + excludes + ['openremote/**']).each { exclude it }
+    (prettierIgnorePatterns + excludes + ['core/**']).each { exclude it }
   }
 }
 String blockCommentLicenseDelimiter = '(?![ \\t]*/\\*(?:[ \\t]+|\\R[ \\t]*\\*[ \\t]+)Copyright\\b)(?![ \\t]*\\*)[ \\t]*\\S'
