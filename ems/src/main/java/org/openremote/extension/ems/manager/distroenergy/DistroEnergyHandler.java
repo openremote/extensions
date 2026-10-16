@@ -142,9 +142,17 @@ public class DistroEnergyHandler {
                     DISTRO_ENERGY_REQUEST_INTERVAL, DISTRO_ENERGY_REQUEST_INTERVAL_DEFAULT));
     this.clientKey = container.getConfig().get(DISTRO_ENERGY_CLIENT_KEY);
 
-    if (clientKey == null) {
+    if (clientKey == null || clientKey.isBlank()) {
       throw new RuntimeException(
           DISTRO_ENERGY_CLIENT_KEY + " not defined, cannot use Distro Energy.");
+    }
+    // Checked here rather than left to deploy(), where scheduleAtFixedRate would reject it outside
+    // the caller's handling of construction failures.
+    if (requestIntervalMinutes <= 0) {
+      throw new IllegalArgumentException(
+          DISTRO_ENERGY_REQUEST_INTERVAL
+              + " must be a positive number of minutes, got "
+              + requestIntervalMinutes);
     }
 
     this.client = createClient(org.openremote.container.Container.EXECUTOR);
