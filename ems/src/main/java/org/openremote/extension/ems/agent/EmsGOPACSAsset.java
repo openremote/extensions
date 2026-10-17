@@ -42,7 +42,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "currentPowerFlexRequest",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -52,7 +51,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "powerLimitMaximumProfileFlexOrder",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -62,7 +60,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "powerLimitMinimumProfileFlexOrder",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -72,7 +69,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "powerMaximumFlexRequest",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -82,7 +78,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "powerMinimumFlexRequest",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -126,7 +121,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "redispatchRequestedPower",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -154,7 +148,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
               "redispatchSuggestedPower",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -184,7 +177,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
           "redispatchAnnouncementHistory",
           ValueType.JSON_OBJECT,
-          new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
           new MetaItem<>(MetaItemType.READ_ONLY),
           new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
 
@@ -192,7 +184,6 @@ public class EmsGOPACSAsset extends Asset<EmsGOPACSAsset> {
       new AttributeDescriptor<>(
           "redispatchBidHistory",
           ValueType.JSON_OBJECT,
-          new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 90),
           new MetaItem<>(MetaItemType.READ_ONLY),
           new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
 

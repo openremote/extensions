@@ -61,7 +61,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
           new AttributeDescriptor<>(
               "connectionStatus",
               CONNECTION_STATUS_VALUE_TYPE,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
 
@@ -82,7 +81,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
       new AttributeDescriptor<>(
               "energyLevel",
               ValueType.POSITIVE_NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -93,7 +91,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
       new AttributeDescriptor<>(
               "energyLevelPercentage",
               ValueType.POSITIVE_NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -112,7 +109,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
       new AttributeDescriptor<>(
               "power",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -123,7 +119,6 @@ public class EmsElectricityBatteryAsset extends Asset<EmsElectricityBatteryAsset
       new AttributeDescriptor<>(
               "powerSetpoint",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
