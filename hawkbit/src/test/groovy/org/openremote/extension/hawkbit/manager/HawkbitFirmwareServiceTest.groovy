@@ -275,8 +275,8 @@ class HawkbitFirmwareServiceTest extends Specification implements ManagerContain
     then: "the token is forwarded to hawkBit"
     1 * service.targets.create({ TargetCreateRequest[] targets ->
       targets.length == 1 &&
-      targets[0].controllerId() == CONTROLLER_ID &&
-      targets[0].securityToken() == "custom-token"
+              targets[0].controllerId() == CONTROLLER_ID &&
+              targets[0].securityToken() == "custom-token"
     }) >> Response.ok(new Target[]{
       createdTarget
     }).build()
