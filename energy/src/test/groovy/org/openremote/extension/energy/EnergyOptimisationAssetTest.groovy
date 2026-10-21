@@ -159,7 +159,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
                       AssetDatapointIntervalQuery.Formula.AVG,
                       true
                       )
-              )
+      )
 
       assert setpoints.size() == 7
       assert setpoints[0].value == 0d
@@ -191,7 +191,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
                       AssetDatapointIntervalQuery.Formula.AVG,
                       true
                       )
-              )
+      )
 
       assert setpoints.size() == 7
       assert setpoints[0].value == 0d
@@ -223,7 +223,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
                       AssetDatapointIntervalQuery.Formula.AVG,
                       true
                       )
-              )
+      )
 
       assert setpoints.size() == 7
       assert setpoints[0].value == 0d
@@ -335,7 +335,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
                       AssetDatapointIntervalQuery.Formula.AVG,
                       true
                       )
-              )
+      )
 
       assert setpoints.size() == 7
       assert setpoints[0].value == 10d

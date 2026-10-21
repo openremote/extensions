@@ -139,7 +139,7 @@ class ForecastSolarServiceTest extends Specification implements ManagerContainer
           def responseBody = ValueUtil.JSON.readValue(content, ForecastSolarService.EstimateResponse.class)
           requestContext.abortWith(
                   Response.ok(responseBody, MediaType.APPLICATION_JSON_TYPE).build()
-                  )
+          )
           return
       }
 
