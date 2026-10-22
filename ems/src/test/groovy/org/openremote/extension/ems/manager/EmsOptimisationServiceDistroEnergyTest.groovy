@@ -22,6 +22,8 @@ import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset
 import org.openremote.extension.ems.manager.distroenergy.DistroEnergyHandler
+import org.openremote.extension.ems.manager.distroenergy.DistroGopacsHandler
+import org.openremote.extension.ems.manager.distroenergy.DistroGopacsResource
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
@@ -53,6 +55,8 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   static final String PARENT_ID = "optimisationAsset1"
 
   List<RecordingDistroEnergyHandler> createdHandlers
+  List<RecordingDistroGopacsHandler> createdGopacsHandlers
+  Map<String, String> gopacsConfig
   Map<String, String> handlerConfig
   EmsOptimisationService service
 
@@ -79,6 +83,16 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     }
 
     createdHandlers = []
+    createdGopacsHandlers = []
+
+    gopacsConfig = [(DistroGopacsHandler.DISTRO_GOPACS_TENANT_ID): "tenant"]
+    def gopacsContainer = Stub(Container) {
+      getConfig() >> { gopacsConfig }
+      getService(TimerService) >> Stub(TimerService)
+      getScheduledExecutor() >> Stub(ScheduledExecutorService)
+      getService(AssetStorageService) >> Stub(AssetStorageService)
+      getService(AssetProcessingService) >> Stub(AssetProcessingService)
+    }
 
     service = new EmsOptimisationService()
     service.services = Services.builder().withAssetStorageService(assetStorageService).build()
@@ -92,6 +106,20 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
                 return handler
               }
             }
+    def gopacsResource = Stub(DistroGopacsResource)
+    service.distroGopacsHandlerFactory = new DistroGopacsHandler.Factory(gopacsContainer) {
+              @Override
+              DistroGopacsHandler createHandler(String assetId) {
+                def handler = new RecordingDistroGopacsHandler(assetId, gopacsContainer, gopacsResource)
+                createdGopacsHandlers << handler
+                return handler
+              }
+            }
+  }
+
+  private static EmsDistroEnergyAsset gopacsAsset(Boolean enabled) {
+    return new EmsDistroEnergyAsset("distro").setId(ASSET_ID).setParentId(PARENT_ID)
+            .setGopacsEnabled(enabled)
   }
 
   private static EmsDistroEnergyAsset distroAsset(String portfolio = "portfolio-a") {
@@ -157,6 +185,73 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     "zero interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "0"
     "negative interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "-5"
     "non-numeric interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "hourly"
+  }
+
+  def "the GOPACS order handler runs while gopacsEnabled is true, independent of day-ahead"() {
+    when: "a GOPACS-only asset without a portfolio is created"
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(true)))
+
+    then: "only the GOPACS handler is deployed"
+    createdHandlers.isEmpty()
+    createdGopacsHandlers.size() == 1
+    createdGopacsHandlers[0].deployCount == 1
+
+    when: "the asset is saved again while still enabled"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(true)))
+
+    then: "the running handler is left alone"
+    createdGopacsHandlers.size() == 1
+    createdGopacsHandlers[0].undeployCount == 0
+
+    when: "it is disabled"
+    service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(false)))
+
+    then:
+    createdGopacsHandlers[0].undeployCount == 1
+  }
+
+  def "deleting the asset undeploys its GOPACS order handler"() {
+    given:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(true)))
+
+    when:
+    service.processAssetChange(event(PersistenceEvent.Cause.DELETE, gopacsAsset(true)))
+
+    then:
+    createdGopacsHandlers[0].undeployCount == 1
+  }
+
+  def "a missing GOPACS tenant is caught by the service rather than failing it"() {
+    given:
+    gopacsConfig.clear()
+
+    when:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(true)))
+
+    then:
+    noExceptionThrown()
+    createdGopacsHandlers.isEmpty()
+  }
+
+  // Records deploy()/undeploy() calls instead of polling Distro.
+  static class RecordingDistroGopacsHandler extends DistroGopacsHandler {
+    int deployCount = 0
+    int undeployCount = 0
+
+    RecordingDistroGopacsHandler(
+    String assetId, Container container, DistroGopacsResource resource) {
+      super(assetId, container, resource)
+    }
+
+    @Override
+    void deploy() {
+      deployCount++
+    }
+
+    @Override
+    void undeploy() {
+      undeployCount++
+    }
   }
 
   // Records deploy()/undeploy() calls instead of scheduling submissions or closing a real client.
