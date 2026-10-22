@@ -278,7 +278,7 @@
       },
       {
         "type": "info",
-        "title": "Configuration",
+        "title": "Day-ahead — Configuration",
         "properties": {
           "include": []
         },
@@ -288,12 +288,76 @@
       },
       {
         "type": "info",
-        "title": "Status",
+        "title": "Day-ahead — Status",
         "properties": {
           "include": []
         },
         "attributes": {
           "include": ["lastSubmission", "daysSubmitted"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "GOPACS — Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsEnabled"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "GOPACS — Announcement",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "gopacsEan",
+            "gopacsAnnouncementId",
+            "gopacsStartTime",
+            "gopacsEndTime",
+            "gopacsBidValidityEnd",
+            "gopacsEanEffectivity"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "GOPACS — Order",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "gopacsOrderType",
+            "gopacsOrderQuantity",
+            "gopacsOrderPrice",
+            "gopacsConfirmOrder",
+            "gopacsCancelOrders"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "GOPACS — Status",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsOrders", "gopacsLastSync"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "GOPACS — History",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsOrderHistory", "gopacsSettlementHistory"]
         }
       },
       {
