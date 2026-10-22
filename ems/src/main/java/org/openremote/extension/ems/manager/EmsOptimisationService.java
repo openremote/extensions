@@ -43,6 +43,7 @@ import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset;
 import org.openremote.extension.ems.agent.EmsGOPACSAsset;
 import org.openremote.extension.ems.manager.distroenergy.DistroEnergyHandler;
+import org.openremote.extension.ems.manager.distroenergy.DistroGopacsHandler;
 import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
 import org.openremote.extension.ems.manager.gopacs.GOPACSRedispatchHandler;
 import org.openremote.manager.asset.AssetProcessingService;
@@ -73,6 +74,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   protected GOPACSHandler.Factory gopacsHandlerFactory;
   protected GOPACSRedispatchHandler.Factory gopacsRedispatchHandlerFactory;
   protected DistroEnergyHandler.Factory distroEnergyHandlerFactory;
+  protected DistroGopacsHandler.Factory distroGopacsHandlerFactory;
 
   private final Map<String, ScheduledFuture<?>> energyOptimisationAssetsMap =
       new ConcurrentHashMap<>();
@@ -91,6 +93,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   // Keyed by asset id rather than portfolio: unlike GOPACS there is no external routing key, and
   // the asset id stays stable when the portfolio is edited.
   private final Map<String, DistroEnergyHandler> distroEnergyHandlerMap = new HashMap<>();
+  // Keyed by asset id. Reconciled from the persistence route and the attribute event subscription,
+  // so the check-then-start runs under a lock for the same reason as gopacsLifecycleLock.
+  private final Map<String, DistroGopacsHandler> distroGopacsHandlerMap = new ConcurrentHashMap<>();
+  private final Object distroGopacsLifecycleLock = new Object();
 
   @SuppressWarnings("unchecked")
   @Override
@@ -121,6 +127,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     gopacsHandlerFactory = new GOPACSHandler.Factory(container);
     gopacsRedispatchHandlerFactory = new GOPACSRedispatchHandler.Factory(container);
     distroEnergyHandlerFactory = new DistroEnergyHandler.Factory(container);
+    distroGopacsHandlerFactory = new DistroGopacsHandler.Factory(container);
   }
 
   @Override
@@ -184,6 +191,17 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         .map(asset -> (EmsDistroEnergyAsset) asset)
         .forEach(this::startDistroEnergyHandler);
 
+    // Start Distro GOPACS order handler for every Distro Energy asset that has it enabled
+    services
+        .getAssetStorageService()
+        .findAll(
+            new AssetQuery()
+                .types(EmsDistroEnergyAsset.class)
+                .attributeName(EmsDistroEnergyAsset.GOPACS_ENABLED.getName()))
+        .stream()
+        .map(asset -> (EmsDistroEnergyAsset) asset)
+        .forEach(this::reconcileDistroGopacsHandler);
+
     // List of asset types that are part of the core EMS service
     String[] assetTypes = {
       EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
@@ -211,6 +229,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
     distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
     distroEnergyHandlerMap.clear();
+    synchronized (distroGopacsLifecycleLock) {
+      distroGopacsHandlerMap.forEach((assetId, handler) -> handler.undeploy());
+      distroGopacsHandlerMap.clear();
+    }
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
     energyOptimisationTimersMap.clear();
   }
@@ -555,6 +577,45 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  /**
+   * Runs one Distro GOPACS order handler for the asset while {@code gopacsEnabled} is true and none
+   * otherwise. A running handler is left alone: its tracked orders are restored from the asset on
+   * deploy, but a redeploy would still drop an in-flight poll.
+   */
+  private void reconcileDistroGopacsHandler(EmsDistroEnergyAsset asset) {
+    synchronized (distroGopacsLifecycleLock) {
+      String assetId = asset.getId();
+      boolean enabled = asset.getGopacsEnabled().orElse(false);
+      if (enabled == distroGopacsHandlerMap.containsKey(assetId)) {
+        return;
+      }
+      if (!enabled) {
+        stopDistroGopacsHandler(assetId);
+        return;
+      }
+      DistroGopacsHandler handler;
+      try {
+        handler = distroGopacsHandlerFactory.createHandler(assetId);
+      } catch (Exception e) {
+        // Missing credentials or an unusable URL must not take down the rest of the EMS service.
+        LOG.log(Level.SEVERE, "Failed to deploy Distro GOPACS handler for asset: " + assetId, e);
+        return;
+      }
+      // Registered before deploy() for the same reason as the day-ahead handler.
+      distroGopacsHandlerMap.put(assetId, handler);
+      handler.deploy();
+    }
+  }
+
+  private void stopDistroGopacsHandler(String assetId) {
+    synchronized (distroGopacsLifecycleLock) {
+      DistroGopacsHandler existing = distroGopacsHandlerMap.remove(assetId);
+      if (existing != null) {
+        existing.undeploy();
+      }
+    }
+  }
+
   protected void processAssetChange(PersistenceEvent<?> persistenceEvent) {
     if (persistenceEvent.getEntity()
         instanceof EmsEnergyOptimisationAsset emsEnergyOptimisationAsset) {
@@ -575,6 +636,9 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       String assetId = emsDistroEnergyAsset.getId();
       if (persistenceEvent.getCause() == PersistenceEvent.Cause.DELETE) {
         stopDistroEnergyHandler(assetId);
+        stopDistroGopacsHandler(assetId);
+      } else {
+        reconcileDistroGopacsHandler(emsDistroEnergyAsset);
       }
       if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
         startDistroEnergyHandler(emsDistroEnergyAsset);
@@ -997,6 +1061,15 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
               portfolio -> {
                 startDistroEnergyHandler(emsDistroEnergyAsset);
               });
+    }
+
+    if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ENABLED.getName())) {
+      reconcileDistroGopacsHandler(emsDistroEnergyAsset);
+    } else if (attributeName.startsWith("gopacs")) {
+      DistroGopacsHandler handler = distroGopacsHandlerMap.get(assetId);
+      if (handler != null) {
+        handler.onAttributeEvent(attributeEvent);
+      }
     }
   }
 
