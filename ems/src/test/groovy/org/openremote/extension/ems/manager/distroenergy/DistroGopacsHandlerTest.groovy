@@ -19,6 +19,8 @@
 package org.openremote.extension.ems.manager.distroenergy
 
 import jakarta.ws.rs.NotFoundException
+import jakarta.ws.rs.ProcessingException
+import jakarta.ws.rs.ServiceUnavailableException
 import jakarta.ws.rs.WebApplicationException
 import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
@@ -186,6 +188,19 @@ class DistroGopacsHandlerTest extends Specification {
     sent.find { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.name }.value.isEmpty()
   }
 
+  def "batteries that cannot hold the 100 kW minimum clear the suggestion"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    batteries = [battery(level: 12d)]
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY.name, null, "BUY_LOW_SELL_HIGH")
+
+    then:
+    sent.find { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_TYPE.name }.value.isEmpty()
+    sent.find { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.name }.value.isEmpty()
+  }
+
   def "an unchanged republish of an attribute does nothing"() {
     given:
     announcement("BUY_LOW_SELL_HIGH")
@@ -257,6 +272,22 @@ class DistroGopacsHandlerTest extends Specification {
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).detail == "HTTP 403"
   }
 
+  def "a create that times out stays tracked as pending so polling can find it"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    order(SELL, 200, 45)
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
+
+    then:
+    1 * resource.createOrder(TENANT, _) >> { throw new ProcessingException("Read timed out") }
+    handler.orders.size() == 1
+    handler.orders.values().first().status() == "PENDING"
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).size() == 1
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "CREATE_FAILED"
+  }
+
   def "a price change replaces the open orders of the current announcement only"() {
     given:
     announcement("BUY_LOW_SELL_HIGH")
@@ -321,12 +352,72 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.getOrder(TENANT, "live") >> stored("live", "MATCHED", ANNOUNCEMENT)
     1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
     1 * resource.getOrder(TENANT, "gone") >> { throw new NotFoundException() }
-    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled") >>
+    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 0) >>
             new GopacsSettlementPage([trade], 1)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "MATCHED"
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }*.value*.get()*.tradeId == ["trade-1"]
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
+  }
+
+  def "a failed settlement fetch keeps the order and is retried without repeating its status"() {
+    given:
+    track(stored("settled", "MATCHED", ANNOUNCEMENT))
+    def trade = new GopacsSettlement("trade-1", "settled", BUY, seconds(START), seconds(END),
+            0.2, 0.4, 45, 18, seconds(NOW), seconds(NOW))
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.listSettlements(*_) >> { throw new ServiceUnavailableException() }
+    handler.orders["settled"].status() == "SETTLED"
+
+    when:
+    sent.clear()
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.listSettlements(*_) >> new GopacsSettlementPage([trade], 1)
+    handler.orders.isEmpty()
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }.isEmpty()
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.size() == 1
+  }
+
+  def "settlements are read page by page until the total is reached"() {
+    given:
+    track(stored("settled", "MATCHED", ANNOUNCEMENT))
+    def trade = { String id -> new GopacsSettlement(id, "settled", BUY, seconds(START), seconds(END),
+            0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW)) }
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 0) >>
+            new GopacsSettlementPage((1..100).collect { trade("t-$it") }, 101)
+    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 100) >>
+            new GopacsSettlementPage([trade("t-101")], 101)
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.size() == 101
+  }
+
+  def "an undeployed handler ignores queued work"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    order(SELL, 200, 45)
+    track(stored("live", "SUBMITTED", ANNOUNCEMENT))
+    handler.undeploy()
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
+    handler.pollOrders()
+
+    then:
+    0 * resource._
+    sent.isEmpty()
   }
 
   def "deploy restores the orders saved on the asset"() {

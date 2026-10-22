@@ -87,6 +87,9 @@ public class DistroGopacsHandler {
   /** Distro rejects orders below 0.1 MW; quantities are sized in steps of that minimum. */
   protected static final double MIN_QUANTITY_KW = 100;
 
+  /** Largest page size the settlements endpoint accepts. */
+  protected static final int SETTLEMENT_PAGE_SIZE = 100;
+
   public static final String BUY = "BUY";
   public static final String SELL = "SELL";
   public static final String METADATA_ANNOUNCEMENT_ID = "announcementId";
@@ -124,6 +127,9 @@ public class DistroGopacsHandler {
   protected final Map<String, GopacsOrder> orders = new LinkedHashMap<>();
 
   protected ScheduledFuture<?> pollFuture;
+
+  // Tasks already queued on the shared executor still run after undeploy(); they check this first.
+  protected volatile boolean undeployed;
 
   public static class Factory {
     protected Container container;
@@ -228,13 +234,17 @@ public class DistroGopacsHandler {
   }
 
   public void undeploy() {
+    undeployed = true;
     if (pollFuture != null) {
       // Interrupt to abort any in-flight HTTP call before closing the client
       pollFuture.cancel(true);
       pollFuture = null;
     }
-    if (client != null) {
-      client.close();
+    // Wait for a running order action to finish so it never uses a closed client.
+    synchronized (this) {
+      if (client != null) {
+        client.close();
+      }
     }
     LOG.info("Undeployed Distro GOPACS handler for asset " + assetId);
   }
@@ -268,6 +278,9 @@ public class DistroGopacsHandler {
 
   protected synchronized void processAttributeChange(
       String attributeName, Object oldValue, Object value) {
+    if (undeployed) {
+      return;
+    }
     if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.getName())
         && oldValue instanceof String oldAnnouncementId) {
       // The announcement closed or was superseded: what is still open for it can no longer help.
@@ -311,6 +324,7 @@ public class DistroGopacsHandler {
       double buyKw = quantityKw(batteries, BUY, windowHours);
       double sellKw = quantityKw(batteries, SELL, windowHours);
       orderType = orderTypeFor(category, buyKw, sellKw);
+      double sideKw = BUY.equals(orderType) ? buyKw : sellKw;
       if (orderType == null) {
         LOG.info(
             "No order suggested for Distro GOPACS asset "
@@ -318,8 +332,18 @@ public class DistroGopacsHandler {
                 + ": effectivity category '"
                 + category
                 + "' favours neither side");
+      } else if (sideKw < MIN_QUANTITY_KW) {
+        LOG.info(
+            "No order suggested for Distro GOPACS asset "
+                + assetId
+                + ": the batteries can hold "
+                + sideKw
+                + " kW to "
+                + orderType
+                + ", below the 100 kW minimum");
+        orderType = null;
       } else {
-        quantityKw = BUY.equals(orderType) ? buyKw : sellKw;
+        quantityKw = sideKw;
         LOG.fine(
             "Suggested "
                 + orderType
@@ -508,15 +532,40 @@ public class DistroGopacsHandler {
             + assetId
             + ": "
             + ValueUtil.asJSON(request).orElse(request.toString()));
+    // Tracked before posting: a timeout can hide an order Distro did accept. Polling then finds
+    // its real status, or untracks it when Distro answers 404.
+    orders.put(request.reference(), pendingOrder(request));
     try {
       GopacsOrder order = resource.createOrder(tenantId, request);
       orders.put(order.reference(), order);
-      saveOrders();
       recordHistory("CREATED", order, null);
     } catch (RuntimeException e) {
       LOG.log(Level.WARNING, "Failed to place Distro GOPACS order for asset " + assetId, e);
-      recordHistory("CREATE_FAILED", null, describe(e));
+      if (e instanceof WebApplicationException wae
+          && wae.getResponse().getStatus() >= 400
+          && wae.getResponse().getStatus() < 500) {
+        // Rejected outright, so Distro holds no order for this reference.
+        orders.remove(request.reference());
+      }
+      recordHistory("CREATE_FAILED", orders.get(request.reference()), describe(e));
     }
+    saveOrders();
+  }
+
+  private static GopacsOrder pendingOrder(GopacsOrderRequest request) {
+    return new GopacsOrder(
+        request.reference(),
+        null,
+        "PENDING",
+        request.orderType(),
+        request.quantity(),
+        request.price(),
+        request.start(),
+        request.end(),
+        request.ean(),
+        request.metadata(),
+        request.customExpirationTime(),
+        null);
   }
 
   /** Re-submits the open orders for the current announcement at the new price. */
@@ -595,7 +644,7 @@ public class DistroGopacsHandler {
    * records its trades; an order in a final status stops being tracked.
    */
   protected synchronized void pollOrders() {
-    if (orders.isEmpty()) {
+    if (undeployed || orders.isEmpty()) {
       return;
     }
     for (GopacsOrder tracked : List.copyOf(orders.values())) {
@@ -604,13 +653,13 @@ public class DistroGopacsHandler {
         if (!Objects.equals(order.status(), tracked.status())) {
           recordHistory("STATUS", order, order.reason());
         }
+        // Stored first, so a failed settlement fetch is retried next poll without a second STATUS.
+        orders.put(order.reference(), order);
         if (FINAL_STATUSES.contains(order.status())) {
           if ("SETTLED".equals(order.status())) {
             recordSettlements(order);
           }
           orders.remove(order.reference());
-        } else {
-          orders.put(order.reference(), order);
         }
       } catch (WebApplicationException e) {
         if (e.getResponse().getStatus() == 404) {
@@ -631,15 +680,28 @@ public class DistroGopacsHandler {
 
   /**
    * Records each trade of a settled order. A settled order's trades no longer change and the order
-   * is untracked right after, so each trade is recorded once.
+   * is untracked right after, so each trade is recorded once, unless the manager stops between
+   * recording them and saving the tracked orders.
    */
   protected void recordSettlements(GopacsOrder order) {
-    GopacsSettlementPage page =
-        resource.listSettlements(tenantId, order.start(), order.end(), order.reference());
-    if (page.items() == null) {
-      return;
-    }
-    for (GopacsSettlement settlement : page.items()) {
+    // Fetched in full before recording, so a failed page never leaves the trades half recorded.
+    List<GopacsSettlement> settlements = new ArrayList<>();
+    GopacsSettlementPage page;
+    do {
+      page =
+          resource.listSettlements(
+              tenantId,
+              order.start(),
+              order.end(),
+              order.reference(),
+              SETTLEMENT_PAGE_SIZE,
+              settlements.size());
+      if (page.items() != null) {
+        settlements.addAll(page.items());
+      }
+    } while (page.items() != null && !page.items().isEmpty() && settlements.size() < page.total());
+
+    for (GopacsSettlement settlement : settlements) {
       Map<String, Object> entry = ValueUtil.JSON.convertValue(settlement, new TypeReference<>() {});
       entry.put("recordedAt", timerService.getCurrentTimeMillis());
       sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY, entry);
@@ -673,7 +735,14 @@ public class DistroGopacsHandler {
 
   private void resetFlag(AttributeDescriptor<Boolean> flag) {
     // Delayed like the redispatch confirmation so the UI shows the toggle before it springs back.
-    scheduledExecutorService.schedule(() -> sendAttributeEvent(flag, false), 1, TimeUnit.SECONDS);
+    scheduledExecutorService.schedule(
+        () -> {
+          if (!undeployed) {
+            sendAttributeEvent(flag, false);
+          }
+        },
+        1,
+        TimeUnit.SECONDS);
   }
 
   protected EmsDistroEnergyAsset findAsset() {

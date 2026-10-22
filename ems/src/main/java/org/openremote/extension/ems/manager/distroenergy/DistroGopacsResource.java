@@ -65,5 +65,7 @@ public interface DistroGopacsResource {
       @PathParam("tenantId") String tenantId,
       @QueryParam("start") long start,
       @QueryParam("end") long end,
-      @QueryParam("orderReference") String orderReference);
+      @QueryParam("orderReference") String orderReference,
+      @QueryParam("limit") int limit,
+      @QueryParam("offset") int offset);
 }

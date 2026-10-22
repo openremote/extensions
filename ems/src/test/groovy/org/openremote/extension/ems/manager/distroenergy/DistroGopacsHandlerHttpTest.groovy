@@ -123,6 +123,19 @@ class DistroGopacsHandlerHttpTest extends Specification {
             .withHeader("Authorization", equalTo("Bearer token-1")))
   }
 
+  def "posting an existing reference returns the stored order"() {
+    given:
+    wireMock.stubFor(post(urlPathEqualTo(ORDERS_PATH)).willReturn(okJson(ORDER_JSON)))
+
+    when:
+    def stored = resource.createOrder(TENANT, new GopacsOrderRequest("ref-1", "SELL", 0.2,
+            1792677600, 1792684800, 45, "871685920001768800", [announcementId: "a-1"], null))
+
+    then:
+    stored.reference() == "ref-1"
+    stored.status() == "PENDING"
+  }
+
   def "a locked order surfaces its 423 status"() {
     given:
     wireMock.stubFor(put(urlPathEqualTo("${ORDERS_PATH}/ref-1")).willReturn(aResponse()
@@ -160,7 +173,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
       "limit": 25, "offset": 0, "total": 1}''')))
 
     when:
-    def page = resource.listSettlements(TENANT, 1792677600, 1792684800, "ref-1")
+    def page = resource.listSettlements(TENANT, 1792677600, 1792684800, "ref-1", 100, 0)
 
     then:
     page.total() == 1
@@ -169,6 +182,8 @@ class DistroGopacsHandlerHttpTest extends Specification {
     wireMock.verify(getRequestedFor(urlPathEqualTo("/v1/settlements/gopacs/${TENANT}"))
             .withQueryParam("start", equalTo("1792677600"))
             .withQueryParam("end", equalTo("1792684800"))
-            .withQueryParam("orderReference", equalTo("ref-1")))
+            .withQueryParam("orderReference", equalTo("ref-1"))
+            .withQueryParam("limit", equalTo("100"))
+            .withQueryParam("offset", equalTo("0")))
   }
 }

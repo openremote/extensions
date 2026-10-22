@@ -274,12 +274,16 @@ recorded as `REFUSED` in `gopacsOrderHistory`. The order is sent with:
 | `metadata`             | `{"announcementId": <gopacsAnnouncementId>}`, which links the order to its announcement                                                   |
 | `customExpirationTime` | `gopacsBidValidityEnd` rounded down to a quarter-hour, unless it is unknown, passed, or after Distro's default of 15 minutes before start |
 
+The order is tracked as `PENDING` before it is posted. When Distro rejects it with a `4xx` it is untracked again. On a
+timeout or a `5xx` it stays tracked, because Distro may have accepted it: the next poll picks up its real status, or
+untracks it when Distro answers `404`. Either way the failure is recorded as `CREATE_FAILED`.
+
 #### Order Lifecycle
 
 `PENDING` and `SUBMITTED` orders are open: a price change replaces them, and they are cancelled when their announcement
 closes or is replaced by another, or when the operator sets `gopacsCancelOrders`. A `LOCKED` order cannot be changed
 (Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
-their trades are recorded in `gopacsSettlementHistory`. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
+all their trades are recorded in `gopacsSettlementHistory`; if that fetch fails, the next poll tries again. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
 are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
 
 #### Components
