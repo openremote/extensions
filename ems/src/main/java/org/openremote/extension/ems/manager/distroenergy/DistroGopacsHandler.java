@@ -1,0 +1,691 @@
+/*
+ * Copyright 2026, OpenRemote Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+package org.openremote.extension.ems.manager.distroenergy;
+
+import static org.openremote.container.web.WebTargetBuilder.createClient;
+import static org.openremote.model.syslog.SyslogCategory.API;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.ws.rs.WebApplicationException;
+import java.net.URI;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.jboss.resteasy.client.jaxrs.ResteasyClient;
+import org.openremote.container.timer.TimerService;
+import org.openremote.container.web.WebTargetBuilder;
+import org.openremote.extension.ems.agent.EmsDistroEnergyAsset;
+import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
+import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlementPage;
+import org.openremote.manager.asset.AssetProcessingService;
+import org.openremote.manager.asset.AssetStorageService;
+import org.openremote.model.Container;
+import org.openremote.model.attribute.AttributeEvent;
+import org.openremote.model.auth.OAuthClientCredentialsGrant;
+import org.openremote.model.query.AssetQuery;
+import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.util.ValueUtil;
+import org.openremote.model.value.AttributeDescriptor;
+
+/**
+ * Places GOPACS redispatch orders through the Distro Energy GOPACS Connector API for one {@link
+ * EmsDistroEnergyAsset}.
+ *
+ * <p>The announcement arrives on the asset's {@code gopacs*} input attributes, normally through
+ * attribute links from an {@code EmsGOPACSAsset}, so this handler never talks to GOPACS itself.
+ * From those inputs it pre-fills an order type and quantity, which the operator may override before
+ * setting a price and confirming. Tracked orders are polled until they reach a final status.
+ */
+public class DistroGopacsHandler {
+
+  private static final Logger LOG = SyslogCategory.getLogger(API, DistroGopacsHandler.class);
+
+  public static final String DISTRO_GOPACS_CLIENT_ID = "DISTRO_GOPACS_CLIENT_ID";
+  public static final String DISTRO_GOPACS_CLIENT_SECRET = "DISTRO_GOPACS_CLIENT_SECRET";
+  public static final String DISTRO_GOPACS_TENANT_ID = "DISTRO_GOPACS_TENANT_ID";
+  public static final String DISTRO_GOPACS_URL = "DISTRO_GOPACS_URL";
+  public static final String DISTRO_GOPACS_URL_DEFAULT = "https://api.distro.energy/v1";
+  public static final String DISTRO_GOPACS_TOKEN_URL = "DISTRO_GOPACS_TOKEN_URL";
+  public static final String DISTRO_GOPACS_TOKEN_URL_DEFAULT =
+      "https://auth.distro.energy/oauth2/token";
+
+  protected static final String SCOPE = "distro-api/gopacs.access";
+  protected static final Duration POLL_INTERVAL = Duration.ofMinutes(5);
+  protected static final long ISP_SECONDS = Duration.ofMinutes(15).toSeconds();
+
+  /** Distro rejects orders below 0.1 MW; quantities are sized in steps of that minimum. */
+  protected static final double MIN_QUANTITY_KW = 100;
+
+  public static final String BUY = "BUY";
+  public static final String SELL = "SELL";
+  public static final String METADATA_ANNOUNCEMENT_ID = "announcementId";
+
+  /** Orders that can still be replaced or cancelled. */
+  protected static final Set<String> OPEN_STATUSES = Set.of("PENDING", "SUBMITTED");
+
+  /** Statuses after which an order no longer changes and is no longer tracked. */
+  protected static final Set<String> FINAL_STATUSES =
+      Set.of("SETTLED", "REVERTED", "REJECTED", "CANCELED");
+
+  /** Relative effectivities in a GOPACS EAN effectivity category name, weakest first. */
+  protected static final List<String> EFFECTIVITY_RANKS =
+      List.of("NONE", "VERY_LOW", "LOW", "MODERATE", "HIGH", "VERY_HIGH", "MAXIMUM");
+
+  /** Inputs the pre-filled order type and quantity are derived from. */
+  protected static final Set<String> SUGGESTION_INPUTS =
+      Set.of(
+          EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.getName(),
+          EmsDistroEnergyAsset.GOPACS_START_TIME.getName(),
+          EmsDistroEnergyAsset.GOPACS_END_TIME.getName(),
+          EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY.getName());
+
+  protected final String assetId;
+  protected final String tenantId;
+  protected final ResteasyClient client;
+  protected final DistroGopacsResource resource;
+
+  protected final TimerService timerService;
+  protected final ScheduledExecutorService scheduledExecutorService;
+  protected final AssetStorageService assetStorageService;
+  protected final AssetProcessingService assetProcessingService;
+
+  /** Tracked orders by reference, mirrored to {@link EmsDistroEnergyAsset#GOPACS_ORDERS}. */
+  protected final Map<String, GopacsOrder> orders = new LinkedHashMap<>();
+
+  protected ScheduledFuture<?> pollFuture;
+
+  public static class Factory {
+    protected Container container;
+
+    public Factory(Container container) {
+      this.container = container;
+    }
+
+    public DistroGopacsHandler createHandler(String assetId) {
+      return new DistroGopacsHandler(assetId, container, null);
+    }
+  }
+
+  /**
+   * @param resource used as is when not null, which is how tests stand in for the HTTP client;
+   *     otherwise one is built from the container config.
+   */
+  protected DistroGopacsHandler(
+      String assetId, Container container, DistroGopacsResource resource) {
+    this.assetId = assetId;
+    this.timerService = container.getService(TimerService.class);
+    this.scheduledExecutorService = container.getScheduledExecutor();
+    this.assetStorageService = container.getService(AssetStorageService.class);
+    this.assetProcessingService = container.getService(AssetProcessingService.class);
+
+    Map<String, String> config = container.getConfig();
+    this.tenantId = requireConfig(config, DISTRO_GOPACS_TENANT_ID);
+
+    if (resource != null) {
+      this.client = null;
+      this.resource = resource;
+    } else {
+      String clientId = requireConfig(config, DISTRO_GOPACS_CLIENT_ID);
+      String clientSecret = requireConfig(config, DISTRO_GOPACS_CLIENT_SECRET);
+      String baseUrl = config.getOrDefault(DISTRO_GOPACS_URL, DISTRO_GOPACS_URL_DEFAULT);
+      String tokenUrl =
+          config.getOrDefault(DISTRO_GOPACS_TOKEN_URL, DISTRO_GOPACS_TOKEN_URL_DEFAULT);
+      this.client = createClient(org.openremote.container.Container.EXECUTOR);
+      try {
+        this.resource = createResource(client, baseUrl, tokenUrl, clientId, clientSecret);
+      } catch (RuntimeException e) {
+        // No reference escapes a constructor that threw, so undeploy() can never close this client.
+        client.close();
+        throw e;
+      }
+      LOG.fine(
+          "Configured Distro GOPACS handler for asset "
+              + assetId
+              + ": baseUrl="
+              + baseUrl
+              + ", tokenUrl="
+              + tokenUrl
+              + ", tenant="
+              + tenantId);
+    }
+  }
+
+  /**
+   * Builds the API proxy. OpenRemote's OAuth filter fetches a client-credentials token with HTTP
+   * Basic authentication, caches it and refreshes it shortly before it expires.
+   */
+  static DistroGopacsResource createResource(
+      ResteasyClient client,
+      String baseUrl,
+      String tokenUrl,
+      String clientId,
+      String clientSecret) {
+    return new WebTargetBuilder(client, URI.create(baseUrl))
+        .setOAuthAuthentication(
+            new OAuthClientCredentialsGrant(tokenUrl, clientId, clientSecret, SCOPE)
+                .setBasicAuthHeader(true))
+        .build()
+        .proxy(DistroGopacsResource.class);
+  }
+
+  private static String requireConfig(Map<String, String> config, String key) {
+    String value = config.get(key);
+    if (value == null || value.isBlank()) {
+      throw new IllegalStateException(key + " not defined, cannot place Distro GOPACS orders.");
+    }
+    return value;
+  }
+
+  /** Restores the tracked orders saved on the asset and starts polling them. */
+  public synchronized void deploy() {
+    EmsDistroEnergyAsset asset = findAsset();
+    if (asset != null) {
+      asset
+          .getGopacsOrders()
+          .ifPresent(
+              saved ->
+                  orders.putAll(
+                      ValueUtil.JSON.convertValue(
+                          saved, new TypeReference<LinkedHashMap<String, GopacsOrder>>() {})));
+    }
+    long pollMillis = POLL_INTERVAL.toMillis();
+    pollFuture =
+        scheduledExecutorService.scheduleAtFixedRate(
+            this::pollOrders, pollMillis, pollMillis, TimeUnit.MILLISECONDS);
+    LOG.info(
+        "Deployed Distro GOPACS handler for asset " + assetId + " (" + orders.size() + " tracked)");
+  }
+
+  public void undeploy() {
+    if (pollFuture != null) {
+      // Interrupt to abort any in-flight HTTP call before closing the client
+      pollFuture.cancel(true);
+      pollFuture = null;
+    }
+    if (client != null) {
+      client.close();
+    }
+    LOG.info("Undeployed Distro GOPACS handler for asset " + assetId);
+  }
+
+  /**
+   * Reacts to a changed {@code gopacs*} attribute of the asset. Runs on the executor because every
+   * reaction may call Distro, and the caller is the client event thread.
+   *
+   * <p>Events whose value did not change are ignored: attribute links forward every update of the
+   * source, including the unchanged ones the redispatch poller writes on each poll, and a save of
+   * the asset republishes all of its attributes.
+   */
+  public void onAttributeEvent(AttributeEvent event) {
+    Object oldValue = event.getOldValue().orElse(null);
+    Object value = event.getValue().orElse(null);
+    if (Objects.equals(oldValue, value)) {
+      return;
+    }
+    scheduledExecutorService.execute(
+        () -> {
+          try {
+            processAttributeChange(event.getName(), oldValue, value);
+          } catch (Exception e) {
+            LOG.log(
+                Level.SEVERE,
+                "Failed to process " + event.getName() + " for Distro GOPACS asset " + assetId,
+                e);
+          }
+        });
+  }
+
+  protected synchronized void processAttributeChange(
+      String attributeName, Object oldValue, Object value) {
+    if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.getName())
+        && oldValue instanceof String oldAnnouncementId) {
+      // The announcement closed or was superseded: what is still open for it can no longer help.
+      cancelOrders(oldAnnouncementId);
+    }
+
+    if (SUGGESTION_INPUTS.contains(attributeName)) {
+      updateSuggestion();
+    } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.getName())
+        && value instanceof Number price) {
+      replaceOrders(price.doubleValue());
+    } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName())
+        && Boolean.TRUE.equals(value)) {
+      placeOrder();
+      resetFlag(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER);
+    } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.getName())
+        && Boolean.TRUE.equals(value)) {
+      cancelOrders(null);
+      resetFlag(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS);
+    }
+  }
+
+  /** Pre-fills order type and quantity for the current announcement, or clears both. */
+  protected void updateSuggestion() {
+    EmsDistroEnergyAsset asset = findAsset();
+    if (asset == null) {
+      return;
+    }
+    String category = asset.getGopacsEanEffectivity().orElse(null);
+    Long start = asset.getGopacsStartTime().orElse(null);
+    Long end = asset.getGopacsEndTime().orElse(null);
+
+    String orderType = null;
+    Double quantityKw = null;
+    if (asset.getGopacsAnnouncementId().isPresent()
+        && category != null
+        && start != null
+        && end != null) {
+      double windowHours = (end - start) / 3_600_000.0;
+      List<EmsElectricityBatteryAsset> batteries = findBatteries(asset.getParentId());
+      double buyKw = quantityKw(batteries, BUY, windowHours);
+      double sellKw = quantityKw(batteries, SELL, windowHours);
+      orderType = orderTypeFor(category, buyKw, sellKw);
+      if (orderType == null) {
+        LOG.info(
+            "No order suggested for Distro GOPACS asset "
+                + assetId
+                + ": effectivity category '"
+                + category
+                + "' favours neither side");
+      } else {
+        quantityKw = BUY.equals(orderType) ? buyKw : sellKw;
+        LOG.fine(
+            "Suggested "
+                + orderType
+                + " of "
+                + quantityKw
+                + " kW for Distro GOPACS asset "
+                + assetId
+                + " (category "
+                + category
+                + ", buy "
+                + buyKw
+                + " kW, sell "
+                + sellKw
+                + " kW)");
+      }
+    }
+    sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE, orderType);
+    sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY, quantityKw);
+  }
+
+  protected List<EmsElectricityBatteryAsset> findBatteries(String parentId) {
+    if (parentId == null) {
+      return List.of();
+    }
+    return assetStorageService
+        .findAll(new AssetQuery().parents(parentId).types(EmsElectricityBatteryAsset.class))
+        .stream()
+        .map(asset -> (EmsElectricityBatteryAsset) asset)
+        .toList();
+  }
+
+  /**
+   * Maps a GOPACS EAN effectivity category ({@code BUY_<effectivity>_SELL_<effectivity>}) to the
+   * side an order on the EAN helps most. When both sides are equally effective the side the
+   * batteries can offer more of wins, BUY on a draw.
+   *
+   * @return BUY, SELL, or null when neither side helps or the category is not recognised.
+   */
+  static String orderTypeFor(String category, double buyKw, double sellKw) {
+    if (category == null || !category.startsWith("BUY_")) {
+      return null;
+    }
+    int separator = category.indexOf("_SELL_");
+    if (separator < 0) {
+      return null;
+    }
+    int buy = EFFECTIVITY_RANKS.indexOf(category.substring("BUY_".length(), separator));
+    int sell = EFFECTIVITY_RANKS.indexOf(category.substring(separator + "_SELL_".length()));
+    if (buy < 0 || sell < 0 || (buy == 0 && sell == 0)) {
+      return null;
+    }
+    if (buy != sell) {
+      return buy > sell ? BUY : SELL;
+    }
+    return buyKw >= sellKw ? BUY : SELL;
+  }
+
+  /**
+   * The constant power the batteries can hold for the whole window on one side: their combined
+   * maximum power, limited so the energy over the window fits their state-of-charge headroom (seen
+   * from the grid, so through the charge or discharge efficiency). Batteries that are not allowed
+   * on that side, are disconnected or lack the data to size them are left out. Rounded down to the
+   * 0.1 MW steps Distro accepts.
+   */
+  static double quantityKw(
+      List<EmsElectricityBatteryAsset> batteries, String orderType, double windowHours) {
+    if (windowHours <= 0) {
+      return 0;
+    }
+    boolean buy = BUY.equals(orderType);
+    double powerKw = 0;
+    double energyKwh = 0;
+
+    for (EmsElectricityBatteryAsset battery : batteries) {
+      boolean allowed =
+          (buy ? battery.getAllowCharging() : battery.getAllowDischarging()).orElse(false);
+      boolean disconnected =
+          battery.getConnectionStatus().orElse(null)
+              == EmsElectricityBatteryConnectionStatusValueType.disconnected;
+      Double capacityKwh = battery.getEnergyCapacity().orElse(null);
+      Double levelPercentage = battery.getEnergyLevelPercentage().orElse(null);
+      Integer limitPercentage =
+          (buy
+                  ? battery.getEnergyLevelPercentageMaximum()
+                  : battery.getEnergyLevelPercentageMinimum())
+              .orElse(null);
+      if (!allowed
+          || disconnected
+          || capacityKwh == null
+          || levelPercentage == null
+          || limitPercentage == null) {
+        continue;
+      }
+
+      double headroomKwh =
+          capacityKwh
+              * (buy ? limitPercentage - levelPercentage : levelPercentage - limitPercentage)
+              / 100.0;
+      if (headroomKwh <= 0) {
+        continue;
+      }
+      double efficiency =
+          (buy ? battery.getChargeEfficiency() : battery.getDischargeEfficiency()).orElse(100)
+              / 100.0;
+      // Charging draws more from the grid than ends up stored; discharging delivers less.
+      energyKwh += buy ? headroomKwh / efficiency : headroomKwh * efficiency;
+      // Discharge power is stored as a negative number.
+      powerKw +=
+          Math.abs(
+              (buy ? battery.getChargePowerMaximum() : battery.getDischargePowerMaximum())
+                  .orElse(0.0));
+    }
+
+    double quantityKw = Math.min(powerKw, energyKwh / windowHours);
+    return Math.floor(quantityKw / MIN_QUANTITY_KW) * MIN_QUANTITY_KW;
+  }
+
+  /**
+   * The bid validity end as order expiration, rounded down to a quarter-hour. Left to Distro's
+   * default (15 minutes before start) when it is unknown, already passed or later than that.
+   */
+  static Long expirationSeconds(long startSeconds, Long validityEndSeconds, long nowSeconds) {
+    if (validityEndSeconds == null) {
+      return null;
+    }
+    long expiration = validityEndSeconds - Math.floorMod(validityEndSeconds, ISP_SECONDS);
+    return expiration > nowSeconds && expiration <= startSeconds - ISP_SECONDS ? expiration : null;
+  }
+
+  /** Places an order for the current announcement from the asset's order attributes. */
+  protected void placeOrder() {
+    EmsDistroEnergyAsset asset = findAsset();
+    if (asset == null) {
+      return;
+    }
+    String announcementId = asset.getGopacsAnnouncementId().orElse(null);
+    String ean = asset.getGopacsEan().orElse(null);
+    String orderType = asset.getGopacsOrderType().orElse(null);
+    Double quantityKw = asset.getGopacsOrderQuantity().orElse(null);
+    Double price = asset.getGopacsOrderPrice().orElse(null);
+    Long start = asset.getGopacsStartTime().orElse(null);
+    Long end = asset.getGopacsEndTime().orElse(null);
+    long nowSeconds = timerService.getNow().getEpochSecond();
+
+    String invalid = null;
+    if (announcementId == null) {
+      invalid = "no announcement";
+    } else if (ean == null || !ean.matches("\\d{18}")) {
+      invalid = "EAN '" + ean + "' is not an 18-digit EAN";
+    } else if (!BUY.equals(orderType) && !SELL.equals(orderType)) {
+      invalid = "order type '" + orderType + "' is not BUY or SELL";
+    } else if (quantityKw == null || quantityKw < MIN_QUANTITY_KW) {
+      invalid = "quantity " + quantityKw + " kW is below the 100 kW minimum";
+    } else if (price == null) {
+      invalid = "no price";
+    } else if (start == null
+        || end == null
+        || start % (ISP_SECONDS * 1000) != 0
+        || end % (ISP_SECONDS * 1000) != 0
+        || end <= start) {
+      invalid = "window " + start + " to " + end + " is not a quarter-hour aligned interval";
+    } else if (start / 1000 <= nowSeconds) {
+      invalid = "window already started";
+    }
+    if (invalid != null) {
+      LOG.warning("Not placing Distro GOPACS order for asset " + assetId + ": " + invalid);
+      recordHistory("REFUSED", null, invalid);
+      return;
+    }
+
+    long startSeconds = start / 1000;
+    Long validityEndSeconds = asset.getGopacsBidValidityEnd().map(ms -> ms / 1000).orElse(null);
+    GopacsOrderRequest request =
+        new GopacsOrderRequest(
+            UUID.randomUUID().toString(),
+            orderType,
+            quantityKw / 1000,
+            startSeconds,
+            end / 1000,
+            price,
+            ean,
+            Map.of(METADATA_ANNOUNCEMENT_ID, announcementId),
+            expirationSeconds(startSeconds, validityEndSeconds, nowSeconds));
+    LOG.info(
+        "Placing Distro GOPACS order for asset "
+            + assetId
+            + ": "
+            + ValueUtil.asJSON(request).orElse(request.toString()));
+    try {
+      GopacsOrder order = resource.createOrder(tenantId, request);
+      orders.put(order.reference(), order);
+      saveOrders();
+      recordHistory("CREATED", order, null);
+    } catch (RuntimeException e) {
+      LOG.log(Level.WARNING, "Failed to place Distro GOPACS order for asset " + assetId, e);
+      recordHistory("CREATE_FAILED", null, describe(e));
+    }
+  }
+
+  /** Re-submits the open orders for the current announcement at the new price. */
+  protected void replaceOrders(double price) {
+    EmsDistroEnergyAsset asset = findAsset();
+    String announcementId = asset == null ? null : asset.getGopacsAnnouncementId().orElse(null);
+    if (announcementId == null) {
+      return;
+    }
+    for (GopacsOrder order : openOrders(announcementId)) {
+      GopacsOrderRequest request =
+          new GopacsOrderRequest(
+              order.reference(),
+              order.orderType(),
+              order.quantity(),
+              order.start(),
+              order.end(),
+              price,
+              order.ean(),
+              order.metadata(),
+              order.customExpirationTime());
+      try {
+        GopacsOrder replaced = resource.replaceOrder(tenantId, order.reference(), request);
+        orders.put(replaced.reference(), replaced);
+        recordHistory("REPLACED", replaced, null);
+      } catch (RuntimeException e) {
+        // 423 means the order is locked for matching; it keeps its old price.
+        LOG.log(
+            Level.WARNING,
+            "Failed to replace Distro GOPACS order " + order.reference() + " for asset " + assetId,
+            e);
+        recordHistory("REPLACE_FAILED", order, describe(e));
+      }
+    }
+    saveOrders();
+  }
+
+  /**
+   * Cancels the open orders placed for the given announcement, or all open orders when it is null.
+   */
+  protected void cancelOrders(String announcementId) {
+    List<GopacsOrder> toCancel = openOrders(announcementId);
+    for (GopacsOrder order : toCancel) {
+      try {
+        resource.cancelOrder(tenantId, order.reference());
+        orders.remove(order.reference());
+        recordHistory("CANCELED", order, null);
+      } catch (RuntimeException e) {
+        LOG.log(
+            Level.WARNING,
+            "Failed to cancel Distro GOPACS order " + order.reference() + " for asset " + assetId,
+            e);
+        recordHistory("CANCEL_FAILED", order, describe(e));
+      }
+    }
+    if (!toCancel.isEmpty()) {
+      saveOrders();
+    }
+  }
+
+  protected List<GopacsOrder> openOrders(String announcementId) {
+    List<GopacsOrder> open = new ArrayList<>();
+    for (GopacsOrder order : orders.values()) {
+      String orderAnnouncementId =
+          order.metadata() == null ? null : order.metadata().get(METADATA_ANNOUNCEMENT_ID);
+      if (OPEN_STATUSES.contains(order.status())
+          && (announcementId == null || announcementId.equals(orderAnnouncementId))) {
+        open.add(order);
+      }
+    }
+    return open;
+  }
+
+  /**
+   * Refreshes every tracked order. A status change is recorded in the history; a settled order
+   * records its trades; an order in a final status stops being tracked.
+   */
+  protected synchronized void pollOrders() {
+    if (orders.isEmpty()) {
+      return;
+    }
+    for (GopacsOrder tracked : List.copyOf(orders.values())) {
+      try {
+        GopacsOrder order = resource.getOrder(tenantId, tracked.reference());
+        if (!Objects.equals(order.status(), tracked.status())) {
+          recordHistory("STATUS", order, order.reason());
+        }
+        if (FINAL_STATUSES.contains(order.status())) {
+          if ("SETTLED".equals(order.status())) {
+            recordSettlements(order);
+          }
+          orders.remove(order.reference());
+        } else {
+          orders.put(order.reference(), order);
+        }
+      } catch (WebApplicationException e) {
+        if (e.getResponse().getStatus() == 404) {
+          LOG.warning(
+              "Distro no longer knows GOPACS order " + tracked.reference() + "; untracking it");
+          orders.remove(tracked.reference());
+          recordHistory("NOT_FOUND", tracked, null);
+        } else {
+          LOG.log(Level.WARNING, "Failed to refresh Distro GOPACS order " + tracked.reference(), e);
+        }
+      } catch (RuntimeException e) {
+        LOG.log(Level.WARNING, "Failed to refresh Distro GOPACS order " + tracked.reference(), e);
+      }
+    }
+    saveOrders();
+    sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_LAST_SYNC, timerService.getCurrentTimeMillis());
+  }
+
+  /**
+   * Records each trade of a settled order. A settled order's trades no longer change and the order
+   * is untracked right after, so each trade is recorded once.
+   */
+  protected void recordSettlements(GopacsOrder order) {
+    GopacsSettlementPage page =
+        resource.listSettlements(tenantId, order.start(), order.end(), order.reference());
+    if (page.items() == null) {
+      return;
+    }
+    for (GopacsSettlement settlement : page.items()) {
+      Map<String, Object> entry = ValueUtil.JSON.convertValue(settlement, new TypeReference<>() {});
+      entry.put("recordedAt", timerService.getCurrentTimeMillis());
+      sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY, entry);
+    }
+  }
+
+  protected void recordHistory(String action, GopacsOrder order, String detail) {
+    Map<String, Object> entry = new HashMap<>();
+    entry.put("action", action);
+    if (order != null) {
+      entry.putAll(ValueUtil.JSON.convertValue(order, new TypeReference<Map<String, Object>>() {}));
+    }
+    if (detail != null) {
+      entry.put("detail", detail);
+    }
+    entry.put("timestamp", timerService.getCurrentTimeMillis());
+    sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY, entry);
+  }
+
+  protected void saveOrders() {
+    sendAttributeEvent(
+        EmsDistroEnergyAsset.GOPACS_ORDERS,
+        ValueUtil.JSON.convertValue(orders, new TypeReference<Map<String, Object>>() {}));
+  }
+
+  private static String describe(RuntimeException e) {
+    return e instanceof WebApplicationException wae
+        ? "HTTP " + wae.getResponse().getStatus()
+        : e.getClass().getSimpleName() + ": " + e.getMessage();
+  }
+
+  private void resetFlag(AttributeDescriptor<Boolean> flag) {
+    // Delayed like the redispatch confirmation so the UI shows the toggle before it springs back.
+    scheduledExecutorService.schedule(() -> sendAttributeEvent(flag, false), 1, TimeUnit.SECONDS);
+  }
+
+  protected EmsDistroEnergyAsset findAsset() {
+    EmsDistroEnergyAsset asset = (EmsDistroEnergyAsset) assetStorageService.find(assetId);
+    if (asset == null) {
+      LOG.warning("Distro GOPACS asset not found: " + assetId);
+    }
+    return asset;
+  }
+
+  protected <T> void sendAttributeEvent(AttributeDescriptor<T> attribute, Object value) {
+    assetProcessingService.sendAttributeEvent(
+        new AttributeEvent(assetId, attribute.getName(), value), getClass().getSimpleName());
+  }
+}
