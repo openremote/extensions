@@ -142,9 +142,17 @@ public class DistroEnergyHandler {
                     DISTRO_ENERGY_REQUEST_INTERVAL, DISTRO_ENERGY_REQUEST_INTERVAL_DEFAULT));
     this.clientKey = container.getConfig().get(DISTRO_ENERGY_CLIENT_KEY);
 
-    if (clientKey == null) {
+    if (clientKey == null || clientKey.isBlank()) {
       throw new RuntimeException(
           DISTRO_ENERGY_CLIENT_KEY + " not defined, cannot use Distro Energy.");
+    }
+    // Checked here rather than left to deploy(), where scheduleAtFixedRate would reject it outside
+    // the caller's handling of construction failures.
+    if (requestIntervalMinutes <= 0) {
+      throw new IllegalArgumentException(
+          DISTRO_ENERGY_REQUEST_INTERVAL
+              + " must be a positive number of minutes, got "
+              + requestIntervalMinutes);
     }
 
     this.client = createClient(org.openremote.container.Container.EXECUTOR);
@@ -363,10 +371,10 @@ public class DistroEnergyHandler {
    *
    * <p>Under a JVM zone that observes DST the storage frame is not monotonic, so on the fall-back
    * day the two instants of the repeated hour collapse onto a single stored row and both read it.
-   * That is a consequence of the naive primary key upstream (openremote/openremote#3292). The
-   * collapse can only duplicate a read, never erase one, so it cannot turn a day with a forecast
-   * into a skip, and while it lasts the repeated hour is never a gap at all: both passes read the
-   * one surviving row, so the hour carries as many distinct values as it has ISPs. Once predicted
+   * That is a consequence of the naive primary key upstream (openremote/core#3292). The collapse
+   * can only duplicate a read, never erase one, so it cannot turn a day with a forecast into a
+   * skip, and while it lasts the repeated hour is never a gap at all: both passes read the one
+   * surviving row, so the hour carries as many distinct values as it has ISPs. Once predicted
    * datapoints are stored in UTC every instant maps to a row of its own, a producer that writes the
    * hour once leaves the other pass empty, and that pass is filled flat as above. The day submitted
    * on the fall-back date therefore changes when #3292 lands; no other day is affected.
@@ -471,7 +479,7 @@ public class DistroEnergyHandler {
               + " of "
               + submissionData.size()
               + " positions reusing a value from the repeated DST hour, which collapses onto one"
-              + " predicted datapoint row (openremote/openremote#3292)");
+              + " predicted datapoint row (openremote/core#3292)");
     }
 
     if (dstFilled > 0) {
