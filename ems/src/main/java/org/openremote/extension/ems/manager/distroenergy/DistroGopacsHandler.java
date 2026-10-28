@@ -241,6 +241,16 @@ public class DistroGopacsHandler {
                   orders.putAll(
                       ValueUtil.JSON.convertValue(
                           saved, new TypeReference<LinkedHashMap<String, GopacsOrder>>() {})));
+      // An undeploy within a second of a toggle skips its reset, and a flag left true would make
+      // the next toggle an unchanged value that is ignored.
+      for (AttributeDescriptor<Boolean> flag :
+          List.of(
+              EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER,
+              EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS)) {
+        if (asset.getAttributes().getValue(flag).orElse(false)) {
+          sendAttributeEvent(flag, false);
+        }
+      }
     }
     long pollMillis = POLL_INTERVAL.toMillis();
     pollFuture =

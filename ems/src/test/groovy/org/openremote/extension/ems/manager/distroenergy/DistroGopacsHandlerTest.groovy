@@ -476,6 +476,19 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders == [saved: saved]
   }
 
+  def "deploy resets a confirm flag left true by an earlier undeploy"() {
+    given:
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER).setValue(true)
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS).setValue(false)
+
+    when:
+    handler.deploy()
+
+    then:
+    sent*.name == [EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name]
+    sentValue(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER) == false
+  }
+
   // --- helpers ---
 
   static long seconds(long millis) {
