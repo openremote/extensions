@@ -818,8 +818,8 @@ public class DistroGopacsHandler {
    * is untracked right after, so each trade is recorded once, unless the manager stops between
    * recording them and saving the tracked orders.
    *
-   * <p>A failed fetch is recorded and not retried: Distro has not implemented the settlements
-   * endpoint yet, and retrying would keep polling the settled order forever.
+   * <p>Distro makes the trades available as soon as the order is SETTLED, so they are fetched once.
+   * A failed fetch is recorded and not retried.
    */
   protected void recordSettlements(GopacsOrder order) {
     // Fetched in full before recording, so a failed page never leaves the trades half recorded.
