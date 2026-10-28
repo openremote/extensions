@@ -210,7 +210,7 @@ The handler only acts when a value actually changes.
 
 | Attribute                            | Value Type       | Read-only | Purpose                                                                                |
 | ------------------------------------ | ---------------- | --------- | -------------------------------------------------------------------------------------- |
-| `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler                                               |
+| `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders             |
 | `gopacsEan` … `gopacsEanEffectivity` | Linked           | ✓         | Announcement inputs, see the table above                                               |
 | `gopacsOrderType`                    | Text             |           | `BUY` or `SELL`. Pre-filled from the announcement, may be overridden                   |
 | `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden |
@@ -285,6 +285,10 @@ closes or is replaced by another, or when the operator sets `gopacsCancelOrders`
 (Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
 all their trades are recorded in `gopacsSettlementHistory`; if that fetch fails, the next poll tries again. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
 are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
+
+Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot
+be cancelled and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete
+nothing tracks them any more and their trades are not recorded, so check for them in Distro before deleting an asset.
 
 #### Components
 

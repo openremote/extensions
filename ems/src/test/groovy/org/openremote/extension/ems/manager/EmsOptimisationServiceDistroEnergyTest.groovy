@@ -201,13 +201,13 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
 
     then: "the running handler is left alone"
     createdGopacsHandlers.size() == 1
-    createdGopacsHandlers[0].undeployCount == 0
+    createdGopacsHandlers[0].undeployCalls.isEmpty()
 
     when: "it is disabled"
     service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(false)))
 
-    then:
-    createdGopacsHandlers[0].undeployCount == 1
+    then: "it is stopped for good, cancelling its open orders"
+    createdGopacsHandlers[0].undeployCalls == [true]
   }
 
   def "deleting the asset undeploys its GOPACS order handler"() {
@@ -217,8 +217,19 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     when:
     service.processAssetChange(event(PersistenceEvent.Cause.DELETE, gopacsAsset(true)))
 
+    then: "it is stopped for good, cancelling its open orders"
+    createdGopacsHandlers[0].undeployCalls == [true]
+  }
+
+  def "stopping the service leaves the open orders for the next start"() {
+    given:
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(true)))
+
+    when:
+    service.stop(null)
+
     then:
-    createdGopacsHandlers[0].undeployCount == 1
+    createdGopacsHandlers[0].undeployCalls == [false]
   }
 
   def "a missing GOPACS tenant is caught by the service rather than failing it"() {
@@ -236,7 +247,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   // Records deploy()/undeploy() calls instead of polling Distro.
   static class RecordingDistroGopacsHandler extends DistroGopacsHandler {
     int deployCount = 0
-    int undeployCount = 0
+    List<Boolean> undeployCalls = []
 
     RecordingDistroGopacsHandler(
     String assetId, Container container, DistroGopacsResource resource) {
@@ -249,8 +260,8 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     }
 
     @Override
-    void undeploy() {
-      undeployCount++
+    void undeploy(boolean cancelOpenOrders) {
+      undeployCalls << cancelOpenOrders
     }
   }
 

@@ -230,7 +230,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
     distroEnergyHandlerMap.clear();
     synchronized (distroGopacsLifecycleLock) {
-      distroGopacsHandlerMap.forEach((assetId, handler) -> handler.undeploy());
+      // Open orders stay at Distro: the next start restores and keeps tracking them.
+      distroGopacsHandlerMap.forEach((assetId, handler) -> handler.undeploy(false));
       distroGopacsHandlerMap.clear();
     }
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
@@ -607,11 +608,15 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
   }
 
+  /**
+   * Stops the handler for good and cancels its open orders, so none can still be matched at Distro
+   * once nothing tracks them.
+   */
   private void stopDistroGopacsHandler(String assetId) {
     synchronized (distroGopacsLifecycleLock) {
       DistroGopacsHandler existing = distroGopacsHandlerMap.remove(assetId);
       if (existing != null) {
-        existing.undeploy();
+        existing.undeploy(true);
       }
     }
   }

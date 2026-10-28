@@ -233,20 +233,50 @@ public class DistroGopacsHandler {
         "Deployed Distro GOPACS handler for asset " + assetId + " (" + orders.size() + " tracked)");
   }
 
-  public void undeploy() {
+  /**
+   * Stops polling and closes the client.
+   *
+   * @param cancelOpenOrders cancels the open orders first, for when the handler stops for good
+   *     (disabled or asset deleted) rather than for a manager restart, which picks them up again.
+   *     Runs on the executor because the caller is an event thread and cancelling calls Distro.
+   */
+  public void undeploy(boolean cancelOpenOrders) {
     undeployed = true;
     if (pollFuture != null) {
       // Interrupt to abort any in-flight HTTP call before closing the client
       pollFuture.cancel(true);
       pollFuture = null;
     }
-    // Wait for a running order action to finish so it never uses a closed client.
-    synchronized (this) {
-      if (client != null) {
-        client.close();
+    if (cancelOpenOrders) {
+      scheduledExecutorService.execute(
+          () -> {
+            // Waits for a running order action, like the close below.
+            synchronized (this) {
+              try {
+                cancelOrders(null);
+              } catch (RuntimeException e) {
+                LOG.log(
+                    Level.WARNING,
+                    "Failed to cancel open Distro GOPACS orders for asset " + assetId,
+                    e);
+              } finally {
+                closeClient();
+              }
+            }
+          });
+    } else {
+      // Wait for a running order action to finish so it never uses a closed client.
+      synchronized (this) {
+        closeClient();
       }
     }
     LOG.info("Undeployed Distro GOPACS handler for asset " + assetId);
+  }
+
+  private void closeClient() {
+    if (client != null) {
+      client.close();
+    }
   }
 
   /**
@@ -611,6 +641,8 @@ public class DistroGopacsHandler {
     for (GopacsOrder order : toCancel) {
       try {
         resource.cancelOrder(tenantId, order.reference());
+        // Also the only record once the asset is deleted, as the writes below then go nowhere.
+        LOG.info("Cancelled Distro GOPACS order " + order.reference() + " for asset " + assetId);
         orders.remove(order.reference());
         recordHistory("CANCELED", order, null);
       } catch (RuntimeException e) {

@@ -409,7 +409,7 @@ class DistroGopacsHandlerTest extends Specification {
     announcement("BUY_LOW_SELL_HIGH")
     order(SELL, 200, 45)
     track(stored("live", "SUBMITTED", ANNOUNCEMENT))
-    handler.undeploy()
+    handler.undeploy(false)
 
     when:
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
@@ -418,6 +418,22 @@ class DistroGopacsHandlerTest extends Specification {
     then:
     0 * resource._
     sent.isEmpty()
+  }
+
+  def "undeploying for good cancels the open orders and keeps the rest"() {
+    given:
+    track(stored("pending", "PENDING", ANNOUNCEMENT))
+    track(stored("submitted", "SUBMITTED", "other-announcement"))
+    track(stored("matched", "MATCHED", ANNOUNCEMENT))
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    1 * resource.cancelOrder(TENANT, "pending")
+    1 * resource.cancelOrder(TENANT, "submitted")
+    0 * resource._
+    handler.orders.keySet() == ["matched"] as Set
   }
 
   def "deploy restores the orders saved on the asset"() {
