@@ -1,0 +1,66 @@
+/*
+ * Copyright 2026, OpenRemote Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+package org.openremote.extension.ems.manager.distroenergy.dto;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.Map;
+
+/**
+ * Order as stored by Distro. {@code status} stays a string so a status added to the draft API does
+ * not break deserialisation; {@code orderId} is absent until ETPA acknowledged the order and {@code
+ * reason} is only present for REJECTED or LOCKED.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public record GopacsOrder(
+    String reference,
+    String orderId,
+    String status,
+    String orderType,
+    double quantity,
+    double price,
+    long start,
+    long end,
+    String ean,
+    Map<String, String> metadata,
+    Long customExpirationTime,
+    String reason) {
+
+  /** The order as tracked before Distro has answered the create call. */
+  public static GopacsOrder pending(GopacsOrderRequest request) {
+    return new GopacsOrder(
+        request.reference(),
+        null,
+        "PENDING",
+        request.orderType(),
+        request.quantity(),
+        request.price(),
+        request.start(),
+        request.end(),
+        request.ean(),
+        request.metadata(),
+        request.customExpirationTime(),
+        null);
+  }
+
+  /** The replace body that keeps everything but the price. */
+  public GopacsOrderRequest toRequest(double price) {
+    return new GopacsOrderRequest(
+        reference, orderType, quantity, start, end, price, ean, metadata, customExpirationTime);
+  }
+}

@@ -18,6 +18,8 @@
  */
 package org.openremote.extension.ems.agent;
 
+import static org.openremote.model.Constants.*;
+
 import jakarta.persistence.Entity;
 import java.util.Optional;
 import org.openremote.model.asset.Asset;
@@ -25,7 +27,9 @@ import org.openremote.model.asset.AssetDescriptor;
 import org.openremote.model.attribute.MetaItem;
 import org.openremote.model.value.AttributeDescriptor;
 import org.openremote.model.value.MetaItemType;
+import org.openremote.model.value.ValueDescriptor;
 import org.openremote.model.value.ValueType;
+import org.openremote.model.value.ValueType.ObjectMap;
 
 @Entity
 public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
@@ -43,6 +47,94 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
       new AttributeDescriptor<>(
           "daysSubmitted", ValueType.POSITIVE_INTEGER, new MetaItem<>(MetaItemType.READ_ONLY));
 
+  // --- GOPACS orders: configuration ---
+
+  public static final AttributeDescriptor<Boolean> GOPACS_ENABLED =
+      new AttributeDescriptor<>("gopacsEnabled", ValueType.BOOLEAN);
+
+  // --- GOPACS orders: announcement inputs, copied from the EmsGOPACSAsset with the same parent ---
+
+  public static final AttributeDescriptor<String> GOPACS_EAN =
+      new AttributeDescriptor<>(
+          "gopacsEan", ValueType.TEXT, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  public static final AttributeDescriptor<String> GOPACS_ANNOUNCEMENT_ID =
+      new AttributeDescriptor<>(
+          "gopacsAnnouncementId", ValueType.TEXT, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  public static final AttributeDescriptor<Long> GOPACS_START_TIME =
+      new AttributeDescriptor<>(
+          "gopacsStartTime", ValueType.TIMESTAMP, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  public static final AttributeDescriptor<Long> GOPACS_END_TIME =
+      new AttributeDescriptor<>(
+          "gopacsEndTime", ValueType.TIMESTAMP, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  public static final AttributeDescriptor<Long> GOPACS_BID_VALIDITY_END =
+      new AttributeDescriptor<>(
+          "gopacsBidValidityEnd", ValueType.TIMESTAMP, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  public static final AttributeDescriptor<String> GOPACS_EAN_EFFECTIVITY =
+      new AttributeDescriptor<>(
+          "gopacsEanEffectivity", ValueType.TEXT, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  // --- GOPACS orders: next order, pre-filled by the handler and operator-overridable ---
+
+  public enum GopacsOrderTypeValueType {
+    BUY,
+    SELL
+  }
+
+  public static final ValueDescriptor<GopacsOrderTypeValueType> GOPACS_ORDER_TYPE_VALUE_TYPE =
+      new ValueDescriptor<>("gopacsOrderTypeValueType", GopacsOrderTypeValueType.class);
+
+  public static final AttributeDescriptor<GopacsOrderTypeValueType> GOPACS_ORDER_TYPE =
+      new AttributeDescriptor<>("gopacsOrderType", GOPACS_ORDER_TYPE_VALUE_TYPE);
+
+  public static final AttributeDescriptor<Double> GOPACS_ORDER_QUANTITY =
+      new AttributeDescriptor<>("gopacsOrderQuantity", ValueType.NUMBER)
+          .withUnits(UNITS_KILO, UNITS_WATT);
+
+  public static final AttributeDescriptor<Double> GOPACS_ORDER_PRICE =
+      new AttributeDescriptor<>("gopacsOrderPrice", ValueType.POSITIVE_NUMBER)
+          .withUnits("EUR", UNITS_PER, UNITS_MEGA, UNITS_WATT, UNITS_HOUR);
+
+  // --- GOPACS orders: operator actions, reset by the handler ---
+
+  public static final AttributeDescriptor<Boolean> GOPACS_CONFIRM_ORDER =
+      new AttributeDescriptor<>("gopacsConfirmOrder", ValueType.BOOLEAN);
+
+  public static final AttributeDescriptor<Boolean> GOPACS_CANCEL_ORDERS =
+      new AttributeDescriptor<>("gopacsCancelOrders", ValueType.BOOLEAN);
+
+  // --- GOPACS orders: status ---
+
+  /** Orders still being tracked, keyed by reference. Terminal orders drop out. */
+  public static final AttributeDescriptor<ObjectMap> GOPACS_ORDERS =
+      new AttributeDescriptor<>(
+          "gopacsOrders", ValueType.JSON_OBJECT, new MetaItem<>(MetaItemType.READ_ONLY));
+
+  /** One data point per order action and status change. */
+  public static final AttributeDescriptor<ObjectMap> GOPACS_ORDER_HISTORY =
+      new AttributeDescriptor<>(
+          "gopacsOrderHistory",
+          ValueType.JSON_OBJECT,
+          new MetaItem<>(MetaItemType.READ_ONLY),
+          new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
+
+  /** One data point per settled trade. */
+  public static final AttributeDescriptor<ObjectMap> GOPACS_SETTLEMENT_HISTORY =
+      new AttributeDescriptor<>(
+          "gopacsSettlementHistory",
+          ValueType.JSON_OBJECT,
+          new MetaItem<>(MetaItemType.READ_ONLY),
+          new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
+
+  /** When the tracked orders were last synced with Distro. */
+  public static final AttributeDescriptor<Long> GOPACS_LAST_SYNC =
+      new AttributeDescriptor<>(
+          "gopacsLastSync", ValueType.TIMESTAMP, new MetaItem<>(MetaItemType.READ_ONLY));
+
   public static final AssetDescriptor<EmsDistroEnergyAsset> DESCRIPTOR =
       new AssetDescriptor<>("transmission-tower", null, EmsDistroEnergyAsset.class);
 
@@ -58,5 +150,63 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
 
   public void setPortfolio(String portfolio) {
     getAttributes().getOrCreate(PORTFOLIO).setValue(portfolio);
+  }
+
+  // --- GOPACS getters ---
+
+  public Optional<Boolean> getGopacsEnabled() {
+    return getAttributes().getValue(GOPACS_ENABLED);
+  }
+
+  public Optional<String> getGopacsEan() {
+    return getAttributes().getValue(GOPACS_EAN);
+  }
+
+  public Optional<String> getGopacsAnnouncementId() {
+    return getAttributes().getValue(GOPACS_ANNOUNCEMENT_ID);
+  }
+
+  public Optional<Long> getGopacsStartTime() {
+    return getAttributes().getValue(GOPACS_START_TIME);
+  }
+
+  public Optional<Long> getGopacsEndTime() {
+    return getAttributes().getValue(GOPACS_END_TIME);
+  }
+
+  public Optional<Long> getGopacsBidValidityEnd() {
+    return getAttributes().getValue(GOPACS_BID_VALIDITY_END);
+  }
+
+  public Optional<String> getGopacsEanEffectivity() {
+    return getAttributes().getValue(GOPACS_EAN_EFFECTIVITY);
+  }
+
+  public Optional<GopacsOrderTypeValueType> getGopacsOrderType() {
+    return getAttributes().getValue(GOPACS_ORDER_TYPE);
+  }
+
+  public Optional<Double> getGopacsOrderQuantity() {
+    return getAttributes().getValue(GOPACS_ORDER_QUANTITY);
+  }
+
+  public Optional<Double> getGopacsOrderPrice() {
+    return getAttributes().getValue(GOPACS_ORDER_PRICE);
+  }
+
+  public Optional<ObjectMap> getGopacsOrders() {
+    return getAttributes().getValue(GOPACS_ORDERS);
+  }
+
+  // --- GOPACS setters ---
+
+  public EmsDistroEnergyAsset setGopacsEnabled(Boolean enabled) {
+    getAttributes().getOrCreate(GOPACS_ENABLED).setValue(enabled);
+    return this;
+  }
+
+  public EmsDistroEnergyAsset setGopacsOrderPrice(Double price) {
+    getAttributes().getOrCreate(GOPACS_ORDER_PRICE).setValue(price);
+    return this;
   }
 }

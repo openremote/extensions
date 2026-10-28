@@ -6,8 +6,14 @@
 participants. Within Distro each participant is a **portfolio**. A portfolio submits day-ahead orders (volumes per
 15-minute interval, optionally with a price range) and Distro places them on the market.
 
-OpenRemote uses the Distro **Day-Ahead Order Submissions** API to submit the net power forecast of an EMS site as
-day-ahead market orders. The API rules that shape the integration:
+OpenRemote uses two Distro APIs, each optional and independent of the other:
+
+- **Day-Ahead Order Submissions** submits the net power forecast of an EMS site as day-ahead market orders (this
+  section)
+- **GOPACS Connector** places redispatch orders in response to GOPACS congestion announcements (see
+  [GOPACS Orders](#gopacs-orders))
+
+The day-ahead API rules that shape the integration:
 
 - Orders may be submitted up to five days in advance
 - A new submission replaces any earlier submission for the same delivery day
@@ -156,6 +162,148 @@ portfolio … and day …` and the run continues with the next day. The schedule
 - Stopping the handler cancels the schedule, interrupts any request in flight and closes the HTTP client
 - Use `daysSubmitted` and `lastSubmission` to spot a stalled integration without reading the logs
 
+### GOPACS Orders
+
+Distro relays orders placed through its GOPACS Connector API to ETPA, where GOPACS can match them to solve grid
+congestion. OpenRemote does not poll GOPACS for this: the announcement comes from an `Ems GOPACS Asset` with
+redispatch enabled (see [GOPACS Integration](GopacsIntegration.md)), and `EmsOptimisationService` copies it to the
+Distro asset next to it. Neither handler references the other, so the Distro asset needs no portfolio or day-ahead
+setup.
+
+#### Configuration
+
+| Variable                      | Required | Description                                                                                                                           |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISTRO_GOPACS_CLIENT_ID`     | Yes      | OAuth client ID provided by Distro                                                                                                    |
+| `DISTRO_GOPACS_CLIENT_SECRET` | Yes      | OAuth client secret provided by Distro                                                                                                |
+| `DISTRO_GOPACS_TENANT_ID`     | Yes      | Distro tenant, e.g. `slimstrandnet`                                                                                                   |
+| `DISTRO_GOPACS_URL`           | No       | Base URL of the API (default: `https://api.distro.energy/v1`, development: `https://api.dev.distro.energy/v1`)                        |
+| `DISTRO_GOPACS_TOKEN_URL`     | No       | OAuth token endpoint (default: `https://auth.distro.energy/oauth2/token`, development: `https://auth.dev.distro.energy/oauth2/token`) |
+
+The handler does not start without the three required variables. Distro must also whitelist the manager's outbound IP
+address. Tokens are requested with client credentials and scope `distro-api/gopacs.access`, cached and refreshed
+shortly before they expire.
+
+#### Asset Setup
+
+1. Place the `Ems Distro Energy Asset` under the same `Ems Energy Optimisation Asset` as the `Ems GOPACS Asset`. The
+   announcement is copied from that GOPACS asset, and quantities are pre-filled from that parent's batteries
+2. Set `gopacsEnabled` to `true` on the `Ems Distro Energy Asset`
+
+These attributes are copied from the `Ems GOPACS Asset`:
+
+| `Ems GOPACS Asset` attribute | Copied to `Ems Distro Energy Asset` attribute |
+| ---------------------------- | --------------------------------------------- |
+| `contractedEAN`              | `gopacsEan`                                   |
+| `redispatchAnnouncementId`   | `gopacsAnnouncementId`                        |
+| `redispatchStartTime`        | `gopacsStartTime`                             |
+| `redispatchEndTime`          | `gopacsEndTime`                               |
+| `redispatchBidValidityEnd`   | `gopacsBidValidityEnd`                        |
+| `redispatchEanEffectivity`   | `gopacsEanEffectivity`                        |
+
+They are copied when one of them changes on the GOPACS asset, when either asset is saved, and when the manager starts.
+Only values that differ are written, so the redispatch poller rewriting the same announcement on each poll leaves the
+Distro asset alone. Nothing is copied while the parent has more than one `Ems GOPACS Asset`. Attribute links set up
+for an earlier version are no longer needed and can be removed.
+
+| Attribute                            | Value Type       | Read-only | Purpose                                                                                          |
+| ------------------------------------ | ---------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders                       |
+| `gopacsEan` … `gopacsEanEffectivity` | Copied           | ✓         | Announcement inputs, see the table above                                                         |
+| `gopacsOrderType`                    | Enum             |           | `BUY` or `SELL` (dropdown). Pre-filled from the announcement, may be overridden                  |
+| `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden           |
+| `gopacsOrderPrice`                   | Number (EUR/MWh) |           | Set by the operator, 0 or more. Changing it replaces the open orders of the current announcement |
+| `gopacsConfirmOrder`                 | Boolean          |           | Set to `true` to place the order; reset by the handler                                           |
+| `gopacsCancelOrders`                 | Boolean          |           | Set to `true` to cancel every open order; reset by the handler                                   |
+| `gopacsOrders`                       | JSON object      | ✓         | Orders still being tracked, by reference, as last returned by Distro                             |
+| `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change, refused confirmation or price change             |
+| `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per settled trade                                                                 |
+| `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                                      |
+
+#### Workflow
+
+```mermaid
+sequenceDiagram
+    participant G as Ems GOPACS Asset
+    participant D as Ems Distro Energy Asset
+    actor Op as Operator
+    participant API as Distro GOPACS API
+
+    G->>D: copied by EmsOptimisationService (announcement, window, effectivity)
+    D->>D: Pre-fill gopacsOrderType and gopacsOrderQuantity
+    Op->>D: Set gopacsOrderPrice, toggle gopacsConfirmOrder
+    D->>API: POST /gopacs/{tenant}/orders
+    loop Every 5 minutes while orders are tracked
+        D->>API: GET /gopacs/{tenant}/orders/{reference}
+        D->>API: GET /settlements/gopacs/{tenant} (once SETTLED)
+    end
+    Op->>D: Change gopacsOrderPrice
+    D->>API: PUT /gopacs/{tenant}/orders/{reference}
+    G->>D: announcement closes or changes
+    D->>API: DELETE /gopacs/{tenant}/orders/{reference}
+```
+
+#### Order Sizing
+
+**Order type** comes from the GOPACS EAN effectivity category, `BUY_<effectivity>_SELL_<effectivity>`, ranked
+`NONE` < `VERY_LOW` < `LOW` < `MODERATE` < `HIGH` < `VERY_HIGH` < `MAXIMUM`. The more effective side wins.
+`BUY_NONE_SELL_NONE` suggests nothing. On `BUY_MODERATE_SELL_MODERATE` the side the batteries can offer more of wins,
+`BUY` on a draw. `BUY` means consume more (charge) and `SELL` means consume less (discharge).
+
+**Quantity** is the constant power the batteries under the parent optimisation asset can hold for the whole window:
+
+- Only batteries allowed to charge (`BUY`) or discharge (`SELL`) and not `disconnected` count
+- Power: the sum of `chargePowerMaximum` or `dischargePowerMaximum`
+- Energy: the sum of the headroom to `energyLevelPercentageMaximum` (`BUY`, divided by `chargeEfficiency`) or to
+  `energyLevelPercentageMinimum` (`SELL`, multiplied by `dischargeEfficiency`), divided by the window duration
+- The lower of the two, rounded down to 100 kW steps. Distro's minimum order is 0.1 MW
+
+#### Placing an Order
+
+On `gopacsConfirmOrder` the handler rounds the quantity down to 100 kW steps and the price to cents, as Distro takes at
+most one decimal in MW and two in EUR/MWh. It then checks that there is an announcement, an 18-digit EAN, a `BUY` or
+`SELL` type, a quantity of at least 100 kW, a price, and a non-empty window that starts more than 15
+minutes from now (Distro's latest expiry). When `gopacsBidValidityEnd` is known it must not have passed, as GOPACS no
+longer takes bids for the announcement after it. A failed check is logged and recorded as `REFUSED` in `gopacsOrderHistory`.
+The order is sent with:
+
+| Field                  | Source                                                                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `reference`            | A new random UUID                                                                                                                         |
+| `quantity`             | `gopacsOrderQuantity` in MW                                                                                                               |
+| `start`, `end`         | `gopacsStartTime`, `gopacsEndTime` in Unix seconds                                                                                        |
+| `metadata`             | `{"announcementId": <gopacsAnnouncementId>}`, which links the order to its announcement                                                   |
+| `customExpirationTime` | `gopacsBidValidityEnd` rounded down to a quarter-hour, unless it is unknown, passed, or after Distro's default of 15 minutes before start |
+
+The order is tracked as `PENDING` before it is posted. When Distro rejects it with a `4xx` it is untracked again. On a
+timeout or a `5xx` it stays tracked, because Distro may have accepted it: the next poll picks up its real status, or
+untracks it when Distro answers `404`. Either way the failure is recorded as `CREATE_FAILED`.
+
+#### Order Lifecycle
+
+`PENDING` and `SUBMITTED` orders are open: they are cancelled when their announcement closes or is replaced by another,
+or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
+announcement. A `LOCKED` order cannot be changed
+(Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
+all their trades are recorded in `gopacsSettlementHistory`. Distro makes the trades available as soon as an order is
+`SETTLED`, so they are fetched once; a failed fetch is recorded as `SETTLEMENTS_FAILED` and not retried. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
+are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
+
+Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot
+be cancelled and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete
+nothing tracks them any more and their trades are not recorded, so check for them in Distro before deleting an asset.
+
+#### Components
+
+```
+distroenergy/
+  DistroGopacsHandler.java        Pre-fills, places, replaces, cancels and polls orders for one asset
+  DistroGopacsResource.java       RESTEasy client proxy for the GOPACS Connector API
+  dto/GopacsOrderRequest.java     Create and replace body
+  dto/GopacsOrder.java            Order as stored by Distro
+  dto/GopacsSettlement*.java      Settled trades
+```
+
 ### Testing
 
 To test against Distro's development environment, set `DISTRO_ENERGY_BASE_URL` to
@@ -165,4 +313,6 @@ Automated tests:
 
 - `DistroEnergyHandlerTest` — payload building, volume conversion, DST days and gap filling
 - `DistroEnergyHandlerStatusTest` — status attributes written after a run and the gate closure boundary
-- `EmsOptimisationServiceDistroEnergyTest` — handler lifecycle in `EmsOptimisationService`
+- `DistroGopacsHandlerTest` — order type and quantity rules, expiration, and the create, replace, cancel and poll flows
+- `DistroGopacsHandlerHttpTest` — OAuth token request, bearer reuse and the JSON wire format against WireMock
+- `EmsOptimisationServiceDistroEnergyTest` — day-ahead and GOPACS handler lifecycle in `EmsOptimisationService`
