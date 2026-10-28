@@ -309,7 +309,6 @@
       },
       {
         "type": "info",
-        "column": 1,
         "title": "GOPACS — Announcement",
         "properties": {
           "include": []
@@ -327,7 +326,6 @@
       },
       {
         "type": "info",
-        "column": 1,
         "title": "GOPACS — Order",
         "properties": {
           "include": []
