@@ -264,7 +264,7 @@ sequenceDiagram
 
 On `gopacsConfirmOrder` the handler rounds the quantity down to 100 kW steps and the price to cents, as Distro takes at
 most one decimal in MW and two in EUR/MWh. It then checks that there is an announcement, an 18-digit EAN, a `BUY` or
-`SELL` type, a quantity of at least 100 kW, a price of 0 or more, and a quarter-hour window that starts more than 15
+`SELL` type, a quantity of at least 100 kW, a price of 0 or more, and a non-empty window that starts more than 15
 minutes from now (Distro's latest expiry). When `gopacsBidValidityEnd` is known it must not have passed, as GOPACS no
 longer takes bids for the announcement after it. A failed check is logged and recorded as `REFUSED` in `gopacsOrderHistory`.
 The order is sent with:

@@ -560,6 +560,54 @@ public class DistroGopacsHandler {
     return expiration > nowSeconds && expiration <= startSeconds - ISP_SECONDS ? expiration : null;
   }
 
+  /**
+   * Checks an order against what Distro accepts. The window comes from the GOPACS announcement, so
+   * it is trusted to be quarter-hour aligned.
+   *
+   * @return why the order cannot be placed, or null when it is valid.
+   */
+  static String validateInput(
+      String announcementId,
+      String ean,
+      GopacsOrderTypeValueType orderType,
+      Double enteredKw,
+      Double price,
+      Long start,
+      Long end,
+      Long validityEndSeconds,
+      long nowSeconds) {
+    if (announcementId == null) {
+      return "no announcement";
+    }
+    if (ean == null || !ean.matches("\\d{18}")) {
+      return "EAN '" + ean + "' is not an 18-digit EAN";
+    }
+    if (orderType == null) {
+      return "no order type";
+    }
+    if (enteredKw == null || roundDownToStep(enteredKw) < MIN_QUANTITY_KW) {
+      return "quantity " + enteredKw + " kW is below the 100 kW minimum";
+    }
+    if (price == null) {
+      return "no price";
+    }
+    if (price < 0) {
+      return "price " + price + " EUR/MWh is negative";
+    }
+    if (start == null || end == null || end <= start) {
+      return "window " + start + " to " + end + " is empty";
+    }
+    // Distro needs the order to expire in the future and at least 15 minutes before start.
+    if (start / 1000 - ISP_SECONDS <= nowSeconds) {
+      return "window starts in less than 15 minutes";
+    }
+    // GOPACS no longer takes bids for the announcement.
+    if (validityEndSeconds != null && validityEndSeconds <= nowSeconds) {
+      return "bid validity end has passed";
+    }
+    return null;
+  }
+
   /** Places an order for the current announcement from the asset's order attributes. */
   protected void placeOrder() {
     EmsDistroEnergyAsset asset = findAsset();
@@ -570,49 +618,27 @@ public class DistroGopacsHandler {
     String ean = asset.getGopacsEan().orElse(null);
     GopacsOrderTypeValueType orderType = asset.getGopacsOrderType().orElse(null);
     Double enteredKw = asset.getGopacsOrderQuantity().orElse(null);
-    Double quantityKw = enteredKw == null ? null : roundDownToStep(enteredKw);
     Double price = asset.getGopacsOrderPrice().map(DistroGopacsHandler::roundToCents).orElse(null);
     Long start = asset.getGopacsStartTime().orElse(null);
     Long end = asset.getGopacsEndTime().orElse(null);
     Long validityEndSeconds = asset.getGopacsBidValidityEnd().map(ms -> ms / 1000).orElse(null);
     long nowSeconds = timerService.getNow().getEpochSecond();
 
-    String invalid = null;
-    if (announcementId == null) {
-      invalid = "no announcement";
-    } else if (ean == null || !ean.matches("\\d{18}")) {
-      invalid = "EAN '" + ean + "' is not an 18-digit EAN";
-    } else if (orderType == null) {
-      invalid = "no order type";
-    } else if (quantityKw == null || quantityKw < MIN_QUANTITY_KW) {
-      invalid = "quantity " + enteredKw + " kW is below the 100 kW minimum";
-    } else if (price == null) {
-      invalid = "no price";
-    } else if (price < 0) {
-      invalid = "price " + price + " EUR/MWh is negative";
-    } else if (start == null
-        || end == null
-        || start % (ISP_SECONDS * 1000) != 0
-        || end % (ISP_SECONDS * 1000) != 0
-        || end <= start) {
-      invalid = "window " + start + " to " + end + " is not a quarter-hour aligned interval";
-    } else if (start / 1000 - ISP_SECONDS <= nowSeconds) {
-      // Distro needs the order to expire in the future and at least 15 minutes before start.
-      invalid = "window starts in less than 15 minutes";
-    } else if (validityEndSeconds != null && validityEndSeconds <= nowSeconds) {
-      // GOPACS no longer takes bids for the announcement.
-      invalid = "bid validity end has passed";
-    }
+    String invalid =
+        validateInput(
+            announcementId,
+            ean,
+            orderType,
+            enteredKw,
+            price,
+            start,
+            end,
+            validityEndSeconds,
+            nowSeconds);
     if (invalid != null) {
       LOG.warning("Not placing Distro GOPACS order for asset " + assetId + ": " + invalid);
       recordHistory("REFUSED", null, invalid);
       return;
-    }
-    if (quantityKw.doubleValue() != enteredKw) {
-      LOG.info(
-          String.format(
-              "Rounded Distro GOPACS order quantity for asset %s down from %s to %s kW",
-              assetId, enteredKw, quantityKw));
     }
 
     long startSeconds = start / 1000;
@@ -620,7 +646,7 @@ public class DistroGopacsHandler {
         new GopacsOrderRequest(
             UUID.randomUUID().toString(),
             orderType.name(),
-            quantityKw / 1000,
+            roundDownToStep(enteredKw) / 1000,
             startSeconds,
             end / 1000,
             price,
@@ -628,10 +654,9 @@ public class DistroGopacsHandler {
             Map.of(METADATA_ANNOUNCEMENT_ID, announcementId),
             expirationSeconds(startSeconds, validityEndSeconds, nowSeconds));
     LOG.info(
-        "Placing Distro GOPACS order for asset "
-            + assetId
-            + ": "
-            + ValueUtil.asJSON(request).orElse(request.toString()));
+        String.format(
+            "Placing Distro GOPACS order for asset %s (entered %s kW): %s",
+            assetId, enteredKw, ValueUtil.asJSON(request).orElse(request.toString())));
     // Tracked before posting: a timeout can hide an order Distro did accept. Polling then finds
     // its real status, or untracks it when Distro answers 404.
     orders.put(request.reference(), GopacsOrder.pending(request));
