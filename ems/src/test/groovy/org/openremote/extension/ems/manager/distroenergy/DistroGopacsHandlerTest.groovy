@@ -245,17 +245,38 @@ class DistroGopacsHandlerTest extends Specification {
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "CREATED"
   }
 
-  def "confirming refuses an order below the 0.1 MW minimum"() {
+  def "confirming rounds the quantity down to 100 kW steps and the price to cents"() {
     given:
     announcement("BUY_LOW_SELL_HIGH")
-    order(SELL, 99, 45)
+    order(SELL, 250, 45.678)
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
+
+    then:
+    1 * resource.createOrder(TENANT, { it.quantity() == 0.2d && it.price() == 45.68d }) >> { String tenant, GopacsOrderRequest body ->
+      stored(body.reference(), "SUBMITTED", ANNOUNCEMENT)
+    }
+  }
+
+  def "confirming refuses what Distro would reject: #label"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    order(SELL, quantityKw, price)
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_START_TIME).setValue(start)
 
     when:
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
     0 * resource.createOrder(*_)
-    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "REFUSED"
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).detail == detail
+
+    where:
+    label                       | quantityKw | price | start                                            || detail
+    "a quantity rounded to 0"   | 99         | 45    | START                                            || "quantity 99.0 kW is below the 100 kW minimum"
+    "a negative price"          | 200        | -1    | START                                            || "price -1.0 EUR/MWh is negative"
+    "less than 15 minutes left" | 200        | 45    | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() || "window starts in less than 15 minutes"
   }
 
   def "a failed create is recorded and nothing is tracked"() {
@@ -288,21 +309,35 @@ class DistroGopacsHandlerTest extends Specification {
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "CREATE_FAILED"
   }
 
-  def "a price change replaces the open orders of the current announcement only"() {
+  def "a price change replaces the submitted orders of the current announcement only"() {
     given:
     announcement("BUY_LOW_SELL_HIGH")
     track(stored("open-current", "SUBMITTED", ANNOUNCEMENT))
+    track(stored("pending-current", "PENDING", ANNOUNCEMENT))
     track(stored("locked-current", "LOCKED", ANNOUNCEMENT))
     track(stored("open-other", "SUBMITTED", "other-announcement"))
 
     when:
-    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60d)
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60.004d)
 
     then:
     1 * resource.replaceOrder(TENANT, "open-current", { it.price() == 60d && it.reference() == "open-current" }) >>
-            stored("open-current", "PENDING", ANNOUNCEMENT)
+            stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
     0 * resource.replaceOrder(*_)
-    handler.orders["open-current"].status() == "PENDING"
+    handler.orders["open-current"].price() == 60d
+  }
+
+  def "a negative price is refused without replacing anything"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("open-current", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, -5d)
+
+    then:
+    0 * resource._
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "REFUSED"
   }
 
   def "a new announcement cancels the open orders placed for the previous one"() {
@@ -497,8 +532,8 @@ class DistroGopacsHandlerTest extends Specification {
     asset.setGopacsOrderPrice(price)
   }
 
-  static GopacsOrder stored(String reference, String status, String announcementId) {
-    return new GopacsOrder(reference, null, status, SELL, 0.2, 45, seconds(START), seconds(END),
+  static GopacsOrder stored(String reference, String status, String announcementId, double price = 45) {
+    return new GopacsOrder(reference, null, status, SELL, 0.2, price, seconds(START), seconds(END),
             EAN, [announcementId: announcementId], null, null)
   }
 

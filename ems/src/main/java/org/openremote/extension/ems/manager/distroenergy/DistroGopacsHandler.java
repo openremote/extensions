@@ -84,7 +84,7 @@ public class DistroGopacsHandler {
   protected static final Duration POLL_INTERVAL = Duration.ofMinutes(5);
   protected static final long ISP_SECONDS = Duration.ofMinutes(15).toSeconds();
 
-  /** Distro rejects orders below 0.1 MW; quantities are sized in steps of that minimum. */
+  /** Distro takes quantities of at least 0.1 MW with at most one decimal, so steps of 100 kW. */
   protected static final double MIN_QUANTITY_KW = 100;
 
   /** Largest page size the settlements endpoint accepts. */
@@ -94,8 +94,10 @@ public class DistroGopacsHandler {
   public static final String SELL = "SELL";
   public static final String METADATA_ANNOUNCEMENT_ID = "announcementId";
 
-  /** Orders that can still be replaced or cancelled. */
+  /** Orders that can still be cancelled. Only SUBMITTED ones can be replaced. */
   protected static final Set<String> OPEN_STATUSES = Set.of("PENDING", "SUBMITTED");
+
+  protected static final Set<String> REPLACEABLE_STATUSES = Set.of("SUBMITTED");
 
   /** Statuses after which an order no longer changes and is no longer tracked. */
   protected static final Set<String> FINAL_STATUSES =
@@ -487,8 +489,17 @@ public class DistroGopacsHandler {
                   .orElse(0.0));
     }
 
-    double quantityKw = Math.min(powerKw, energyKwh / windowHours);
-    return Math.floor(quantityKw / MIN_QUANTITY_KW) * MIN_QUANTITY_KW;
+    return roundDownToStep(Math.min(powerKw, energyKwh / windowHours));
+  }
+
+  /** Rounded down to the 100 kW steps Distro accepts, so an order never offers more than asked. */
+  static double roundDownToStep(double kw) {
+    return Math.floor(kw / MIN_QUANTITY_KW) * MIN_QUANTITY_KW;
+  }
+
+  /** Distro takes prices with at most two decimals. */
+  static double roundToCents(double price) {
+    return Math.round(price * 100) / 100.0;
   }
 
   /**
@@ -512,8 +523,9 @@ public class DistroGopacsHandler {
     String announcementId = asset.getGopacsAnnouncementId().orElse(null);
     String ean = asset.getGopacsEan().orElse(null);
     String orderType = asset.getGopacsOrderType().orElse(null);
-    Double quantityKw = asset.getGopacsOrderQuantity().orElse(null);
-    Double price = asset.getGopacsOrderPrice().orElse(null);
+    Double enteredKw = asset.getGopacsOrderQuantity().orElse(null);
+    Double quantityKw = enteredKw == null ? null : roundDownToStep(enteredKw);
+    Double price = asset.getGopacsOrderPrice().map(DistroGopacsHandler::roundToCents).orElse(null);
     Long start = asset.getGopacsStartTime().orElse(null);
     Long end = asset.getGopacsEndTime().orElse(null);
     long nowSeconds = timerService.getNow().getEpochSecond();
@@ -526,22 +538,31 @@ public class DistroGopacsHandler {
     } else if (!BUY.equals(orderType) && !SELL.equals(orderType)) {
       invalid = "order type '" + orderType + "' is not BUY or SELL";
     } else if (quantityKw == null || quantityKw < MIN_QUANTITY_KW) {
-      invalid = "quantity " + quantityKw + " kW is below the 100 kW minimum";
+      invalid = "quantity " + enteredKw + " kW is below the 100 kW minimum";
     } else if (price == null) {
       invalid = "no price";
+    } else if (price < 0) {
+      invalid = "price " + price + " EUR/MWh is negative";
     } else if (start == null
         || end == null
         || start % (ISP_SECONDS * 1000) != 0
         || end % (ISP_SECONDS * 1000) != 0
         || end <= start) {
       invalid = "window " + start + " to " + end + " is not a quarter-hour aligned interval";
-    } else if (start / 1000 <= nowSeconds) {
-      invalid = "window already started";
+    } else if (start / 1000 - ISP_SECONDS <= nowSeconds) {
+      // Distro needs the order to expire in the future and at least 15 minutes before start.
+      invalid = "window starts in less than 15 minutes";
     }
     if (invalid != null) {
       LOG.warning("Not placing Distro GOPACS order for asset " + assetId + ": " + invalid);
       recordHistory("REFUSED", null, invalid);
       return;
+    }
+    if (quantityKw.doubleValue() != enteredKw) {
+      LOG.info(
+          String.format(
+              "Rounded Distro GOPACS order quantity for asset %s down from %s to %s kW",
+              assetId, enteredKw, quantityKw));
     }
 
     long startSeconds = start / 1000;
@@ -598,14 +619,25 @@ public class DistroGopacsHandler {
         null);
   }
 
-  /** Re-submits the open orders for the current announcement at the new price. */
+  /** Re-submits the replaceable orders for the current announcement at the new price. */
   protected void replaceOrders(double price) {
     EmsDistroEnergyAsset asset = findAsset();
     String announcementId = asset == null ? null : asset.getGopacsAnnouncementId().orElse(null);
     if (announcementId == null) {
       return;
     }
-    for (GopacsOrder order : openOrders(announcementId)) {
+    List<GopacsOrder> toReplace = ordersFor(announcementId, REPLACEABLE_STATUSES);
+    if (toReplace.isEmpty()) {
+      return;
+    }
+    if (price < 0) {
+      String invalid = "price " + price + " EUR/MWh is negative";
+      LOG.warning("Not replacing Distro GOPACS orders for asset " + assetId + ": " + invalid);
+      recordHistory("REFUSED", null, invalid);
+      return;
+    }
+    price = roundToCents(price);
+    for (GopacsOrder order : toReplace) {
       GopacsOrderRequest request =
           new GopacsOrderRequest(
               order.reference(),
@@ -637,7 +669,7 @@ public class DistroGopacsHandler {
    * Cancels the open orders placed for the given announcement, or all open orders when it is null.
    */
   protected void cancelOrders(String announcementId) {
-    List<GopacsOrder> toCancel = openOrders(announcementId);
+    List<GopacsOrder> toCancel = ordersFor(announcementId, OPEN_STATUSES);
     for (GopacsOrder order : toCancel) {
       try {
         resource.cancelOrder(tenantId, order.reference());
@@ -658,17 +690,18 @@ public class DistroGopacsHandler {
     }
   }
 
-  protected List<GopacsOrder> openOrders(String announcementId) {
-    List<GopacsOrder> open = new ArrayList<>();
+  /** The tracked orders in one of the statuses, for the announcement or for any when null. */
+  protected List<GopacsOrder> ordersFor(String announcementId, Set<String> statuses) {
+    List<GopacsOrder> matching = new ArrayList<>();
     for (GopacsOrder order : orders.values()) {
       String orderAnnouncementId =
           order.metadata() == null ? null : order.metadata().get(METADATA_ANNOUNCEMENT_ID);
-      if (OPEN_STATUSES.contains(order.status())
+      if (statuses.contains(order.status())
           && (announcementId == null || announcementId.equals(orderAnnouncementId))) {
-        open.add(order);
+        matching.add(order);
       }
     }
-    return open;
+    return matching;
   }
 
   /**

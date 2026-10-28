@@ -218,7 +218,7 @@ The handler only acts when a value actually changes.
 | `gopacsConfirmOrder`                 | Boolean          |           | Set to `true` to place the order; reset by the handler                                 |
 | `gopacsCancelOrders`                 | Boolean          |           | Set to `true` to cancel every open order; reset by the handler                         |
 | `gopacsOrders`                       | JSON object      | ✓         | Orders still being tracked, by reference, as last returned by Distro                   |
-| `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change or refused confirmation                 |
+| `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change, refused confirmation or price change   |
 | `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per settled trade                                                       |
 | `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                            |
 
@@ -262,9 +262,11 @@ sequenceDiagram
 
 #### Placing an Order
 
-On `gopacsConfirmOrder` the handler checks that there is an announcement, an 18-digit EAN, a `BUY` or `SELL` type, a
-quantity of at least 100 kW, a price, and a quarter-hour window that has not started. A failed check is logged and
-recorded as `REFUSED` in `gopacsOrderHistory`. The order is sent with:
+On `gopacsConfirmOrder` the handler rounds the quantity down to 100 kW steps and the price to cents, as Distro takes at
+most one decimal in MW and two in EUR/MWh. It then checks that there is an announcement, an 18-digit EAN, a `BUY` or
+`SELL` type, a quantity of at least 100 kW, a price of 0 or more, and a quarter-hour window that starts more than 15
+minutes from now (Distro's latest expiry). A failed check is logged and recorded as `REFUSED` in `gopacsOrderHistory`.
+The order is sent with:
 
 | Field                  | Source                                                                                                                                    |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -280,8 +282,9 @@ untracks it when Distro answers `404`. Either way the failure is recorded as `CR
 
 #### Order Lifecycle
 
-`PENDING` and `SUBMITTED` orders are open: a price change replaces them, and they are cancelled when their announcement
-closes or is replaced by another, or when the operator sets `gopacsCancelOrders`. A `LOCKED` order cannot be changed
+`PENDING` and `SUBMITTED` orders are open: they are cancelled when their announcement closes or is replaced by another,
+or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
+announcement; a negative price is refused. A `LOCKED` order cannot be changed
 (Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
 all their trades are recorded in `gopacsSettlementHistory`; if that fetch fails, the next poll tries again. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
 are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
