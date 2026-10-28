@@ -374,37 +374,23 @@ public class DistroGopacsHandler {
       double sideKw = BUY.equals(orderType) ? buyKw : sellKw;
       if (orderType == null) {
         LOG.info(
-            "No order suggested for Distro GOPACS asset "
-                + assetId
-                + ": effectivity category '"
-                + category
-                + "' favours neither side");
+            String.format(
+                "No order suggested for Distro GOPACS asset %s: effectivity category '%s' favours"
+                    + " neither side",
+                assetId, category));
       } else if (sideKw < MIN_QUANTITY_KW) {
         LOG.info(
-            "No order suggested for Distro GOPACS asset "
-                + assetId
-                + ": the batteries can hold "
-                + sideKw
-                + " kW to "
-                + orderType
-                + ", below the 100 kW minimum");
+            String.format(
+                "No order suggested for Distro GOPACS asset %s: the batteries can hold %s kW to %s,"
+                    + " below the 100 kW minimum",
+                assetId, sideKw, orderType));
         orderType = null;
       } else {
         quantityKw = sideKw;
         LOG.fine(
-            "Suggested "
-                + orderType
-                + " of "
-                + quantityKw
-                + " kW for Distro GOPACS asset "
-                + assetId
-                + " (category "
-                + category
-                + ", buy "
-                + buyKw
-                + " kW, sell "
-                + sellKw
-                + " kW)");
+            String.format(
+                "Suggested %s of %s kW for Distro GOPACS asset %s (category %s, buy/sell %s/%s kW)",
+                orderType, quantityKw, assetId, category, buyKw, sellKw));
       }
     }
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE, orderType);
