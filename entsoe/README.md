@@ -40,6 +40,8 @@ Make sure to also add the `Has predicted data points` configuration to your attr
 
 ### Unavailable prices and null predictions
 
+**Upgrade note:** Review all forecast consumers for null handling before deploying this change, including custom rules and external integrations. See the [release notes and migration guidance](RELEASE_NOTES.txt).
+
 **An unavailable price is stored as a predicted datapoint with a timestamp and a `null` value. The datapoint entry is not deleted.**
 
 When a point in an otherwise valid returned period has no `price.amount`:
