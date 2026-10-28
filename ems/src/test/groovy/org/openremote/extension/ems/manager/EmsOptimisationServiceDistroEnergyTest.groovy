@@ -29,6 +29,7 @@ import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
 import org.openremote.model.Container
 import org.openremote.model.PersistenceEvent
+import org.openremote.model.attribute.AttributeEvent
 import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.util.ValueUtil
 import spock.lang.Specification
@@ -58,6 +59,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   List<RecordingDistroGopacsHandler> createdGopacsHandlers
   Map<String, String> gopacsConfig
   Map<String, String> handlerConfig
+  AssetStorageService assetStorageService
   EmsOptimisationService service
 
   def setupSpec() {
@@ -69,7 +71,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   }
 
   def setup() {
-    def assetStorageService = Mock(AssetStorageService)
+    assetStorageService = Mock(AssetStorageService)
     assetStorageService.find(PARENT_ID, false, EmsEnergyOptimisationAsset.class) >>
             new EmsEnergyOptimisationAsset("parent")
 
@@ -232,6 +234,26 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     createdGopacsHandlers[0].undeployCalls == [false]
   }
 
+  def "only the GOPACS order inputs are routed to the handler, not its own writes"() {
+    given:
+    def asset = gopacsAsset(true)
+    assetStorageService.find(ASSET_ID) >> asset
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, asset))
+
+    when:
+    [
+      EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER,
+      EmsDistroEnergyAsset.GOPACS_ORDERS,
+      EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY,
+      EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY
+    ].each {
+      service.processAttributeEventEmsDistroEnergyAsset(new AttributeEvent(ASSET_ID, it.name, null))
+    }
+
+    then:
+    createdGopacsHandlers[0].events == [EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name]
+  }
+
   def "a missing GOPACS tenant is caught by the service rather than failing it"() {
     given:
     gopacsConfig.clear()
@@ -248,6 +270,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
   static class RecordingDistroGopacsHandler extends DistroGopacsHandler {
     int deployCount = 0
     List<Boolean> undeployCalls = []
+    List<String> events = []
 
     RecordingDistroGopacsHandler(
     String assetId, Container container, DistroGopacsResource resource) {
@@ -262,6 +285,11 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     @Override
     void undeploy(boolean cancelOpenOrders) {
       undeployCalls << cancelOpenOrders
+    }
+
+    @Override
+    void onAttributeEvent(AttributeEvent event) {
+      events << event.name
     }
   }
 

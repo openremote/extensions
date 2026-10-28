@@ -1070,7 +1070,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
 
     if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ENABLED.getName())) {
       reconcileDistroGopacsHandler(emsDistroEnergyAsset);
-    } else if (attributeName.startsWith("gopacs")) {
+    } else if (DistroGopacsHandler.INPUTS.contains(attributeName)) {
       DistroGopacsHandler handler = distroGopacsHandlerMap.get(assetId);
       if (handler != null) {
         handler.onAttributeEvent(attributeEvent);

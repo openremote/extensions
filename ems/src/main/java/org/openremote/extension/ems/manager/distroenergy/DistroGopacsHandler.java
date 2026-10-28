@@ -38,6 +38,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.WebTargetBuilder;
@@ -114,6 +116,19 @@ public class DistroGopacsHandler {
           EmsDistroEnergyAsset.GOPACS_START_TIME.getName(),
           EmsDistroEnergyAsset.GOPACS_END_TIME.getName(),
           EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY.getName());
+
+  /**
+   * Every attribute {@link #onAttributeEvent} reacts to. The handler's own writes are left out, so
+   * they are not routed back to it.
+   */
+  public static final Set<String> INPUTS =
+      Stream.concat(
+              SUGGESTION_INPUTS.stream(),
+              Stream.of(
+                  EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.getName(),
+                  EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName(),
+                  EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.getName()))
+          .collect(Collectors.toUnmodifiableSet());
 
   protected final String assetId;
   protected final String tenantId;
@@ -282,7 +297,7 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Reacts to a changed {@code gopacs*} attribute of the asset. Runs on the executor because every
+   * Reacts to a changed {@link #INPUTS} attribute of the asset. Runs on the executor because every
    * reaction may call Distro, and the caller is the client event thread.
    *
    * <p>Events whose value did not change are ignored: attribute links forward every update of the
