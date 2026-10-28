@@ -298,6 +298,7 @@
       },
       {
         "type": "info",
+        "column": 1,
         "title": "GOPACS — Configuration",
         "properties": {
           "include": []
@@ -326,6 +327,7 @@
       },
       {
         "type": "info",
+        "column": 1,
         "title": "GOPACS — Order",
         "properties": {
           "include": []
@@ -342,6 +344,7 @@
       },
       {
         "type": "info",
+        "column": 1,
         "title": "GOPACS — Status",
         "properties": {
           "include": []
@@ -352,6 +355,7 @@
       },
       {
         "type": "info",
+        "column": 1,
         "title": "GOPACS — History",
         "properties": {
           "include": []
