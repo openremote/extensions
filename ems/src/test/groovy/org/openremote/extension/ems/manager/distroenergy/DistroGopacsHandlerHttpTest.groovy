@@ -151,6 +151,21 @@ class DistroGopacsHandlerHttpTest extends Specification {
     e.response.status == 423
   }
 
+  def "a rejected call is described with the error body Distro sent"() {
+    given:
+    wireMock.stubFor(post(urlPathEqualTo(ORDERS_PATH)).willReturn(aResponse()
+            .withStatus(403).withHeader("Content-Type", "application/json")
+            .withBody('{"message": "Forbidden"}')))
+
+    when:
+    resource.createOrder(TENANT, new GopacsOrderRequest("ref-1", "SELL", 0.2,
+            1792677600, 1792684800, 45, "871685920001768800", null, null))
+
+    then:
+    def e = thrown(WebApplicationException)
+    DistroGopacsHandler.describe(e) == 'HTTP 403: {"message": "Forbidden"}'
+  }
+
   def "a cancel is a DELETE answered with 204"() {
     given:
     wireMock.stubFor(delete(urlPathEqualTo("${ORDERS_PATH}/ref-1")).willReturn(aResponse().withStatus(204)))

@@ -23,6 +23,7 @@ import static org.openremote.model.syslog.SyslogCategory.API;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -91,6 +92,9 @@ public class DistroGopacsHandler {
 
   /** Largest page size the settlements endpoint accepts. */
   protected static final int SETTLEMENT_PAGE_SIZE = 100;
+
+  /** Distro's error bodies are short JSON; anything longer is cut off in logs and history. */
+  private static final int MAX_ERROR_BODY_LENGTH = 500;
 
   public static final String BUY = "BUY";
   public static final String SELL = "SELL";
@@ -637,14 +641,14 @@ public class DistroGopacsHandler {
       orders.put(order.reference(), order);
       recordHistory("CREATED", order, null);
     } catch (RuntimeException e) {
-      LOG.log(Level.WARNING, "Failed to place Distro GOPACS order for asset " + assetId, e);
+      String failure = logFailure("Failed to place Distro GOPACS order for asset " + assetId, e);
       if (e instanceof WebApplicationException wae
           && wae.getResponse().getStatus() >= 400
           && wae.getResponse().getStatus() < 500) {
         // Rejected outright, so Distro holds no order for this reference.
         orders.remove(request.reference());
       }
-      recordHistory("CREATE_FAILED", orders.get(request.reference()), describe(e));
+      recordHistory("CREATE_FAILED", orders.get(request.reference()), failure);
     }
     saveOrders();
   }
@@ -683,11 +687,14 @@ public class DistroGopacsHandler {
         recordHistory("REPLACED", replaced, null);
       } catch (RuntimeException e) {
         // 423 means the order is locked for matching; it keeps its old price.
-        LOG.log(
-            Level.WARNING,
-            "Failed to replace Distro GOPACS order " + order.reference() + " for asset " + assetId,
-            e);
-        recordHistory("REPLACE_FAILED", order, describe(e));
+        String failure =
+            logFailure(
+                "Failed to replace Distro GOPACS order "
+                    + order.reference()
+                    + " for asset "
+                    + assetId,
+                e);
+        recordHistory("REPLACE_FAILED", order, failure);
       }
     }
     saveOrders();
@@ -710,11 +717,14 @@ public class DistroGopacsHandler {
         orders.remove(order.reference());
         recordHistory("CANCELED", order, null);
       } catch (RuntimeException e) {
-        LOG.log(
-            Level.WARNING,
-            "Failed to cancel Distro GOPACS order " + order.reference() + " for asset " + assetId,
-            e);
-        recordHistory("CANCEL_FAILED", order, describe(e));
+        String failure =
+            logFailure(
+                "Failed to cancel Distro GOPACS order "
+                    + order.reference()
+                    + " for asset "
+                    + assetId,
+                e);
+        recordHistory("CANCEL_FAILED", order, failure);
       }
     }
     if (!toCancel.isEmpty()) {
@@ -774,10 +784,10 @@ public class DistroGopacsHandler {
           orders.remove(tracked.reference());
           recordHistory("NOT_FOUND", tracked, null);
         } else {
-          LOG.log(Level.WARNING, "Failed to refresh Distro GOPACS order " + tracked.reference(), e);
+          logFailure("Failed to refresh Distro GOPACS order " + tracked.reference(), e);
         }
       } catch (RuntimeException e) {
-        LOG.log(Level.WARNING, "Failed to refresh Distro GOPACS order " + tracked.reference(), e);
+        logFailure("Failed to refresh Distro GOPACS order " + tracked.reference(), e);
       }
     }
     saveOrders();
@@ -813,11 +823,10 @@ public class DistroGopacsHandler {
           && !page.items().isEmpty()
           && settlements.size() < page.total());
     } catch (RuntimeException e) {
-      LOG.log(
-          Level.WARNING,
-          "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(),
-          e);
-      recordHistory("SETTLEMENTS_FAILED", order, describe(e));
+      String failure =
+          logFailure(
+              "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(), e);
+      recordHistory("SETTLEMENTS_FAILED", order, failure);
       return;
     }
 
@@ -847,10 +856,42 @@ public class DistroGopacsHandler {
         ValueUtil.JSON.convertValue(orders, new TypeReference<Map<String, Object>>() {}));
   }
 
-  private static String describe(RuntimeException e) {
-    return e instanceof WebApplicationException wae
-        ? "HTTP " + wae.getResponse().getStatus()
-        : e.getClass().getSimpleName() + ": " + e.getMessage();
+  /**
+   * Logs a failed Distro call and returns a short description for the history. An HTTP error is
+   * logged with Distro's error body and without a stack trace, which adds nothing for it.
+   */
+  private static String logFailure(String message, RuntimeException e) {
+    String failure = describe(e);
+    if (e instanceof WebApplicationException) {
+      LOG.warning(message + ": " + failure);
+    } else {
+      LOG.log(Level.WARNING, message, e);
+    }
+    return failure;
+  }
+
+  /** The HTTP status and the error body Distro sent, or the exception without a response. */
+  static String describe(RuntimeException e) {
+    if (!(e instanceof WebApplicationException wae)) {
+      return e.getClass().getSimpleName() + ": " + e.getMessage();
+    }
+    Response response = wae.getResponse();
+    String body = null;
+    try {
+      body = response.hasEntity() ? response.readEntity(String.class) : null;
+    } catch (RuntimeException ignored) {
+      // Already consumed or not readable: the status alone has to do.
+    }
+    if (body == null || body.isBlank()) {
+      return "HTTP " + response.getStatus();
+    }
+    body = body.strip();
+    return "HTTP "
+        + response.getStatus()
+        + ": "
+        + (body.length() > MAX_ERROR_BODY_LENGTH
+            ? body.substring(0, MAX_ERROR_BODY_LENGTH) + "..."
+            : body);
   }
 
   private void resetFlag(AttributeDescriptor<Boolean> flag) {
