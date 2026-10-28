@@ -166,8 +166,9 @@ portfolio … and day …` and the run continues with the next day. The schedule
 
 Distro relays orders placed through its GOPACS Connector API to ETPA, where GOPACS can match them to solve grid
 congestion. OpenRemote does not poll GOPACS for this: the announcement comes from an `Ems GOPACS Asset` with
-redispatch enabled (see [GOPACS Integration](GopacsIntegration.md)) and reaches the Distro asset through **attribute
-links**. Neither handler references the other, so the Distro asset needs no portfolio or day-ahead setup.
+redispatch enabled (see [GOPACS Integration](GopacsIntegration.md)), and `EmsOptimisationService` copies it to the
+Distro asset next to it. Neither handler references the other, so the Distro asset needs no portfolio or day-ahead
+setup.
 
 #### Configuration
 
@@ -185,33 +186,30 @@ shortly before they expire.
 
 #### Asset Setup
 
-1. Set `gopacsEnabled` to `true` on the `Ems Distro Energy Asset`. For pre-filled quantities, the asset must be a child
-   of the `Ems Energy Optimisation Asset` whose batteries will deliver the order
-2. On the `Ems GOPACS Asset`, add an `attributeLinks` meta item to each of these attributes, linking to the Distro
-   asset:
+1. Place the `Ems Distro Energy Asset` under the same `Ems Energy Optimisation Asset` as the `Ems GOPACS Asset`. The
+   announcement is copied from that GOPACS asset, and quantities are pre-filled from that parent's batteries
+2. Set `gopacsEnabled` to `true` on the `Ems Distro Energy Asset`
 
-| `Ems GOPACS Asset` attribute | Linked `Ems Distro Energy Asset` attribute |
-| ---------------------------- | ------------------------------------------ |
-| `contractedEAN`              | `gopacsEan`                                |
-| `redispatchAnnouncementId`   | `gopacsAnnouncementId`                     |
-| `redispatchStartTime`        | `gopacsStartTime`                          |
-| `redispatchEndTime`          | `gopacsEndTime`                            |
-| `redispatchBidValidityEnd`   | `gopacsBidValidityEnd`                     |
-| `redispatchEanEffectivity`   | `gopacsEanEffectivity`                     |
+These attributes are copied from the `Ems GOPACS Asset`:
 
-For example, the meta item on `redispatchAnnouncementId`:
+| `Ems GOPACS Asset` attribute | Copied to `Ems Distro Energy Asset` attribute |
+| ---------------------------- | --------------------------------------------- |
+| `contractedEAN`              | `gopacsEan`                                   |
+| `redispatchAnnouncementId`   | `gopacsAnnouncementId`                        |
+| `redispatchStartTime`        | `gopacsStartTime`                             |
+| `redispatchEndTime`          | `gopacsEndTime`                               |
+| `redispatchBidValidityEnd`   | `gopacsBidValidityEnd`                        |
+| `redispatchEanEffectivity`   | `gopacsEanEffectivity`                        |
 
-```json
-"attributeLinks": [{ "ref": { "id": "<distro asset id>", "name": "gopacsAnnouncementId" } }]
-```
-
-A link forwards every update of its source, including the unchanged values the redispatch poller rewrites on each poll.
-The handler only acts when a value actually changes.
+They are copied when one of them changes on the GOPACS asset, when either asset is saved, and when the manager starts.
+Only values that differ are written, so the redispatch poller rewriting the same announcement on each poll leaves the
+Distro asset alone. Nothing is copied while the parent has more than one `Ems GOPACS Asset`. Attribute links set up
+for an earlier version are no longer needed and can be removed.
 
 | Attribute                            | Value Type       | Read-only | Purpose                                                                                          |
 | ------------------------------------ | ---------------- | --------- | ------------------------------------------------------------------------------------------------ |
 | `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders                       |
-| `gopacsEan` … `gopacsEanEffectivity` | Linked           | ✓         | Announcement inputs, see the table above                                                         |
+| `gopacsEan` … `gopacsEanEffectivity` | Copied           | ✓         | Announcement inputs, see the table above                                                         |
 | `gopacsOrderType`                    | Enum             |           | `BUY` or `SELL` (dropdown). Pre-filled from the announcement, may be overridden                  |
 | `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden           |
 | `gopacsOrderPrice`                   | Number (EUR/MWh) |           | Set by the operator, 0 or more. Changing it replaces the open orders of the current announcement |
@@ -231,7 +229,7 @@ sequenceDiagram
     actor Op as Operator
     participant API as Distro GOPACS API
 
-    G->>D: attribute links (announcement, window, effectivity)
+    G->>D: copied by EmsOptimisationService (announcement, window, effectivity)
     D->>D: Pre-fill gopacsOrderType and gopacsOrderQuantity
     Op->>D: Set gopacsOrderPrice, toggle gopacsConfirmOrder
     D->>API: POST /gopacs/{tenant}/orders
