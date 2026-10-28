@@ -52,7 +52,7 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
   public static final AttributeDescriptor<Boolean> GOPACS_ENABLED =
       new AttributeDescriptor<>("gopacsEnabled", ValueType.BOOLEAN);
 
-  // --- GOPACS orders: announcement inputs, written through attribute links from EmsGOPACSAsset ---
+  // --- GOPACS orders: announcement inputs, copied from the EmsGOPACSAsset with the same parent ---
 
   public static final AttributeDescriptor<String> GOPACS_EAN =
       new AttributeDescriptor<>(

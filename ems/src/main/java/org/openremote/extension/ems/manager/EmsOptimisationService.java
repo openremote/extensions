@@ -64,12 +64,30 @@ import org.openremote.model.datapoint.ValueDatapoint;
 import org.openremote.model.datapoint.query.AssetDatapointAllQuery;
 import org.openremote.model.query.AssetQuery;
 import org.openremote.model.syslog.SyslogCategory;
+import org.openremote.model.value.AttributeDescriptor;
 
 public class EmsOptimisationService extends RouteBuilder implements ContainerService {
 
   protected static final Logger LOG =
       SyslogCategory.getLogger(DATA, EmsOptimisationService.class.getName());
   protected Services services;
+
+  /**
+   * Announcement inputs of the Distro GOPACS order handler, copied from the {@link EmsGOPACSAsset}
+   * that shares the Distro asset's parent. The GOPACS asset stays the only place they are edited.
+   */
+  protected static final Map<AttributeDescriptor<?>, AttributeDescriptor<?>>
+      GOPACS_TO_DISTRO_INPUTS =
+          Map.of(
+              EmsGOPACSAsset.CONTRACTED_EAN, EmsDistroEnergyAsset.GOPACS_EAN,
+              EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_ID,
+                  EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID,
+              EmsGOPACSAsset.REDISPATCH_START_TIME, EmsDistroEnergyAsset.GOPACS_START_TIME,
+              EmsGOPACSAsset.REDISPATCH_END_TIME, EmsDistroEnergyAsset.GOPACS_END_TIME,
+              EmsGOPACSAsset.REDISPATCH_BID_VALIDITY_END,
+                  EmsDistroEnergyAsset.GOPACS_BID_VALIDITY_END,
+              EmsGOPACSAsset.REDISPATCH_EAN_EFFECTIVITY,
+                  EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY);
 
   protected GOPACSHandler.Factory gopacsHandlerFactory;
   protected GOPACSRedispatchHandler.Factory gopacsRedispatchHandlerFactory;
@@ -178,7 +196,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
                 .attributeName(EmsGOPACSAsset.CONTRACTED_EAN.getName()))
         .stream()
         .map(asset -> (EmsGOPACSAsset) asset)
-        .forEach(this::reconcileGopacsAsset);
+        .forEach(
+            asset -> {
+              reconcileGopacsAsset(asset);
+              syncDistroGopacsInputsFrom(asset);
+            });
 
     // Start Distro Energy handler for all Distro Energy assets
     services
@@ -638,7 +660,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         // Stopping goes by asset id because the entity carries the EAN as saved, which is not
         // necessarily the key the running handler was registered under.
         case DELETE -> stopGopacsAsset(emsGOPACSAsset.getId());
-        case CREATE, UPDATE -> reconcileGopacsAsset(emsGOPACSAsset);
+        case CREATE, UPDATE -> {
+          reconcileGopacsAsset(emsGOPACSAsset);
+          syncDistroGopacsInputsFrom(emsGOPACSAsset);
+        }
       }
     } else if (persistenceEvent.getEntity() instanceof EmsDistroEnergyAsset emsDistroEnergyAsset) {
       // distroEnergyHandlerMap is keyed by asset id, not portfolio: stop by asset id so this
@@ -650,6 +675,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         stopDistroGopacsHandler(assetId);
       } else {
         reconcileDistroGopacsHandler(emsDistroEnergyAsset);
+        // Also covers the Distro asset being created after, or moved next to, its GOPACS sibling.
+        syncDistroGopacsInputsTo(emsDistroEnergyAsset);
       }
       if (persistenceEvent.getCause() == PersistenceEvent.Cause.CREATE) {
         startDistroEnergyHandler(emsDistroEnergyAsset);
@@ -1013,6 +1040,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       reconcileGopacsAsset(gopacsAsset);
     }
 
+    if (GOPACS_TO_DISTRO_INPUTS.keySet().stream()
+        .anyMatch(source -> source.getName().equals(attributeName))) {
+      syncDistroGopacsInputsFrom(gopacsAsset);
+    }
+
     // Handle bid confirmation
     if (attributeName.equals(EmsGOPACSAsset.REDISPATCH_CONFIRM_BID.getName())) {
       boolean confirmed = (Boolean) attributeEvent.getValue().orElse(false);
@@ -1081,7 +1113,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       if (handler != null) {
         handler.onAttributeEvent(attributeEvent);
       } else if (attributeEvent.getValue().filter(Boolean.TRUE::equals).isPresent()) {
-        // Only the operator flags: linked inputs arrive on every GOPACS poll.
+        // Only the operator flags: announcement inputs are copied in whether a handler runs or not.
         LOG.warning(
             String.format(
                 "Ignoring %s for asset %s: no Distro GOPACS handler is running. Check that"
@@ -1256,22 +1288,24 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   }
 
   private EmsGOPACSAsset getGopacsAsset(EmsEnergyOptimisationAsset energyOptimisationAsset) {
-    EmsGOPACSAsset gopacsAsset = null;
     String logPrefix =
         String.format(
             "assetType='%s', assetId='%s', assetName='%s'",
             energyOptimisationAsset.getAssetType(),
             energyOptimisationAsset.getId(),
             energyOptimisationAsset.getAssetName());
+    return getGopacsAsset(energyOptimisationAsset.getId(), logPrefix);
+  }
+
+  /** The one GOPACS asset under the parent, or null if there is none or more than one. */
+  private EmsGOPACSAsset getGopacsAsset(String parentId, String logPrefix) {
+    EmsGOPACSAsset gopacsAsset = null;
 
     // Check for GOPACS assets
     List<EmsGOPACSAsset> gopacsAssets =
         services
             .getAssetStorageService()
-            .findAll(
-                new AssetQuery()
-                    .parents(energyOptimisationAsset.getId())
-                    .types(EmsGOPACSAsset.class))
+            .findAll(new AssetQuery().parents(parentId).types(EmsGOPACSAsset.class))
             .stream()
             .map(asset -> (EmsGOPACSAsset) asset)
             .toList();
@@ -1290,6 +1324,67 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
 
     return gopacsAsset;
+  }
+
+  /** Copies the announcement inputs from the GOPACS asset to every Distro asset next to it. */
+  private void syncDistroGopacsInputsFrom(EmsGOPACSAsset gopacsAsset) {
+    if (gopacsAsset.getParentId() == null) {
+      return;
+    }
+    services
+        .getAssetStorageService()
+        .findAll(
+            new AssetQuery().parents(gopacsAsset.getParentId()).types(EmsDistroEnergyAsset.class))
+        .forEach(asset -> syncDistroGopacsInputs(gopacsAsset, (EmsDistroEnergyAsset) asset));
+  }
+
+  /** Copies the announcement inputs to the Distro asset from the GOPACS asset next to it. */
+  private void syncDistroGopacsInputsTo(EmsDistroEnergyAsset distroEnergyAsset) {
+    if (distroEnergyAsset.getParentId() == null) {
+      return;
+    }
+    String logPrefix =
+        String.format(
+            "assetType='%s', assetId='%s', assetName='%s'",
+            distroEnergyAsset.getType(), distroEnergyAsset.getId(), distroEnergyAsset.getName());
+    EmsGOPACSAsset gopacsAsset = getGopacsAsset(distroEnergyAsset.getParentId(), logPrefix);
+    if (gopacsAsset != null) {
+      syncDistroGopacsInputs(gopacsAsset, distroEnergyAsset);
+    }
+  }
+
+  /**
+   * Writes every announcement input whose value differs from the GOPACS asset's. Unchanged ones are
+   * skipped, so the redispatch poller rewriting the same announcement on each poll does not rewrite
+   * the Distro asset too.
+   */
+  private void syncDistroGopacsInputs(
+      EmsGOPACSAsset gopacsAsset, EmsDistroEnergyAsset distroEnergyAsset) {
+    GOPACS_TO_DISTRO_INPUTS.forEach(
+        (source, target) -> {
+          Optional<Attribute<Object>> targetAttribute =
+              distroEnergyAsset.getAttribute(target.getName());
+          if (targetAttribute.isEmpty()) {
+            LOG.fine(
+                String.format(
+                    "Distro asset %s has no %s attribute, not copying %s from GOPACS asset %s",
+                    distroEnergyAsset.getId(),
+                    target.getName(),
+                    source.getName(),
+                    gopacsAsset.getId()));
+            return;
+          }
+          Object value =
+              gopacsAsset.getAttribute(source.getName()).flatMap(Attribute::getValue).orElse(null);
+          if (Objects.equals(value, targetAttribute.get().getValue().orElse(null))) {
+            return;
+          }
+          services
+              .getAssetProcessingService()
+              .sendAttributeEvent(
+                  new AttributeEvent(distroEnergyAsset.getId(), target.getName(), value),
+                  getClass().getSimpleName());
+        });
   }
 
   private String generatePowerLimitProfile(double powerLimit) {

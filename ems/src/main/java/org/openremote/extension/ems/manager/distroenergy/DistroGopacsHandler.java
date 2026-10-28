@@ -68,10 +68,11 @@ import org.openremote.model.value.AttributeDescriptor;
  * Places GOPACS redispatch orders through the Distro Energy GOPACS Connector API for one {@link
  * EmsDistroEnergyAsset}.
  *
- * <p>The announcement arrives on the asset's {@code gopacs*} input attributes, normally through
- * attribute links from an {@code EmsGOPACSAsset}, so this handler never talks to GOPACS itself.
- * From those inputs it pre-fills an order type and quantity, which the operator may override before
- * setting a price and confirming. Tracked orders are polled until they reach a final status.
+ * <p>The announcement arrives on the asset's {@code gopacs*} input attributes, which {@code
+ * EmsOptimisationService} copies from the {@code EmsGOPACSAsset} with the same parent, so this
+ * handler never talks to GOPACS itself. From those inputs it pre-fills an order type and quantity,
+ * which the operator may override before setting a price and confirming. Tracked orders are polled
+ * until they reach a final status.
  */
 public class DistroGopacsHandler {
 
@@ -312,9 +313,9 @@ public class DistroGopacsHandler {
    * Reacts to a changed {@link #INPUTS} attribute of the asset. Runs on the executor because every
    * reaction may call Distro, and the caller is the client event thread.
    *
-   * <p>Events whose value did not change are ignored: attribute links forward every update of the
-   * source, including the unchanged ones the redispatch poller writes on each poll, and a save of
-   * the asset republishes all of its attributes.
+   * <p>Events whose value did not change are ignored: a save of the asset republishes all of its
+   * attributes, and an attribute link on the inputs would forward every unchanged update the
+   * redispatch poller writes on each poll.
    */
   public void onAttributeEvent(AttributeEvent event) {
     Object oldValue = event.getOldValue().orElse(null);

@@ -74,6 +74,8 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     assetStorageService = Mock(AssetStorageService)
     assetStorageService.find(PARENT_ID, false, EmsEnergyOptimisationAsset.class) >>
             new EmsEnergyOptimisationAsset("parent")
+    // Saving a Distro asset looks for a GOPACS sibling to copy the announcement inputs from.
+    assetStorageService.findAll(_) >> []
 
     handlerConfig = [(DistroEnergyHandler.DISTRO_ENERGY_CLIENT_KEY): "test-key"]
     def handlerContainer = Stub(Container) {
