@@ -588,7 +588,7 @@ public class DistroGopacsHandler {
             + ValueUtil.asJSON(request).orElse(request.toString()));
     // Tracked before posting: a timeout can hide an order Distro did accept. Polling then finds
     // its real status, or untracks it when Distro answers 404.
-    orders.put(request.reference(), pendingOrder(request));
+    orders.put(request.reference(), GopacsOrder.pending(request));
     try {
       GopacsOrder order = resource.createOrder(tenantId, request);
       orders.put(order.reference(), order);
@@ -604,22 +604,6 @@ public class DistroGopacsHandler {
       recordHistory("CREATE_FAILED", orders.get(request.reference()), describe(e));
     }
     saveOrders();
-  }
-
-  private static GopacsOrder pendingOrder(GopacsOrderRequest request) {
-    return new GopacsOrder(
-        request.reference(),
-        null,
-        "PENDING",
-        request.orderType(),
-        request.quantity(),
-        request.price(),
-        request.start(),
-        request.end(),
-        request.ean(),
-        request.metadata(),
-        request.customExpirationTime(),
-        null);
   }
 
   /** Re-submits the replaceable orders for the current announcement at the new price. */
@@ -641,17 +625,7 @@ public class DistroGopacsHandler {
     }
     price = roundToCents(price);
     for (GopacsOrder order : toReplace) {
-      GopacsOrderRequest request =
-          new GopacsOrderRequest(
-              order.reference(),
-              order.orderType(),
-              order.quantity(),
-              order.start(),
-              order.end(),
-              price,
-              order.ean(),
-              order.metadata(),
-              order.customExpirationTime());
+      GopacsOrderRequest request = order.toRequest(price);
       try {
         GopacsOrder replaced = resource.replaceOrder(tenantId, order.reference(), request);
         orders.put(replaced.reference(), replaced);

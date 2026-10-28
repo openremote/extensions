@@ -39,4 +39,28 @@ public record GopacsOrder(
     String ean,
     Map<String, String> metadata,
     Long customExpirationTime,
-    String reason) {}
+    String reason) {
+
+  /** The order as tracked before Distro has answered the create call. */
+  public static GopacsOrder pending(GopacsOrderRequest request) {
+    return new GopacsOrder(
+        request.reference(),
+        null,
+        "PENDING",
+        request.orderType(),
+        request.quantity(),
+        request.price(),
+        request.start(),
+        request.end(),
+        request.ean(),
+        request.metadata(),
+        request.customExpirationTime(),
+        null);
+  }
+
+  /** The replace body that keeps everything but the price. */
+  public GopacsOrderRequest toRequest(double price) {
+    return new GopacsOrderRequest(
+        reference, orderType, quantity, start, end, price, ean, metadata, customExpirationTime);
+  }
+}
