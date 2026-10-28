@@ -528,6 +528,7 @@ public class DistroGopacsHandler {
     Double price = asset.getGopacsOrderPrice().map(DistroGopacsHandler::roundToCents).orElse(null);
     Long start = asset.getGopacsStartTime().orElse(null);
     Long end = asset.getGopacsEndTime().orElse(null);
+    Long validityEndSeconds = asset.getGopacsBidValidityEnd().map(ms -> ms / 1000).orElse(null);
     long nowSeconds = timerService.getNow().getEpochSecond();
 
     String invalid = null;
@@ -552,6 +553,9 @@ public class DistroGopacsHandler {
     } else if (start / 1000 - ISP_SECONDS <= nowSeconds) {
       // Distro needs the order to expire in the future and at least 15 minutes before start.
       invalid = "window starts in less than 15 minutes";
+    } else if (validityEndSeconds != null && validityEndSeconds <= nowSeconds) {
+      // GOPACS no longer takes bids for the announcement.
+      invalid = "bid validity end has passed";
     }
     if (invalid != null) {
       LOG.warning("Not placing Distro GOPACS order for asset " + assetId + ": " + invalid);
@@ -566,7 +570,6 @@ public class DistroGopacsHandler {
     }
 
     long startSeconds = start / 1000;
-    Long validityEndSeconds = asset.getGopacsBidValidityEnd().map(ms -> ms / 1000).orElse(null);
     GopacsOrderRequest request =
         new GopacsOrderRequest(
             UUID.randomUUID().toString(),

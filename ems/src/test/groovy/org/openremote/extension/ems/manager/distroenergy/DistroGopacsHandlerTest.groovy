@@ -61,6 +61,7 @@ class DistroGopacsHandlerTest extends Specification {
   static final long NOW = Instant.parse("2026-10-22T10:00:00Z").toEpochMilli()
   static final long START = Instant.parse("2026-10-22T14:00:00Z").toEpochMilli()
   static final long END = Instant.parse("2026-10-22T16:00:00Z").toEpochMilli()
+  static final long VALIDITY_END = Instant.parse("2026-10-22T12:07:00Z").toEpochMilli()
 
   DistroGopacsResource resource
   EmsDistroEnergyAsset asset
@@ -264,6 +265,7 @@ class DistroGopacsHandlerTest extends Specification {
     announcement("BUY_LOW_SELL_HIGH")
     order(SELL, quantityKw, price)
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_START_TIME).setValue(start)
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_BID_VALIDITY_END).setValue(validityEnd)
 
     when:
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
@@ -273,10 +275,11 @@ class DistroGopacsHandlerTest extends Specification {
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).detail == detail
 
     where:
-    label                       | quantityKw | price | start                                            || detail
-    "a quantity rounded to 0"   | 99         | 45    | START                                            || "quantity 99.0 kW is below the 100 kW minimum"
-    "a negative price"          | 200        | -1    | START                                            || "price -1.0 EUR/MWh is negative"
-    "less than 15 minutes left" | 200        | 45    | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() || "window starts in less than 15 minutes"
+    label                       | quantityKw | price | start                                                | validityEnd || detail
+    "a quantity rounded to 0"   | 99         | 45    | START                                                | VALIDITY_END || "quantity 99.0 kW is below the 100 kW minimum"
+    "a negative price"          | 200        | -1    | START                                                | VALIDITY_END || "price -1.0 EUR/MWh is negative"
+    "less than 15 minutes left" | 200        | 45    | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() | VALIDITY_END || "window starts in less than 15 minutes"
+    "bid validity end passed"   | 200        | 45    | START                                                | NOW          || "bid validity end has passed"
   }
 
   def "a failed create is recorded and nothing is tracked"() {
@@ -521,8 +524,7 @@ class DistroGopacsHandlerTest extends Specification {
     attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue(ANNOUNCEMENT)
     attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_START_TIME).setValue(START)
     attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_END_TIME).setValue(END)
-    attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_BID_VALIDITY_END)
-            .setValue(Instant.parse("2026-10-22T12:07:00Z").toEpochMilli())
+    attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_BID_VALIDITY_END).setValue(VALIDITY_END)
     attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY).setValue(category)
   }
 
