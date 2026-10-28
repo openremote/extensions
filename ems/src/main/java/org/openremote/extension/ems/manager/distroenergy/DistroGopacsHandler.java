@@ -192,15 +192,12 @@ public class DistroGopacsHandler {
         client.close();
         throw e;
       }
-      LOG.fine(
-          "Configured Distro GOPACS handler for asset "
-              + assetId
-              + ": baseUrl="
-              + baseUrl
-              + ", tokenUrl="
-              + tokenUrl
-              + ", tenant="
-              + tenantId);
+      // The client ID is not a secret; the secret itself is never logged.
+      LOG.info(
+          String.format(
+              "Configured Distro GOPACS handler for asset %s: baseUrl=%s, tokenUrl=%s, tenant=%s,"
+                  + " clientId=%s",
+              assetId, baseUrl, tokenUrl, tenantId, clientId));
     }
   }
 
@@ -318,8 +315,22 @@ public class DistroGopacsHandler {
     Object oldValue = event.getOldValue().orElse(null);
     Object value = event.getValue().orElse(null);
     if (Objects.equals(oldValue, value)) {
+      if (Boolean.TRUE.equals(value) && isFlag(event.getName())) {
+        LOG.info(
+            String.format(
+                "Ignoring %s for Distro GOPACS asset %s: it is already true, set it to false first",
+                event.getName(), assetId));
+      } else {
+        LOG.finest(
+            String.format(
+                "Ignoring unchanged %s for Distro GOPACS asset %s", event.getName(), assetId));
+      }
       return;
     }
+    LOG.fine(
+        String.format(
+            "Distro GOPACS asset %s: %s changed from %s to %s",
+            assetId, event.getName(), oldValue, value));
     scheduledExecutorService.execute(
         () -> {
           try {
@@ -333,9 +344,18 @@ public class DistroGopacsHandler {
         });
   }
 
+  private static boolean isFlag(String attributeName) {
+    return attributeName.equals(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName())
+        || attributeName.equals(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.getName());
+  }
+
   protected synchronized void processAttributeChange(
       String attributeName, Object oldValue, Object value) {
     if (undeployed) {
+      LOG.fine(
+          String.format(
+              "Dropping %s for Distro GOPACS asset %s: the handler is undeployed",
+              attributeName, assetId));
       return;
     }
     if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.getName())
@@ -351,10 +371,12 @@ public class DistroGopacsHandler {
       replaceOrders(price.doubleValue());
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName())
         && Boolean.TRUE.equals(value)) {
+      LOG.info("Order confirmed for Distro GOPACS asset " + assetId);
       placeOrder();
       resetFlag(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER);
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.getName())
         && Boolean.TRUE.equals(value)) {
+      LOG.info("Cancel of all open orders requested for Distro GOPACS asset " + assetId);
       cancelOrders(null);
       resetFlag(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS);
     }
@@ -397,11 +419,17 @@ public class DistroGopacsHandler {
         orderType = null;
       } else {
         quantityKw = sideKw;
-        LOG.fine(
+        LOG.info(
             String.format(
                 "Suggested %s of %s kW for Distro GOPACS asset %s (category %s, buy/sell %s/%s kW)",
                 orderType, quantityKw, assetId, category, buyKw, sellKw));
       }
+    } else {
+      LOG.fine(
+          String.format(
+              "No order suggested for Distro GOPACS asset %s: announcement incomplete (id=%s,"
+                  + " category=%s, start=%s, end=%s)",
+              assetId, asset.getGopacsAnnouncementId().orElse(null), category, start, end));
     }
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE, orderType);
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY, quantityKw);
@@ -602,6 +630,10 @@ public class DistroGopacsHandler {
     orders.put(request.reference(), GopacsOrder.pending(request));
     try {
       GopacsOrder order = resource.createOrder(tenantId, request);
+      LOG.info(
+          String.format(
+              "Placed Distro GOPACS order %s for asset %s: status %s",
+              order.reference(), assetId, order.status()));
       orders.put(order.reference(), order);
       recordHistory("CREATED", order, null);
     } catch (RuntimeException e) {
@@ -626,6 +658,10 @@ public class DistroGopacsHandler {
     }
     List<GopacsOrder> toReplace = ordersFor(announcementId, REPLACEABLE_STATUSES);
     if (toReplace.isEmpty()) {
+      LOG.fine(
+          String.format(
+              "Price change for Distro GOPACS asset %s: no replaceable orders for announcement %s",
+              assetId, announcementId));
       return;
     }
     if (price < 0) {
@@ -639,6 +675,10 @@ public class DistroGopacsHandler {
       GopacsOrderRequest request = order.toRequest(price);
       try {
         GopacsOrder replaced = resource.replaceOrder(tenantId, order.reference(), request);
+        LOG.info(
+            String.format(
+                "Replaced Distro GOPACS order %s for asset %s at %s EUR/MWh",
+                order.reference(), assetId, price));
         orders.put(replaced.reference(), replaced);
         recordHistory("REPLACED", replaced, null);
       } catch (RuntimeException e) {
@@ -658,6 +698,10 @@ public class DistroGopacsHandler {
    */
   protected void cancelOrders(String announcementId) {
     List<GopacsOrder> toCancel = ordersFor(announcementId, OPEN_STATUSES);
+    LOG.fine(
+        String.format(
+            "Cancelling %d open Distro GOPACS orders for asset %s (announcement %s)",
+            toCancel.size(), assetId, announcementId == null ? "any" : announcementId));
     for (GopacsOrder order : toCancel) {
       try {
         resource.cancelOrder(tenantId, order.reference());
@@ -700,10 +744,19 @@ public class DistroGopacsHandler {
     if (undeployed || orders.isEmpty()) {
       return;
     }
+    LOG.fine(String.format("Polling %d Distro GOPACS orders for asset %s", orders.size(), assetId));
     for (GopacsOrder tracked : List.copyOf(orders.values())) {
       try {
         GopacsOrder order = resource.getOrder(tenantId, tracked.reference());
         if (!Objects.equals(order.status(), tracked.status())) {
+          LOG.info(
+              String.format(
+                  "Distro GOPACS order %s for asset %s went from %s to %s%s",
+                  order.reference(),
+                  assetId,
+                  tracked.status(),
+                  order.status(),
+                  order.reason() == null ? "" : " (" + order.reason() + ")"));
           recordHistory("STATUS", order, order.reason());
         }
         if (FINAL_STATUSES.contains(order.status())) {

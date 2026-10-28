@@ -588,12 +588,18 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       String assetId = asset.getId();
       boolean enabled = asset.getGopacsEnabled().orElse(false);
       if (enabled == distroGopacsHandlerMap.containsKey(assetId)) {
+        LOG.fine(
+            String.format(
+                "Distro GOPACS handler for asset %s already %s",
+                assetId, enabled ? "running" : "stopped"));
         return;
       }
       if (!enabled) {
+        LOG.info("gopacsEnabled is off, stopping Distro GOPACS handler for asset: " + assetId);
         stopDistroGopacsHandler(assetId);
         return;
       }
+      LOG.info("gopacsEnabled is on, starting Distro GOPACS handler for asset: " + assetId);
       DistroGopacsHandler handler;
       try {
         handler = distroGopacsHandlerFactory.createHandler(assetId);
@@ -1074,6 +1080,13 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       DistroGopacsHandler handler = distroGopacsHandlerMap.get(assetId);
       if (handler != null) {
         handler.onAttributeEvent(attributeEvent);
+      } else if (attributeEvent.getValue().filter(Boolean.TRUE::equals).isPresent()) {
+        // Only the operator flags: linked inputs arrive on every GOPACS poll.
+        LOG.warning(
+            String.format(
+                "Ignoring %s for asset %s: no Distro GOPACS handler is running. Check that"
+                    + " gopacsEnabled is on and that the handler deployed (DISTRO_GOPACS_* config)",
+                attributeName, assetId));
       }
     }
   }
