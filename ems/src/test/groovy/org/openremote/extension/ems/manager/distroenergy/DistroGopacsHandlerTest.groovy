@@ -23,6 +23,7 @@ import jakarta.ws.rs.ProcessingException
 import jakarta.ws.rs.WebApplicationException
 import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
+import org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder
@@ -41,8 +42,8 @@ import java.time.Instant
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 
-import static org.openremote.extension.ems.manager.distroenergy.DistroGopacsHandler.BUY
-import static org.openremote.extension.ems.manager.distroenergy.DistroGopacsHandler.SELL
+import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.BUY
+import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.SELL
 
 /**
  * Covers the order sizing rules and the attribute-driven order lifecycle of {@link
@@ -232,7 +233,7 @@ class DistroGopacsHandlerTest extends Specification {
       return stored(body.reference(), "PENDING", ANNOUNCEMENT)
     }
     request.reference() ==~ /[a-z0-9-]{36}/
-    request.orderType() == SELL
+    request.orderType() == "SELL"
     request.quantity() == 0.2d
     request.start() == seconds(START)
     request.end() == seconds(END)
@@ -379,7 +380,7 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("live", "SUBMITTED", ANNOUNCEMENT))
     track(stored("settled", "MATCHED", ANNOUNCEMENT))
     track(stored("gone", "PENDING", ANNOUNCEMENT))
-    def trade = new GopacsSettlement("trade-1", "settled", BUY, seconds(START), seconds(END),
+    def trade = new GopacsSettlement("trade-1", "settled", "BUY", seconds(START), seconds(END),
             0.2, 0.4, 45, 18, seconds(NOW), seconds(NOW))
 
     when:
@@ -416,7 +417,7 @@ class DistroGopacsHandlerTest extends Specification {
   def "settlements are read page by page until the total is reached"() {
     given:
     track(stored("settled", "MATCHED", ANNOUNCEMENT))
-    def trade = { String id -> new GopacsSettlement(id, "settled", BUY, seconds(START), seconds(END),
+    def trade = { String id -> new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
             0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW)) }
 
     when:
@@ -530,14 +531,14 @@ class DistroGopacsHandlerTest extends Specification {
     attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY).setValue(category)
   }
 
-  void order(String orderType, double quantityKw, double price) {
+  void order(GopacsOrderTypeValueType orderType, double quantityKw, double price) {
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE).setValue(orderType)
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY).setValue(quantityKw)
     asset.setGopacsOrderPrice(price)
   }
 
   static GopacsOrder stored(String reference, String status, String announcementId, double price = 45) {
-    return new GopacsOrder(reference, null, status, SELL, 0.2, price, seconds(START), seconds(END),
+    return new GopacsOrder(reference, null, status, "SELL", 0.2, price, seconds(START), seconds(END),
             EAN, [announcementId: announcementId], null, null)
   }
 

@@ -212,7 +212,7 @@ The handler only acts when a value actually changes.
 | ------------------------------------ | ---------------- | --------- | -------------------------------------------------------------------------------------- |
 | `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders             |
 | `gopacsEan` … `gopacsEanEffectivity` | Linked           | ✓         | Announcement inputs, see the table above                                               |
-| `gopacsOrderType`                    | Text             |           | `BUY` or `SELL`. Pre-filled from the announcement, may be overridden                   |
+| `gopacsOrderType`                    | Enum             |           | `BUY` or `SELL` (dropdown). Pre-filled from the announcement, may be overridden        |
 | `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden |
 | `gopacsOrderPrice`                   | Number (EUR/MWh) |           | Set by the operator. Changing it replaces the open orders of the current announcement  |
 | `gopacsConfirmOrder`                 | Boolean          |           | Set to `true` to place the order; reset by the handler                                 |

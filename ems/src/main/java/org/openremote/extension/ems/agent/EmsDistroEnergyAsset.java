@@ -27,6 +27,7 @@ import org.openremote.model.asset.AssetDescriptor;
 import org.openremote.model.attribute.MetaItem;
 import org.openremote.model.value.AttributeDescriptor;
 import org.openremote.model.value.MetaItemType;
+import org.openremote.model.value.ValueDescriptor;
 import org.openremote.model.value.ValueType;
 import org.openremote.model.value.ValueType.ObjectMap;
 
@@ -79,9 +80,16 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
 
   // --- GOPACS orders: next order, pre-filled by the handler and operator-overridable ---
 
-  /** BUY or SELL. */
-  public static final AttributeDescriptor<String> GOPACS_ORDER_TYPE =
-      new AttributeDescriptor<>("gopacsOrderType", ValueType.TEXT);
+  public enum GopacsOrderTypeValueType {
+    BUY,
+    SELL
+  }
+
+  public static final ValueDescriptor<GopacsOrderTypeValueType> GOPACS_ORDER_TYPE_VALUE_TYPE =
+      new ValueDescriptor<>("gopacsOrderTypeValueType", GopacsOrderTypeValueType.class);
+
+  public static final AttributeDescriptor<GopacsOrderTypeValueType> GOPACS_ORDER_TYPE =
+      new AttributeDescriptor<>("gopacsOrderType", GOPACS_ORDER_TYPE_VALUE_TYPE);
 
   public static final AttributeDescriptor<Double> GOPACS_ORDER_QUANTITY =
       new AttributeDescriptor<>("gopacsOrderQuantity", ValueType.NUMBER)
@@ -174,7 +182,7 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
     return getAttributes().getValue(GOPACS_EAN_EFFECTIVITY);
   }
 
-  public Optional<String> getGopacsOrderType() {
+  public Optional<GopacsOrderTypeValueType> getGopacsOrderType() {
     return getAttributes().getValue(GOPACS_ORDER_TYPE);
   }
 

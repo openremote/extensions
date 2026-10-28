@@ -19,6 +19,8 @@
 package org.openremote.extension.ems.manager.distroenergy;
 
 import static org.openremote.container.web.WebTargetBuilder.createClient;
+import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.BUY;
+import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.SELL;
 import static org.openremote.model.syslog.SyslogCategory.API;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -45,6 +47,7 @@ import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.WebTargetBuilder;
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset;
+import org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType;
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
@@ -96,8 +99,6 @@ public class DistroGopacsHandler {
   /** Distro's error bodies are short JSON; anything longer is cut off in logs and history. */
   private static final int MAX_ERROR_BODY_LENGTH = 500;
 
-  public static final String BUY = "BUY";
-  public static final String SELL = "SELL";
   public static final String METADATA_ANNOUNCEMENT_ID = "announcementId";
 
   /** Orders that can still be cancelled. Only SUBMITTED ones can be replaced. */
@@ -396,7 +397,7 @@ public class DistroGopacsHandler {
     Long start = asset.getGopacsStartTime().orElse(null);
     Long end = asset.getGopacsEndTime().orElse(null);
 
-    String orderType = null;
+    GopacsOrderTypeValueType orderType = null;
     Double quantityKw = null;
     if (asset.getGopacsAnnouncementId().isPresent()
         && category != null
@@ -407,7 +408,7 @@ public class DistroGopacsHandler {
       double buyKw = quantityKw(batteries, BUY, windowHours);
       double sellKw = quantityKw(batteries, SELL, windowHours);
       orderType = orderTypeFor(category, buyKw, sellKw);
-      double sideKw = BUY.equals(orderType) ? buyKw : sellKw;
+      double sideKw = orderType == BUY ? buyKw : sellKw;
       if (orderType == null) {
         LOG.info(
             String.format(
@@ -457,7 +458,7 @@ public class DistroGopacsHandler {
    *
    * @return BUY, SELL, or null when neither side helps or the category is not recognised.
    */
-  static String orderTypeFor(String category, double buyKw, double sellKw) {
+  static GopacsOrderTypeValueType orderTypeFor(String category, double buyKw, double sellKw) {
     if (category == null || !category.startsWith("BUY_")) {
       return null;
     }
@@ -484,11 +485,13 @@ public class DistroGopacsHandler {
    * 0.1 MW steps Distro accepts.
    */
   static double quantityKw(
-      List<EmsElectricityBatteryAsset> batteries, String orderType, double windowHours) {
+      List<EmsElectricityBatteryAsset> batteries,
+      GopacsOrderTypeValueType orderType,
+      double windowHours) {
     if (windowHours <= 0) {
       return 0;
     }
-    boolean buy = BUY.equals(orderType);
+    boolean buy = orderType == BUY;
     double powerKw = 0;
     double energyKwh = 0;
 
@@ -565,7 +568,7 @@ public class DistroGopacsHandler {
     }
     String announcementId = asset.getGopacsAnnouncementId().orElse(null);
     String ean = asset.getGopacsEan().orElse(null);
-    String orderType = asset.getGopacsOrderType().orElse(null);
+    GopacsOrderTypeValueType orderType = asset.getGopacsOrderType().orElse(null);
     Double enteredKw = asset.getGopacsOrderQuantity().orElse(null);
     Double quantityKw = enteredKw == null ? null : roundDownToStep(enteredKw);
     Double price = asset.getGopacsOrderPrice().map(DistroGopacsHandler::roundToCents).orElse(null);
@@ -579,8 +582,8 @@ public class DistroGopacsHandler {
       invalid = "no announcement";
     } else if (ean == null || !ean.matches("\\d{18}")) {
       invalid = "EAN '" + ean + "' is not an 18-digit EAN";
-    } else if (!BUY.equals(orderType) && !SELL.equals(orderType)) {
-      invalid = "order type '" + orderType + "' is not BUY or SELL";
+    } else if (orderType == null) {
+      invalid = "no order type";
     } else if (quantityKw == null || quantityKw < MIN_QUANTITY_KW) {
       invalid = "quantity " + enteredKw + " kW is below the 100 kW minimum";
     } else if (price == null) {
@@ -616,7 +619,7 @@ public class DistroGopacsHandler {
     GopacsOrderRequest request =
         new GopacsOrderRequest(
             UUID.randomUUID().toString(),
-            orderType,
+            orderType.name(),
             quantityKw / 1000,
             startSeconds,
             end / 1000,
