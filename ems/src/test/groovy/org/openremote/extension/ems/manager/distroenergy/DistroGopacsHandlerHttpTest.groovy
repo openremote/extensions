@@ -90,7 +90,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
     given:
     wireMock.stubFor(post(urlPathEqualTo(ORDERS_PATH))
             .willReturn(aResponse().withStatus(202).withHeader("Content-Type", "application/json")
-                    .withBody(ORDER_JSON)))
+            .withBody(ORDER_JSON)))
     wireMock.stubFor(get(urlPathEqualTo("${ORDERS_PATH}/ref-1")).willReturn(okJson(ORDER_JSON)))
     def request = new GopacsOrderRequest("ref-1", "SELL", 0.2, 1792677600, 1792684800, 45,
             "871685920001768800", [announcementId: "a-1"], null)

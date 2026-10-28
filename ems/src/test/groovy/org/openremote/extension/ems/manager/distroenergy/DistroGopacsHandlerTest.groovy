@@ -112,20 +112,20 @@ class DistroGopacsHandlerTest extends Specification {
     DistroGopacsHandler.orderTypeFor(category, buyKw, sellKw) == expected
 
     where:
-    category                      | buyKw | sellKw || expected
-    "BUY_MAXIMUM_SELL_NONE"       | 0     | 500    || BUY
-    "BUY_VERY_HIGH_SELL_VERY_LOW" | 0     | 500    || BUY
-    "BUY_HIGH_SELL_LOW"           | 0     | 500    || BUY
-    "BUY_LOW_SELL_HIGH"           | 500   | 0      || SELL
-    "BUY_VERY_LOW_SELL_VERY_HIGH" | 500   | 0      || SELL
-    "BUY_NONE_SELL_MAXIMUM"       | 500   | 0      || SELL
-    "BUY_MODERATE_SELL_MODERATE"  | 300   | 200    || BUY
-    "BUY_MODERATE_SELL_MODERATE"  | 200   | 300    || SELL
-    "BUY_MODERATE_SELL_MODERATE"  | 200   | 200    || BUY
-    "BUY_NONE_SELL_NONE"          | 500   | 500    || null
-    "THREE_PHASE_NETWORK_REDUCE"  | 500   | 500    || null
-    "BUY_SOME_SELL_NONE"          | 500   | 500    || null
-    null                          | 500   | 500    || null
+    category | buyKw | sellKw || expected
+    "BUY_MAXIMUM_SELL_NONE" | 0 | 500 || BUY
+    "BUY_VERY_HIGH_SELL_VERY_LOW" | 0 | 500 || BUY
+    "BUY_HIGH_SELL_LOW" | 0 | 500 || BUY
+    "BUY_LOW_SELL_HIGH" | 500 | 0 || SELL
+    "BUY_VERY_LOW_SELL_VERY_HIGH" | 500 | 0 || SELL
+    "BUY_NONE_SELL_MAXIMUM" | 500 | 0 || SELL
+    "BUY_MODERATE_SELL_MODERATE" | 300 | 200 || BUY
+    "BUY_MODERATE_SELL_MODERATE" | 200 | 300 || SELL
+    "BUY_MODERATE_SELL_MODERATE" | 200 | 200 || BUY
+    "BUY_NONE_SELL_NONE" | 500 | 500 || null
+    "THREE_PHASE_NETWORK_REDUCE" | 500 | 500 || null
+    "BUY_SOME_SELL_NONE" | 500 | 500 || null
+    null | 500 | 500 || null
   }
 
   def "quantity is the battery power the state of charge can hold for the window: #label"() {
@@ -133,20 +133,20 @@ class DistroGopacsHandlerTest extends Specification {
     DistroGopacsHandler.quantityKw(fleet, orderType, hours) == expectedKw
 
     where:
-    label                                | fleet                                                    | orderType | hours || expectedKw
-    "BUY limited by energy headroom"     | [battery()]                                              | BUY       | 2     || 200
-    "BUY limited by power"               | [battery()]                                              | BUY       | 0.5   || 500
-    "SELL uses the negative discharge"   | [battery()]                                              | SELL      | 0.5   || 400
-    "SELL limited by energy headroom"    | [battery()]                                              | SELL      | 2     || 200
-    "charge efficiency raises grid energy" | [battery(chargeEfficiency: 80)]                        | BUY       | 2     || 200
-    "discharge efficiency lowers it"     | [battery(dischargeEfficiency: 50)]                       | SELL      | 2     || 100
-    "batteries add up"                   | [battery(), battery()]                                   | BUY       | 2     || 400
-    "rounded down to 100 kW steps"       | [battery(level: 45d)]                                     | SELL      | 2     || 100
-    "charging not allowed"               | [battery(allowCharging: false)]                          | BUY       | 2     || 0
-    "disconnected"                       | [battery(connection: EmsElectricityBatteryConnectionStatusValueType.disconnected)] | BUY | 2 || 0
-    "already full"                       | [battery(level: 90d)]                                     | BUY       | 2     || 0
-    "no state of charge"                 | [battery(level: null)]                                   | BUY       | 2     || 0
-    "empty window"                       | [battery()]                                              | BUY       | 0     || 0
+    label | fleet | orderType | hours || expectedKw
+    "BUY limited by energy headroom" | [battery()] | BUY | 2 || 200
+    "BUY limited by power" | [battery()] | BUY | 0.5 || 500
+    "SELL uses the negative discharge" | [battery()] | SELL | 0.5 || 400
+    "SELL limited by energy headroom" | [battery()] | SELL | 2 || 200
+    "charge efficiency raises grid energy" | [battery(chargeEfficiency: 80)] | BUY | 2 || 200
+    "discharge efficiency lowers it" | [battery(dischargeEfficiency: 50)] | SELL | 2 || 100
+    "batteries add up" | [battery(), battery()] | BUY | 2 || 400
+    "rounded down to 100 kW steps" | [battery(level: 45d)] | SELL | 2 || 100
+    "charging not allowed" | [battery(allowCharging: false)] | BUY | 2 || 0
+    "disconnected" | [battery(connection: EmsElectricityBatteryConnectionStatusValueType.disconnected)] | BUY | 2 || 0
+    "already full" | [battery(level: 90d)] | BUY | 2 || 0
+    "no state of charge" | [battery(level: null)] | BUY | 2 || 0
+    "empty window" | [battery()] | BUY | 0 || 0
   }
 
   def "expiration #label"() {
@@ -154,13 +154,13 @@ class DistroGopacsHandlerTest extends Specification {
     DistroGopacsHandler.expirationSeconds(seconds(START), validityEnd, seconds(NOW)) == expected
 
     where:
-    label                                     | validityEnd                           || expected
-    "is the bid validity end on a quarter"    | seconds("2026-10-22T12:00:00Z")       || seconds("2026-10-22T12:00:00Z")
-    "is rounded down to a quarter-hour"       | seconds("2026-10-22T12:07:00Z")       || seconds("2026-10-22T12:00:00Z")
-    "is left to Distro when unknown"          | null                                  || null
-    "may be 15 minutes before start"          | seconds("2026-10-22T13:50:00Z")       || seconds("2026-10-22T13:45:00Z")
-    "is left to Distro when after its default" | seconds("2026-10-22T14:10:00Z")      || null
-    "is left to Distro when already passed"   | seconds("2026-10-22T09:00:00Z")       || null
+    label | validityEnd || expected
+    "is the bid validity end on a quarter" | seconds("2026-10-22T12:00:00Z") || seconds("2026-10-22T12:00:00Z")
+    "is rounded down to a quarter-hour" | seconds("2026-10-22T12:07:00Z") || seconds("2026-10-22T12:00:00Z")
+    "is left to Distro when unknown" | null || null
+    "may be 15 minutes before start" | seconds("2026-10-22T13:50:00Z") || seconds("2026-10-22T13:45:00Z")
+    "is left to Distro when after its default" | seconds("2026-10-22T14:10:00Z") || null
+    "is left to Distro when already passed" | seconds("2026-10-22T09:00:00Z") || null
   }
 
   // --- suggestion ---
@@ -255,7 +255,9 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
-    1 * resource.createOrder(TENANT, { it.quantity() == 0.2d && it.price() == 45.68d }) >> { String tenant, GopacsOrderRequest body ->
+    1 * resource.createOrder(TENANT, {
+      it.quantity() == 0.2d && it.price() == 45.68d
+    }) >> { String tenant, GopacsOrderRequest body ->
       stored(body.reference(), "SUBMITTED", ANNOUNCEMENT)
     }
   }
@@ -275,10 +277,10 @@ class DistroGopacsHandlerTest extends Specification {
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).detail == detail
 
     where:
-    label                       | quantityKw | price | start                                                | validityEnd || detail
-    "a quantity rounded to 0"   | 99         | 45    | START                                                | VALIDITY_END || "quantity 99.0 kW is below the 100 kW minimum"
-    "less than 15 minutes left" | 200        | 45    | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() | VALIDITY_END || "window starts in less than 15 minutes"
-    "bid validity end passed"   | 200        | 45    | START                                                | NOW          || "bid validity end has passed"
+    label | quantityKw | price | start | validityEnd || detail
+    "a quantity rounded to 0" | 99 | 45 | START | VALIDITY_END || "quantity 99.0 kW is below the 100 kW minimum"
+    "less than 15 minutes left" | 200 | 45 | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() | VALIDITY_END || "window starts in less than 15 minutes"
+    "bid validity end passed" | 200 | 45 | START | NOW || "bid validity end has passed"
   }
 
   def "a failed create is recorded and nothing is tracked"() {
@@ -323,8 +325,10 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60.004d)
 
     then:
-    1 * resource.replaceOrder(TENANT, "open-current", { it.price() == 60d && it.reference() == "open-current" }) >>
-            stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
+    1 * resource.replaceOrder(TENANT, "open-current", {
+      it.price() == 60d && it.reference() == "open-current"
+    }) >>
+    stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
     0 * resource.replaceOrder(*_)
     handler.orders["open-current"].price() == 60d
   }
@@ -380,7 +384,9 @@ class DistroGopacsHandlerTest extends Specification {
             new GopacsSettlementPage([trade], 1)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "MATCHED"
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }*.value*.get()*.tradeId == ["trade-1"]
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
+    }*.value*.get()*.tradeId == ["trade-1"]
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
@@ -395,16 +401,20 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
     1 * resource.listSettlements(*_) >> { throw new NotFoundException() }
     handler.orders.isEmpty()
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }*.value*.get()*.action ==
-            ["STATUS", "SETTLEMENTS_FAILED"]
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
+    }*.value*.get()*.action ==
+    ["STATUS", "SETTLEMENTS_FAILED"]
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
   }
 
   def "settlements are read page by page until the total is reached"() {
     given:
     track(stored("settled", "MATCHED", ANNOUNCEMENT))
-    def trade = { String id -> new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
-            0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW)) }
+    def trade = { String id ->
+      new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
+      0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW))
+    }
 
     when:
     handler.pollOrders()
@@ -487,10 +497,10 @@ class DistroGopacsHandlerTest extends Specification {
   }
 
   static EmsElectricityBatteryAsset battery(Map overrides = [:]) {
-    Map values = [allowCharging       : true, allowDischarging: true, capacity: 1000d, level: 50d,
-                  max                 : 90, min: 10, chargeMax: 500d, dischargeMax: -400d,
-                  chargeEfficiency    : 100, dischargeEfficiency: 100,
-                  connection          : EmsElectricityBatteryConnectionStatusValueType.connected] + overrides
+    Map values = [allowCharging : true, allowDischarging: true, capacity: 1000d, level: 50d,
+      max : 90, min: 10, chargeMax: 500d, dischargeMax: -400d,
+      chargeEfficiency : 100, dischargeEfficiency: 100,
+      connection : EmsElectricityBatteryConnectionStatusValueType.connected] + overrides
     def battery = new EmsElectricityBatteryAsset("battery")
     def attributes = battery.attributes
     attributes.getOrCreate(EmsElectricityBatteryAsset.ALLOW_CHARGING).setValue(values.allowCharging)
