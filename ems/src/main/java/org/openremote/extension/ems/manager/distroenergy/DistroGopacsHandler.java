@@ -721,13 +721,13 @@ public class DistroGopacsHandler {
         if (!Objects.equals(order.status(), tracked.status())) {
           recordHistory("STATUS", order, order.reason());
         }
-        // Stored first, so a failed settlement fetch is retried next poll without a second STATUS.
-        orders.put(order.reference(), order);
         if (FINAL_STATUSES.contains(order.status())) {
           if ("SETTLED".equals(order.status())) {
             recordSettlements(order);
           }
           orders.remove(order.reference());
+        } else {
+          orders.put(order.reference(), order);
         }
       } catch (WebApplicationException e) {
         if (e.getResponse().getStatus() == 404) {
@@ -750,24 +750,38 @@ public class DistroGopacsHandler {
    * Records each trade of a settled order. A settled order's trades no longer change and the order
    * is untracked right after, so each trade is recorded once, unless the manager stops between
    * recording them and saving the tracked orders.
+   *
+   * <p>A failed fetch is recorded and not retried: Distro has not implemented the settlements
+   * endpoint yet, and retrying would keep polling the settled order forever.
    */
   protected void recordSettlements(GopacsOrder order) {
     // Fetched in full before recording, so a failed page never leaves the trades half recorded.
     List<GopacsSettlement> settlements = new ArrayList<>();
-    GopacsSettlementPage page;
-    do {
-      page =
-          resource.listSettlements(
-              tenantId,
-              order.start(),
-              order.end(),
-              order.reference(),
-              SETTLEMENT_PAGE_SIZE,
-              settlements.size());
-      if (page.items() != null) {
-        settlements.addAll(page.items());
-      }
-    } while (page.items() != null && !page.items().isEmpty() && settlements.size() < page.total());
+    try {
+      GopacsSettlementPage page;
+      do {
+        page =
+            resource.listSettlements(
+                tenantId,
+                order.start(),
+                order.end(),
+                order.reference(),
+                SETTLEMENT_PAGE_SIZE,
+                settlements.size());
+        if (page.items() != null) {
+          settlements.addAll(page.items());
+        }
+      } while (page.items() != null
+          && !page.items().isEmpty()
+          && settlements.size() < page.total());
+    } catch (RuntimeException e) {
+      LOG.log(
+          Level.WARNING,
+          "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(),
+          e);
+      recordHistory("SETTLEMENTS_FAILED", order, describe(e));
+      return;
+    }
 
     for (GopacsSettlement settlement : settlements) {
       Map<String, Object> entry = ValueUtil.JSON.convertValue(settlement, new TypeReference<>() {});

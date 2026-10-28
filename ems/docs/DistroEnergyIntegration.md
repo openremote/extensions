@@ -287,7 +287,8 @@ untracks it when Distro answers `404`. Either way the failure is recorded as `CR
 or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
 announcement; a negative price is refused. A `LOCKED` order cannot be changed
 (Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
-all their trades are recorded in `gopacsSettlementHistory`; if that fetch fails, the next poll tries again. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
+all their trades are recorded in `gopacsSettlementHistory`. The settlements endpoint is not implemented by Distro yet,
+so a failed fetch is recorded as `SETTLEMENTS_FAILED` and not retried. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
 are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
 
 Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot

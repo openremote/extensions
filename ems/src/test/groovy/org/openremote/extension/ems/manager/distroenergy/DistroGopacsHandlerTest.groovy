@@ -20,7 +20,6 @@ package org.openremote.extension.ems.manager.distroenergy
 
 import jakarta.ws.rs.NotFoundException
 import jakarta.ws.rs.ProcessingException
-import jakarta.ws.rs.ServiceUnavailableException
 import jakarta.ws.rs.WebApplicationException
 import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
@@ -398,30 +397,20 @@ class DistroGopacsHandlerTest extends Specification {
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
-  def "a failed settlement fetch keeps the order and is retried without repeating its status"() {
+  def "a failed settlement fetch is recorded and the settled order dropped"() {
     given:
     track(stored("settled", "MATCHED", ANNOUNCEMENT))
-    def trade = new GopacsSettlement("trade-1", "settled", BUY, seconds(START), seconds(END),
-            0.2, 0.4, 45, 18, seconds(NOW), seconds(NOW))
 
     when:
     handler.pollOrders()
 
     then:
     1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(*_) >> { throw new ServiceUnavailableException() }
-    handler.orders["settled"].status() == "SETTLED"
-
-    when:
-    sent.clear()
-    handler.pollOrders()
-
-    then:
-    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(*_) >> new GopacsSettlementPage([trade], 1)
+    1 * resource.listSettlements(*_) >> { throw new NotFoundException() }
     handler.orders.isEmpty()
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }.isEmpty()
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.size() == 1
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }*.value*.get()*.action ==
+            ["STATUS", "SETTLEMENTS_FAILED"]
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
   }
 
   def "settlements are read page by page until the total is reached"() {
