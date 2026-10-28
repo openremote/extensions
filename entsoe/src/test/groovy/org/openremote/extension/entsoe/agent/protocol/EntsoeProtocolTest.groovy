@@ -35,7 +35,6 @@ import org.openremote.model.attribute.MetaItem
 import org.openremote.model.datapoint.ValueDatapoint
 import org.openremote.model.datapoint.query.AssetDatapointAllQuery
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.Ignore
 import spock.lang.Issue
 import spock.lang.Shared
 import spock.lang.Specification
@@ -430,7 +429,6 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  @Ignore
   def "ENTSO-E integration test filters out points in the past when clock is mid-period"() {
     given: "the container environment is started with clock in the middle of the dataset period"
     requestCountByZone.clear()
@@ -491,10 +489,11 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       def start = Instant.parse(DATASET_START).toEpochMilli()
       def step = 15 * 60 * 1000L
 
-      assert datapoints[0].timestamp == start + (2 * step)
-      assert datapoints[1].timestamp == start + (3 * step)
-      assert (datapoints[0].value as BigDecimal).compareTo(65.84G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(65.05G) == 0
+      // The current interval started before now; the forecast stops at the exclusive period end.
+      assert datapoints.collect { it.timestamp } == (2..<96).collect { start + it * step }
+      assert datapoints.collect {
+        it.value as BigDecimal
+      } == [65.84G] + Collections.nCopies(93, 65.05G)
     }
 
     cleanup: "remove created assets and mock client"
@@ -1217,7 +1216,6 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  @Ignore
   def "ENTSO-E integration test supports multiple periods in a single timeseries"() {
     given: "the container environment is started"
     requestCountByZone.clear()
@@ -1279,15 +1277,15 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       def secondPeriodStart = Instant.parse("2026-02-17T00:00:00.000Z").toEpochMilli()
       def step = 15 * 60 * 1000L
 
-      assert datapoints[0].timestamp == firstPeriodStart
-      assert datapoints[1].timestamp == firstPeriodStart + step
-      assert datapoints[4].timestamp == secondPeriodStart
-      assert datapoints[5].timestamp == secondPeriodStart + step
-
-      assert (datapoints[0].value as BigDecimal).compareTo(51.11G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(52.22G) == 0
-      assert (datapoints[4].value as BigDecimal).compareTo(53.33G) == 0
-      assert (datapoints[5].value as BigDecimal).compareTo(54.44G) == 0
+      assert datapoints.collect { it.timestamp } ==
+      (0..<4).collect {
+        firstPeriodStart + it * step
+      } + (0..<4).collect {
+        secondPeriodStart + it * step
+      }
+      // Each final A03 block extends to its own exclusive period end, then positions restart.
+      assert datapoints.collect { it.value as BigDecimal } ==
+      [51.11G, 52.22G, 52.22G, 52.22G, 53.33G, 54.44G, 54.44G, 54.44G]
     }
 
     cleanup: "remove created assets and mock client"
