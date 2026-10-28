@@ -591,9 +591,6 @@ public class DistroGopacsHandler {
     if (price == null) {
       return "no price";
     }
-    if (price < 0) {
-      return "price " + price + " EUR/MWh is negative";
-    }
     if (start == null || end == null || end <= start) {
       return "window " + start + " to " + end + " is empty";
     }
@@ -694,12 +691,6 @@ public class DistroGopacsHandler {
           String.format(
               "Price change for Distro GOPACS asset %s: no replaceable orders for announcement %s",
               assetId, announcementId));
-      return;
-    }
-    if (price < 0) {
-      String invalid = "price " + price + " EUR/MWh is negative";
-      LOG.warning("Not replacing Distro GOPACS orders for asset " + assetId + ": " + invalid);
-      recordHistory("REFUSED", null, invalid);
       return;
     }
     price = roundToCents(price);

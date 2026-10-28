@@ -277,7 +277,6 @@ class DistroGopacsHandlerTest extends Specification {
     where:
     label                       | quantityKw | price | start                                                | validityEnd || detail
     "a quantity rounded to 0"   | 99         | 45    | START                                                | VALIDITY_END || "quantity 99.0 kW is below the 100 kW minimum"
-    "a negative price"          | 200        | -1    | START                                                | VALIDITY_END || "price -1.0 EUR/MWh is negative"
     "less than 15 minutes left" | 200        | 45    | Instant.parse("2026-10-22T10:15:00Z").toEpochMilli() | VALIDITY_END || "window starts in less than 15 minutes"
     "bid validity end passed"   | 200        | 45    | START                                                | NOW          || "bid validity end has passed"
   }
@@ -328,19 +327,6 @@ class DistroGopacsHandlerTest extends Specification {
             stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
     0 * resource.replaceOrder(*_)
     handler.orders["open-current"].price() == 60d
-  }
-
-  def "a negative price is refused without replacing anything"() {
-    given:
-    announcement("BUY_LOW_SELL_HIGH")
-    track(stored("open-current", "SUBMITTED", ANNOUNCEMENT))
-
-    when:
-    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, -5d)
-
-    then:
-    0 * resource._
-    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).action == "REFUSED"
   }
 
   def "a new announcement cancels the open orders placed for the previous one"() {

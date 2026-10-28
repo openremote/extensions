@@ -208,19 +208,19 @@ For example, the meta item on `redispatchAnnouncementId`:
 A link forwards every update of its source, including the unchanged values the redispatch poller rewrites on each poll.
 The handler only acts when a value actually changes.
 
-| Attribute                            | Value Type       | Read-only | Purpose                                                                                |
-| ------------------------------------ | ---------------- | --------- | -------------------------------------------------------------------------------------- |
-| `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders             |
-| `gopacsEan` … `gopacsEanEffectivity` | Linked           | ✓         | Announcement inputs, see the table above                                               |
-| `gopacsOrderType`                    | Enum             |           | `BUY` or `SELL` (dropdown). Pre-filled from the announcement, may be overridden        |
-| `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden |
-| `gopacsOrderPrice`                   | Number (EUR/MWh) |           | Set by the operator. Changing it replaces the open orders of the current announcement  |
-| `gopacsConfirmOrder`                 | Boolean          |           | Set to `true` to place the order; reset by the handler                                 |
-| `gopacsCancelOrders`                 | Boolean          |           | Set to `true` to cancel every open order; reset by the handler                         |
-| `gopacsOrders`                       | JSON object      | ✓         | Orders still being tracked, by reference, as last returned by Distro                   |
-| `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change, refused confirmation or price change   |
-| `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per settled trade                                                       |
-| `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                            |
+| Attribute                            | Value Type       | Read-only | Purpose                                                                                          |
+| ------------------------------------ | ---------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `gopacsEnabled`                      | Boolean          |           | Starts or stops the GOPACS order handler. Stopping cancels the open orders                       |
+| `gopacsEan` … `gopacsEanEffectivity` | Linked           | ✓         | Announcement inputs, see the table above                                                         |
+| `gopacsOrderType`                    | Enum             |           | `BUY` or `SELL` (dropdown). Pre-filled from the announcement, may be overridden                  |
+| `gopacsOrderQuantity`                | Number (kW)      |           | Constant power over the whole window. Pre-filled from the batteries, may be overridden           |
+| `gopacsOrderPrice`                   | Number (EUR/MWh) |           | Set by the operator, 0 or more. Changing it replaces the open orders of the current announcement |
+| `gopacsConfirmOrder`                 | Boolean          |           | Set to `true` to place the order; reset by the handler                                           |
+| `gopacsCancelOrders`                 | Boolean          |           | Set to `true` to cancel every open order; reset by the handler                                   |
+| `gopacsOrders`                       | JSON object      | ✓         | Orders still being tracked, by reference, as last returned by Distro                             |
+| `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change, refused confirmation or price change             |
+| `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per settled trade                                                                 |
+| `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                                      |
 
 #### Workflow
 
@@ -264,7 +264,7 @@ sequenceDiagram
 
 On `gopacsConfirmOrder` the handler rounds the quantity down to 100 kW steps and the price to cents, as Distro takes at
 most one decimal in MW and two in EUR/MWh. It then checks that there is an announcement, an 18-digit EAN, a `BUY` or
-`SELL` type, a quantity of at least 100 kW, a price of 0 or more, and a non-empty window that starts more than 15
+`SELL` type, a quantity of at least 100 kW, a price, and a non-empty window that starts more than 15
 minutes from now (Distro's latest expiry). When `gopacsBidValidityEnd` is known it must not have passed, as GOPACS no
 longer takes bids for the announcement after it. A failed check is logged and recorded as `REFUSED` in `gopacsOrderHistory`.
 The order is sent with:
@@ -285,7 +285,7 @@ untracks it when Distro answers `404`. Either way the failure is recorded as `CR
 
 `PENDING` and `SUBMITTED` orders are open: they are cancelled when their announcement closes or is replaced by another,
 or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
-announcement; a negative price is refused. A `LOCKED` order cannot be changed
+announcement. A `LOCKED` order cannot be changed
 (Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
 all their trades are recorded in `gopacsSettlementHistory`. The settlements endpoint is not implemented by Distro yet,
 so a failed fetch is recorded as `SETTLEMENTS_FAILED` and not retried. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`

@@ -96,7 +96,7 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
           .withUnits(UNITS_KILO, UNITS_WATT);
 
   public static final AttributeDescriptor<Double> GOPACS_ORDER_PRICE =
-      new AttributeDescriptor<>("gopacsOrderPrice", ValueType.NUMBER)
+      new AttributeDescriptor<>("gopacsOrderPrice", ValueType.POSITIVE_NUMBER)
           .withUnits("EUR", UNITS_PER, UNITS_MEGA, UNITS_WATT, UNITS_HOUR);
 
   // --- GOPACS orders: operator actions, reset by the handler ---
