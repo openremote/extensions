@@ -57,6 +57,7 @@ import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
 import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
+import org.openremote.model.datapoint.query.AssetDatapointAllQuery;
 import org.openremote.model.syslog.SyslogCategory;
 
 public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLink> {
@@ -237,7 +238,8 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       return;
     }
 
-    List<ValueDatapoint<?>> predictedDatapoints = buildPredictedDatapoints(document);
+    DecodedPublication decoded = decodePublication(document);
+    List<ValueDatapoint<?>> predictedDatapoints = decoded.values();
     if (predictedDatapoints.isEmpty()) {
       linkedAttributesForZone.forEach(
           entry ->
@@ -255,8 +257,28 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           AttributeRef attributeRef = entry.getKey();
           Attribute attribute = entry.getValue();
           LOG.fine("Updating pricing information data for attribute " + attribute.getName());
+          List<ValueDatapoint<?>> updates = new ArrayList<>(predictedDatapoints);
+          if (!decoded.gaps().isEmpty()) {
+            long nowMillis = timerService.getCurrentTimeMillis();
+            // Gaps have no declared resolution. Invalidate existing timestamps without inventing a
+            // grid.
+            for (TimeRange gap : decoded.gaps()) {
+              long from = Math.max(nowMillis, gap.start());
+              if (from >= gap.end()) {
+                continue;
+              }
+              predictedDatapointService
+                  .queryDatapoints(
+                      attributeRef.getId(),
+                      attributeRef.getName(),
+                      new AssetDatapointAllQuery(from, gap.end() - 1))
+                  .stream()
+                  .filter(point -> point.getValue() != null)
+                  .forEach(point -> updates.add(new ValueDatapoint<>(point.getTimestamp(), null)));
+            }
+          }
           predictedDatapointService.updateValues(
-              attributeRef.getId(), attributeRef.getName(), predictedDatapoints);
+              attributeRef.getId(), attributeRef.getName(), updates);
         });
   }
 
@@ -439,10 +461,16 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
   }
 
   protected List<ValueDatapoint<?>> buildPredictedDatapoints(PublicationMarketDocument document) {
+    return decodePublication(document).values();
+  }
+
+  private DecodedPublication decodePublication(PublicationMarketDocument document) {
     List<ValueDatapoint<?>> values = new ArrayList<>();
+    List<TimeRange> coverage = new ArrayList<>();
+    boolean complete = true;
     long nowMillis = timerService.getCurrentTimeMillis();
     if (document.getTimeSeries() == null || document.getTimeSeries().isEmpty()) {
-      return values;
+      return new DecodedPublication(values, List.of());
     }
 
     for (PublicationMarketDocument.TimeSeries timeSeries : document.getTimeSeries()) {
@@ -450,15 +478,18 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       if (!"A01".equals(curveType) && !"A03".equals(curveType)) {
         LOG.warning(
             "Skipping ENTSO-E time series with unsupported curve type: '" + curveType + "'");
+        complete = false;
         continue;
       }
 
       if (timeSeries.getPeriods() == null || timeSeries.getPeriods().isEmpty()) {
+        complete = false;
         continue;
       }
 
       for (PublicationMarketDocument.Period period : timeSeries.getPeriods()) {
         if (period == null || period.getPoints() == null || period.getPoints().isEmpty()) {
+          complete = false;
           continue;
         }
 
@@ -468,6 +499,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
             || timeInterval.getEnd() == null
             || period.getResolution() == null) {
           LOG.warning("Skipping ENTSO-E period without its own start, end, or resolution");
+          complete = false;
           continue;
         }
 
@@ -481,6 +513,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           resolution = Duration.parse(period.getResolution());
           if (!end.isAfter(start) || resolution.isZero() || resolution.isNegative()) {
             LOG.warning("Skipping ENTSO-E period with non-positive duration or resolution");
+            complete = false;
             continue;
           }
           Duration duration = Duration.between(start, end);
@@ -488,16 +521,31 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           if (intervalCount == 0 || !resolution.multipliedBy(intervalCount).equals(duration)) {
             LOG.warning(
                 "Skipping ENTSO-E period whose duration is not a multiple of its resolution");
+            complete = false;
             continue;
           }
         } catch (Exception e) {
           LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E timeseries time data");
+          complete = false;
           continue;
         }
 
         if (!hasValidPeriodPositions(period.getPoints(), curveType, intervalCount)) {
+          complete = false;
           continue;
         }
+        // Validate every price before recording coverage or emitting any part of the period.
+        // Only an absent amount means unavailable; malformed amounts reject the period.
+        try {
+          for (PublicationMarketDocument.Point point : period.getPoints()) {
+            point.getPriceAmount();
+          }
+        } catch (NumberFormatException e) {
+          LOG.warning("Skipping ENTSO-E period with malformed price amount");
+          complete = false;
+          continue;
+        }
+        coverage.add(new TimeRange(start.toEpochMilli(), end.toEpochMilli()));
         List<PublicationMarketDocument.Point> points =
             period.getPoints().stream()
                 .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
@@ -521,7 +569,29 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
     }
 
     values.sort(Comparator.comparingLong(ValueDatapoint::getTimestamp));
-    return values;
+    return new DecodedPublication(values, complete ? findPeriodGaps(coverage) : List.of());
+  }
+
+  private record TimeRange(long start, long end) {}
+
+  private record DecodedPublication(List<ValueDatapoint<?>> values, List<TimeRange> gaps) {}
+
+  private List<TimeRange> findPeriodGaps(List<TimeRange> coverage) {
+    List<TimeRange> gaps = new ArrayList<>();
+    coverage.sort(Comparator.comparingLong(TimeRange::start));
+    if (coverage.isEmpty()) {
+      return gaps;
+    }
+    long coveredEnd = coverage.get(0).end();
+    for (int i = 1; i < coverage.size(); i++) {
+      TimeRange interval = coverage.get(i);
+      if (interval.start() > coveredEnd) {
+        gaps.add(new TimeRange(coveredEnd, interval.start()));
+      }
+      // Include coverage from every series, merging adjacent and overlapping periods.
+      coveredEnd = Math.max(coveredEnd, interval.end());
+    }
+    return gaps;
   }
 
   protected boolean hasValidPeriodPositions(

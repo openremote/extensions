@@ -105,14 +105,16 @@ public class PublicationMarketDocument {
     private Integer position;
 
     @XmlElement(name = "price.amount", namespace = NS)
-    private BigDecimal priceAmount;
+    // Preserve malformed text: JAXB's BigDecimal binding can silently turn it into null,
+    // making an invalid amount indistinguishable from an explicitly missing price.
+    private String priceAmount;
 
     public Integer getPosition() {
       return position;
     }
 
     public BigDecimal getPriceAmount() {
-      return priceAmount;
+      return priceAmount == null ? null : new BigDecimal(priceAmount.trim());
     }
   }
 

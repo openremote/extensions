@@ -134,6 +134,24 @@ class EntsoeCurveTest extends Specification {
     "A03" | "whole period" | [[1, null]] | [null, null, null, null]
   }
 
+  def "#curveType rejects a period containing malformed price '#amount' without partial updates"() {
+    given:
+    def points = curveType == "A01" ? [[1, 80], [2, amount], [3, 82], [4, 90]] : [[1, 80], [2, amount], [4, 90]]
+    def document = document(curveType,
+            period(START, START.plusSeconds(3600), "PT15M", points) +
+            period(START.plusSeconds(3600), START.plusSeconds(4500), "PT15M", [[1, 100]]))
+
+    when:
+    def values = protocol.buildPredictedDatapoints(document)
+
+    then: "the entire malformed period is rejected while the valid period is still decoded"
+    values.collect { it.timestamp } == [START.plusSeconds(3600).toEpochMilli()]
+    values.collect { it.value } == [100G]
+
+    where:
+    [curveType, amount] << [["A01", "A03"], ["broken", "", "   ", "NaN"]].combinations()
+  }
+
   def "#curveType filters past unavailable intervals"() {
     given:
     setNow(START.plusSeconds(1200))
