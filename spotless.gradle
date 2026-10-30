@@ -24,9 +24,9 @@ String prettierVersion = devDependencies.prettier
 
 def readIgnorePatterns = { File ignoreFile ->
   List<String> patterns = ignoreFile
-  .readLines('UTF-8')
-  .collect { it.trim() }
-  .findAll { it && !it.startsWith('#') }
+          .readLines('UTF-8')
+          .collect { it.trim() }
+          .findAll { it && !it.startsWith('#') }
   List<String> unsupported = patterns.findAll {
     it.startsWith('!') || it.startsWith('/') || it.contains('\\')
   }

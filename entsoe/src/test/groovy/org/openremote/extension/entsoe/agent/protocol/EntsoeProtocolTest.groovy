@@ -383,7 +383,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, entsoeLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -462,7 +462,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, entsoeLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -551,7 +551,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, beLink)),
             new Attribute<>("energyPriceNl", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, nlLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def beRef = new AttributeRef(asset.id, "energyPriceBe")
@@ -646,7 +646,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, link1)),
             new Attribute<>("energyPriceTwo", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, link2))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def refOne = new AttributeRef(asset.id, "energyPriceOne")
@@ -736,7 +736,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, errLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -806,7 +806,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     def document = { List<List> points ->
       def pointXml = points.collect { point ->
         "<Point><position>${point[0]}</position>" +
-        (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
+                (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
       }.join("")
       def xml = """
         <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
@@ -939,7 +939,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         break
       case "malformed price":
         periods.add(period(900, 2700, "PT15M", 999).replace("</Period>",
-        "<Point><position>2</position><price.amount>broken</price.amount></Point></Period>"))
+                "<Point><position>2</position><price.amount>broken</price.amount></Point></Period>"))
         break
       case "invalid timing":
         periods.add(period(900, 1800, "invalid", 999))
@@ -1052,7 +1052,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, noDataLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -1123,7 +1123,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, unsafeXmlLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -1186,7 +1186,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, gapLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -1249,7 +1249,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, multiPeriodLink))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -1362,7 +1362,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
             .addOrReplaceAttributes(
             new Attribute<>("energyPrice", NUMBER)
             .addOrReplaceMeta(new MetaItem<>(AGENT_LINK, link))
-            )
+    )
     asset = assetStorageService.merge(asset)
 
     def attributeRef = new AttributeRef(asset.id, "energyPrice")
@@ -1384,8 +1384,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     conditions.eventually {
       assert requestLog.any {
         it.zone == "10YBE----------2" &&
-        it.periodStart == periodFormatter.format(fixedNow) &&
-        it.periodEnd == periodFormatter.format(fixedNow.plus(1, java.time.temporal.ChronoUnit.DAYS))
+                it.periodStart == periodFormatter.format(fixedNow) &&
+                it.periodEnd == periodFormatter.format(fixedNow.plus(1, java.time.temporal.ChronoUnit.DAYS))
       }
     }
 
@@ -1399,8 +1399,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     conditions.eventually {
       assert requestLog.any {
         it.zone == "10YBE----------2" &&
-        it.periodStart == periodFormatter.format(nextNow) &&
-        it.periodEnd == periodFormatter.format(nextNow.plus(1, java.time.temporal.ChronoUnit.DAYS))
+                it.periodStart == periodFormatter.format(nextNow) &&
+                it.periodEnd == periodFormatter.format(nextNow.plus(1, java.time.temporal.ChronoUnit.DAYS))
       }
     }
 

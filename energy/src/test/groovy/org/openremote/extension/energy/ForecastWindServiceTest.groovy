@@ -650,7 +650,7 @@ class ForecastWindServiceTest extends Specification implements ManagerContainerT
           def responseBody = ValueUtil.JSON.readValue(content, ForecastWindService.WeatherForecastResponseModel.class)
           requestContext.abortWith(
                   Response.ok(responseBody, MediaType.APPLICATION_JSON_TYPE).build()
-                  )
+          )
           return
       }
 

@@ -405,7 +405,7 @@ class EntsoeCurveTest extends Specification {
   private static String period(Instant start, Instant end, String resolution, List<List> points) {
     def pointXml = points.collect { point ->
       "<Point><position>${point[0]}</position>" +
-      (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
+              (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
     }.join("\n")
     """
 <Period>
