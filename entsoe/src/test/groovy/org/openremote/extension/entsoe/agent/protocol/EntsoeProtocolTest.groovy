@@ -23,6 +23,7 @@ import jakarta.ws.rs.client.ClientRequestContext
 import jakarta.ws.rs.client.ClientRequestFilter
 import jakarta.ws.rs.core.MediaType
 import jakarta.ws.rs.core.Response
+import org.openremote.container.timer.TimerService
 import org.openremote.manager.agent.AgentService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
@@ -32,8 +33,8 @@ import org.openremote.model.attribute.Attribute
 import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.attribute.MetaItem
 import org.openremote.model.datapoint.ValueDatapoint
+import org.openremote.model.datapoint.query.AssetDatapointAllQuery
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.Ignore
 import spock.lang.Issue
 import spock.lang.Shared
 import spock.lang.Specification
@@ -185,13 +186,13 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
   <period.timeInterval>
     <start>2026-02-16T23:00Z</start>
-    <end>2026-02-17T23:00Z</end>
+    <end>2026-02-17T00:00Z</end>
   </period.timeInterval>
   <TimeSeries>
     <Period>
       <timeInterval>
         <start>2026-02-16T23:00Z</start>
-        <end>2026-02-17T23:00Z</end>
+        <end>2026-02-17T00:00Z</end>
       </timeInterval>
       <resolution>PT15M</resolution>
       <Point>
@@ -259,13 +260,14 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
   <period.timeInterval>
     <start>2026-02-16T23:00Z</start>
-    <end>2026-02-17T23:00Z</end>
+    <end>2026-02-17T00:00Z</end>
   </period.timeInterval>
   <TimeSeries>
+    <curveType>A01</curveType>
     <Period>
       <timeInterval>
         <start>2026-02-16T23:00Z</start>
-        <end>2026-02-17T23:00Z</end>
+        <end>2026-02-17T00:00Z</end>
       </timeInterval>
       <resolution>PT15M</resolution>
       <Point>
@@ -398,7 +400,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     then: "predicted datapoints are written using period start and resolution"
     conditions.eventually {
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef)
-      assert datapoints.size() == 4
+      assert datapoints.size() == 96
 
       def asc = datapoints.sort { it.timestamp }
       def start = Instant.parse(DATASET_START).toEpochMilli()
@@ -413,6 +415,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       assert (asc[1].value as BigDecimal).compareTo(69.79G) == 0
       assert (asc[2].value as BigDecimal).compareTo(65.84G) == 0
       assert (asc[3].value as BigDecimal).compareTo(65.05G) == 0
+      assert asc[95].timestamp == start + (95 * step)
+      assert asc.drop(3).every { (it.value as BigDecimal).compareTo(65.05G) == 0 }
     }
 
     cleanup: "remove created assets and mock client"
@@ -425,7 +429,6 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  @Ignore
   def "ENTSO-E integration test filters out points in the past when clock is mid-period"() {
     given: "the container environment is started with clock in the middle of the dataset period"
     requestCountByZone.clear()
@@ -481,15 +484,16 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
         it.timestamp
       }
-      assert datapoints.size() == 2
+      assert datapoints.size() == 94
 
       def start = Instant.parse(DATASET_START).toEpochMilli()
       def step = 15 * 60 * 1000L
 
-      assert datapoints[0].timestamp == start + (2 * step)
-      assert datapoints[1].timestamp == start + (3 * step)
-      assert (datapoints[0].value as BigDecimal).compareTo(65.84G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(65.05G) == 0
+      // The current interval started before now; the forecast stops at the exclusive period end.
+      assert datapoints.collect { it.timestamp } == (2..<96).collect { start + it * step }
+      assert datapoints.collect {
+        it.value as BigDecimal
+      } == [65.84G] + Collections.nCopies(93, 65.05G)
     }
 
     cleanup: "remove created assets and mock client"
@@ -572,8 +576,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         it.timestamp
       }
 
-      assert beDatapoints.size() == 4
-      assert nlDatapoints.size() == 4
+      assert beDatapoints.size() == 96
+      assert nlDatapoints.size() == 96
 
       assert (beDatapoints[0].value as BigDecimal).compareTo(73.24G) == 0
       assert (beDatapoints[1].value as BigDecimal).compareTo(69.79G) == 0
@@ -670,8 +674,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
         it.timestamp
       }
 
-      assert datapointsOne.size() == 4
-      assert datapointsTwo.size() == 4
+      assert datapointsOne.size() == 96
+      assert datapointsTwo.size() == 96
       assert datapointsOne.collect {
         [it.timestamp, it.value]
       } == datapointsTwo.collect {
@@ -781,6 +785,230 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       assetStorageService.delete([agent.id])
     }
     closeClient()
+  }
+
+  def "#curveType unavailable prices replace stored predictions and can become available again"() {
+    given: "a real prediction store and a protocol with a fixed clock"
+    def container = startContainer(defaultConfig(), defaultServices())
+    setPseudoClock(BEFORE_DATASET_START)
+    def assetStorageService = container.getService(AssetStorageService.class)
+    def predictionService = container.getService(AssetPredictedDatapointService.class)
+    def protocol = new EntsoeProtocol(new EntsoeAgent())
+    protocol.timerService = container.getService(TimerService.class)
+    protocol.predictedDatapointService = predictionService
+    def attribute = new Attribute<>("energyPrice", NUMBER)
+    def asset = assetStorageService.merge(new ThingAsset("Unavailable Price Asset")
+            .setRealm(MASTER_REALM).addOrReplaceAttributes(attribute))
+    def ref = new AttributeRef(asset.id, attribute.name)
+    def linkedAttributes = [new AbstractMap.SimpleEntry<>(ref, attribute)]
+    def start = Instant.parse(DATASET_START)
+    def timestamp = { long offset -> start.plusSeconds(offset).toEpochMilli() }
+    def document = { List<List> points ->
+      def pointXml = points.collect { point ->
+        "<Point><position>${point[0]}</position>" +
+                (point[1] == null ? "" : "<price.amount>${point[1]}</price.amount>") + "</Point>"
+      }.join("")
+      def xml = """
+        <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+          <TimeSeries><curveType>${curveType}</curveType><Period>
+            <timeInterval><start>${start}</start><end>${start.plusSeconds(3600)}</end></timeInterval>
+            <resolution>PT15M</resolution>${pointXml}
+          </Period></TimeSeries>
+        </Publication_MarketDocument>
+      """
+      protocol.unmarshalPublicationMarketDocument(xml)
+    }
+    def snapshot = {
+      predictionService.getDatapoints(ref).sort { it.timestamp }.collect {
+        [it.timestamp, it.value as BigDecimal]
+      }
+    }
+    def initialPoints = [[1, 80], [2, 81], [3, 82], [4, 83]]
+    predictionService.updateValues(ref.id, ref.name, [
+      new ValueDatapoint<>(timestamp(-900), 70G),
+      new ValueDatapoint<>(timestamp(3600), 100G)
+    ])
+    protocol.applyPricingInformation("test-zone", document(initialPoints), linkedAttributes)
+    def expectedTimes = [-900, 0, 900, 1800, 2700, 3600].collect { timestamp(it) }
+
+    expect: "the initial prices are persisted"
+    snapshot() == [expectedTimes, [70G, 80G, 81G, 82G, 83G, 100G]].transpose()
+
+    when: "a subsequent publication explicitly marks middle intervals unavailable"
+    protocol.applyPricingInformation("test-zone", document(unavailablePoints), linkedAttributes)
+
+    then: "null values replace stale prices, preserving values outside the period"
+    snapshot() == [expectedTimes, [70G, 80G, null, null, 90G, 100G]].transpose()
+
+    when: "the whole period becomes unavailable"
+    protocol.applyPricingInformation("test-zone", document(allUnavailablePoints), linkedAttributes)
+
+    then: "all its prices are cleared, including when there are no available prices to write"
+    snapshot() == [expectedTimes, [70G, null, null, null, null, 100G]].transpose()
+
+    when: "prices become available again"
+    protocol.applyPricingInformation("test-zone", document(initialPoints), linkedAttributes)
+
+    then: "prices replace the unavailable values"
+    snapshot() == [expectedTimes, [70G, 80G, 81G, 82G, 83G, 100G]].transpose()
+
+    cleanup:
+    if (asset?.id) {
+      assetStorageService.delete([asset.id])
+    }
+    closeClient()
+
+    where:
+    curveType | unavailablePoints | allUnavailablePoints
+    "A01" | [[1, 80], [2, null], [3, null], [4, 90]] | [[1, null], [2, null], [3, null], [4, null]]
+    "A03" | [[1, 80], [2, null], [4, 90]] | [[1, null]]
+  }
+
+  def "core numeric prediction query preserves null, zero, and negative prices"() {
+    given:
+    def container = startContainer(defaultConfig(), defaultServices())
+    setPseudoClock(BEFORE_DATASET_START)
+    def assetStorageService = container.getService(AssetStorageService.class)
+    def predictionService = container.getService(AssetPredictedDatapointService.class)
+    def asset = assetStorageService.merge(new ThingAsset("Null Query Asset")
+            .setRealm(MASTER_REALM).addOrReplaceAttributes(new Attribute<>("energyPrice", NUMBER)))
+    def start = Instant.parse(DATASET_START).toEpochMilli()
+    def values = [-5G, 0G, null, 90G]
+    def timestamps = (0..3).collect { start + it * 900_000L }
+    predictionService.updateValues(asset.id, "energyPrice", (0..3).collect {
+      new ValueDatapoint<>(timestamps[it], values[it])
+    })
+
+    when:
+    def result = predictionService.queryDatapoints(asset.id, "energyPrice",
+            new AssetDatapointAllQuery(timestamps.first(), timestamps.last())).sort {
+              it.timestamp
+            }
+
+    then:
+    result.collect { it.timestamp } == timestamps
+    result.collect { it.value as BigDecimal } == values
+
+    cleanup:
+    if (asset?.id) {
+      assetStorageService.delete([asset.id])
+    }
+  }
+
+  def "#curveType updates stored predictions in period gaps: #scenario"() {
+    given: "stored predictions including timestamps off the returned resolution grids"
+    def container = startContainer(defaultConfig(), defaultServices())
+    def start = Instant.parse(DATASET_START)
+    setPseudoClock(start.plusSeconds(nowOffset).toString())
+    def assetStorageService = container.getService(AssetStorageService.class)
+    def predictionService = container.getService(AssetPredictedDatapointService.class)
+    def protocol = new EntsoeProtocol(new EntsoeAgent())
+    protocol.timerService = Stub(TimerService) {
+      getCurrentTimeMillis() >> start.plusSeconds(nowOffset).toEpochMilli()
+    }
+    protocol.predictedDatapointService = predictionService
+    def attribute = new Attribute<>("energyPrice", NUMBER)
+    def asset = assetStorageService.merge(new ThingAsset("Period Gap Asset")
+            .setRealm(MASTER_REALM).addOrReplaceAttributes(attribute))
+    def ref = new AttributeRef(asset.id, attribute.name)
+    def timestamp = { long offset -> start.plusSeconds(offset).toEpochMilli() }
+    def offsets = [-900, 0, 900, 1200, 1800, 2700, 3600, 4500]
+    if (scenario == "no stored predictions in gap") {
+      offsets = offsets.findAll { it < 900 || it >= 2700 }
+    }
+    predictionService.updateValues(ref.id, ref.name, offsets.collect {
+      new ValueDatapoint<>(timestamp(it), 80G)
+    })
+    def period = { long from, long to, String resolution, int price ->
+      """<Period>
+        <timeInterval><start>${start.plusSeconds(from)}</start><end>${start.plusSeconds(to)}</end></timeInterval>
+        <resolution>${resolution}</resolution><Point><position>1</position><price.amount>${price}</price.amount></Point>
+      </Period>"""
+    }
+    def periods = [period(0, 900, "PT15M", 90), period(2700, 4500, "PT30M", 100)]
+    if (scenario == "reversed periods") {
+      periods = periods.reverse()
+    }
+    def extraSeries = ""
+    switch (scenario) {
+      case "another series covers the gap":
+        extraSeries = "<TimeSeries><curveType>A03</curveType>${period(900, 2700, "PT30M", 95)}</TimeSeries>"
+        break
+      case "incomplete A01 period":
+        extraSeries = "<TimeSeries><curveType>A01</curveType>${period(900, 2700, "PT15M", 999)}</TimeSeries>"
+        break
+      case "malformed price":
+        periods.add(period(900, 2700, "PT15M", 999).replace("</Period>",
+                "<Point><position>2</position><price.amount>broken</price.amount></Point></Period>"))
+        break
+      case "invalid timing":
+        periods.add(period(900, 1800, "invalid", 999))
+        break
+      case "empty period":
+        periods.add("<Period/>")
+        break
+      case "unsupported series":
+        extraSeries = "<TimeSeries><curveType>A99</curveType>${period(900, 2700, "PT30M", 999)}</TimeSeries>"
+        break
+      case "empty series":
+        extraSeries = "<TimeSeries><curveType>A03</curveType></TimeSeries>"
+        break
+    }
+    def xml = """
+      <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+        <TimeSeries><curveType>${curveType}</curveType>${periods.join("")}</TimeSeries>${extraSeries}
+      </Publication_MarketDocument>
+    """
+    def expected = offsets.collectEntries { [(timestamp(it)): 80G] }
+    if (nowOffset <= 0) {
+      expected[timestamp(0)] = 90G
+    }
+    expected[timestamp(2700)] = 100G
+    if (scenario == "another series covers the gap") {
+      expected[timestamp(900)] = 95G
+    }
+    clearedOffsets.each { expected[timestamp(it)] = null }
+
+    when: "the publication is applied to the prediction store"
+    protocol.applyPricingInformation("test-zone", protocol.unmarshalPublicationMarketDocument(xml),
+            [new AbstractMap.SimpleEntry<>(ref, attribute)])
+
+    then: "only future predictions in confirmed gaps become null and all entries remain"
+    def stored = predictionService.getDatapoints(ref)
+    stored.size() == offsets.size()
+    stored.collectEntries { [(it.timestamp): it.value as BigDecimal] } == expected
+
+    when: "the same publication is applied again, including already-null gap entries"
+    protocol.applyPricingInformation("test-zone", protocol.unmarshalPublicationMarketDocument(xml),
+            [new AbstractMap.SimpleEntry<>(ref, attribute)])
+
+    then: "the stored predictions remain unchanged"
+    predictionService.getDatapoints(ref).collectEntries {
+      [(it.timestamp): it.value as BigDecimal]
+    } == expected
+
+    cleanup:
+    if (asset?.id) {
+      assetStorageService.delete([asset.id])
+    }
+    closeClient()
+
+    where:
+    [curveType, scenario, nowOffset, clearedOffsets] << ["A01", "A03"].collectMany { type ->
+      [
+        [type, "separate periods", -900, [900, 1200, 1800]],
+        [type, "reversed periods", -900, [900, 1200, 1800]],
+        [type, "partly historical gap", 1200, [1200, 1800]],
+        [type, "another series covers the gap", -900, []],
+        [type, "no stored predictions in gap", -900, []],
+        [type, "incomplete A01 period", -900, []],
+        [type, "malformed price", -900, []],
+        [type, "invalid timing", -900, []],
+        [type, "empty period", -900, []],
+        [type, "unsupported series", -900, []],
+        [type, "empty series", -900, []]
+      ]
+    }
   }
 
   def "ENTSO-E integration test handles no-data acknowledgement response cleanly"() {
@@ -925,7 +1153,7 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  def "ENTSO-E integration test keeps position timing when intermediate point is missing"() {
+  def "ENTSO-E integration test rejects an A01 period with a missing intermediate position"() {
     given: "the container environment is started"
     requestCountByZone.clear()
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
@@ -975,25 +1203,8 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     when: "a polling update is triggered"
     protocol.updateAllLinkedAttributes()
 
-    then: "only provided points are stored and their timestamps follow position offsets"
-    conditions.eventually {
-      List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
-        it.timestamp
-      }
-      assert datapoints.size() == 3
-
-      def start = Instant.parse(DATASET_START).toEpochMilli()
-      def step = 15 * 60 * 1000L
-
-      assert datapoints[0].timestamp == start
-      assert datapoints[1].timestamp == start + step
-      assert datapoints[2].timestamp == start + (3 * step)
-      assert datapoints[2].timestamp - datapoints[1].timestamp == 2 * step
-
-      assert (datapoints[0].value as BigDecimal).compareTo(81.11G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(82.22G) == 0
-      assert (datapoints[2].value as BigDecimal).compareTo(84.44G) == 0
-    }
+    then: "the incomplete A01 period produces no predicted datapoints"
+    assetPredictedDatapointService.getDatapoints(attributeRef).isEmpty()
 
     cleanup: "remove created assets and mock client"
     if (asset?.id) {
@@ -1005,7 +1216,6 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
     closeClient()
   }
 
-  @Ignore
   def "ENTSO-E integration test supports multiple periods in a single timeseries"() {
     given: "the container environment is started"
     requestCountByZone.clear()
@@ -1061,21 +1271,21 @@ class EntsoeProtocolTest extends Specification implements ManagerContainerTrait 
       List<ValueDatapoint> datapoints = assetPredictedDatapointService.getDatapoints(attributeRef).sort {
         it.timestamp
       }
-      assert datapoints.size() == 4
+      assert datapoints.size() == 8
 
       def firstPeriodStart = Instant.parse(DATASET_START).toEpochMilli()
       def secondPeriodStart = Instant.parse("2026-02-17T00:00:00.000Z").toEpochMilli()
       def step = 15 * 60 * 1000L
 
-      assert datapoints[0].timestamp == firstPeriodStart
-      assert datapoints[1].timestamp == firstPeriodStart + step
-      assert datapoints[2].timestamp == secondPeriodStart
-      assert datapoints[3].timestamp == secondPeriodStart + step
-
-      assert (datapoints[0].value as BigDecimal).compareTo(51.11G) == 0
-      assert (datapoints[1].value as BigDecimal).compareTo(52.22G) == 0
-      assert (datapoints[2].value as BigDecimal).compareTo(53.33G) == 0
-      assert (datapoints[3].value as BigDecimal).compareTo(54.44G) == 0
+      assert datapoints.collect { it.timestamp } ==
+      (0..<4).collect {
+        firstPeriodStart + it * step
+      } + (0..<4).collect {
+        secondPeriodStart + it * step
+      }
+      // Each final A03 block extends to its own exclusive period end, then positions restart.
+      assert datapoints.collect { it.value as BigDecimal } ==
+      [51.11G, 52.22G, 52.22G, 52.22G, 53.33G, 54.44G, 54.44G, 54.44G]
     }
 
     cleanup: "remove created assets and mock client"

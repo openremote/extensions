@@ -57,8 +57,16 @@ public class PublicationMarketDocument {
   @XmlAccessorType(XmlAccessType.FIELD)
   public static class TimeSeries {
 
+    // ENTSO-E time series guide section 2: an omitted curve type defaults to A01.
+    @XmlElement(name = "curveType", namespace = NS)
+    private String curveType = "A01";
+
     @XmlElement(name = "Period", namespace = NS)
     private List<Period> periods;
+
+    public String getCurveType() {
+      return curveType;
+    }
 
     public List<Period> getPeriods() {
       return periods;
@@ -97,14 +105,16 @@ public class PublicationMarketDocument {
     private Integer position;
 
     @XmlElement(name = "price.amount", namespace = NS)
-    private BigDecimal priceAmount;
+    // Preserve malformed text: JAXB's BigDecimal binding can silently turn it into null,
+    // making an invalid amount indistinguishable from an explicitly missing price.
+    private String priceAmount;
 
     public Integer getPosition() {
       return position;
     }
 
     public BigDecimal getPriceAmount() {
-      return priceAmount;
+      return priceAmount == null ? null : new BigDecimal(priceAmount.trim());
     }
   }
 
