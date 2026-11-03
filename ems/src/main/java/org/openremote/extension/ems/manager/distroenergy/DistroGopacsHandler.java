@@ -80,7 +80,6 @@ public class DistroGopacsHandler {
 
   public static final String DISTRO_GOPACS_CLIENT_ID = "DISTRO_GOPACS_CLIENT_ID";
   public static final String DISTRO_GOPACS_CLIENT_SECRET = "DISTRO_GOPACS_CLIENT_SECRET";
-  public static final String DISTRO_GOPACS_TENANT_ID = "DISTRO_GOPACS_TENANT_ID";
   public static final String DISTRO_GOPACS_URL = "DISTRO_GOPACS_URL";
   public static final String DISTRO_GOPACS_URL_DEFAULT = "https://api.distro.energy/v1";
   public static final String DISTRO_GOPACS_TOKEN_URL = "DISTRO_GOPACS_TOKEN_URL";
@@ -137,7 +136,7 @@ public class DistroGopacsHandler {
           .collect(Collectors.toUnmodifiableSet());
 
   protected final String assetId;
-  protected final String tenantId;
+  protected final String portfolio;
   protected final ResteasyClient client;
   protected final DistroGopacsResource resource;
 
@@ -161,30 +160,30 @@ public class DistroGopacsHandler {
       this.container = container;
     }
 
-    public DistroGopacsHandler createHandler(String assetId) {
-      return new DistroGopacsHandler(assetId, container, null);
+    public DistroGopacsHandler createHandler(String assetId, String portfolio) {
+      return new DistroGopacsHandler(assetId, portfolio, container, null);
     }
   }
 
   /**
+   * @param portfolio the asset's Distro portfolio, the same one the day-ahead submissions use.
    * @param resource used as is when not null, which is how tests stand in for the HTTP client;
    *     otherwise one is built from the container config.
    */
   protected DistroGopacsHandler(
-      String assetId, Container container, DistroGopacsResource resource) {
+      String assetId, String portfolio, Container container, DistroGopacsResource resource) {
     this.assetId = assetId;
+    this.portfolio = portfolio;
     this.timerService = container.getService(TimerService.class);
     this.scheduledExecutorService = container.getScheduledExecutor();
     this.assetStorageService = container.getService(AssetStorageService.class);
     this.assetProcessingService = container.getService(AssetProcessingService.class);
 
-    Map<String, String> config = container.getConfig();
-    this.tenantId = requireConfig(config, DISTRO_GOPACS_TENANT_ID);
-
     if (resource != null) {
       this.client = null;
       this.resource = resource;
     } else {
+      Map<String, String> config = container.getConfig();
       String clientId = requireConfig(config, DISTRO_GOPACS_CLIENT_ID);
       String clientSecret = requireConfig(config, DISTRO_GOPACS_CLIENT_SECRET);
       String baseUrl = config.getOrDefault(DISTRO_GOPACS_URL, DISTRO_GOPACS_URL_DEFAULT);
@@ -201,9 +200,9 @@ public class DistroGopacsHandler {
       // The client ID is not a secret; the secret itself is never logged.
       LOG.info(
           String.format(
-              "Configured Distro GOPACS handler for asset %s: baseUrl=%s, tokenUrl=%s, tenant=%s,"
+              "Configured Distro GOPACS handler for asset %s: baseUrl=%s, tokenUrl=%s, portfolio=%s,"
                   + " clientId=%s",
-              assetId, baseUrl, tokenUrl, tenantId, clientId));
+              assetId, baseUrl, tokenUrl, portfolio, clientId));
     }
   }
 
@@ -231,6 +230,11 @@ public class DistroGopacsHandler {
       throw new IllegalStateException(key + " not defined, cannot place Distro GOPACS orders.");
     }
     return value;
+  }
+
+  /** The portfolio this handler places its orders under. */
+  public String getPortfolio() {
+    return portfolio;
   }
 
   /** Restores the tracked orders saved on the asset and starts polling them. */
@@ -659,7 +663,7 @@ public class DistroGopacsHandler {
     // its real status, or untracks it when Distro answers 404.
     orders.put(request.reference(), GopacsOrder.pending(request));
     try {
-      GopacsOrder order = resource.createOrder(tenantId, request);
+      GopacsOrder order = resource.createOrder(portfolio, request);
       LOG.info(
           String.format(
               "Placed Distro GOPACS order %s for asset %s: status %s",
@@ -698,7 +702,7 @@ public class DistroGopacsHandler {
     for (GopacsOrder order : toReplace) {
       GopacsOrderRequest request = order.toRequest(price);
       try {
-        GopacsOrder replaced = resource.replaceOrder(tenantId, order.reference(), request);
+        GopacsOrder replaced = resource.replaceOrder(portfolio, order.reference(), request);
         LOG.info(
             String.format(
                 "Replaced Distro GOPACS order %s for asset %s at %s EUR/MWh",
@@ -731,7 +735,7 @@ public class DistroGopacsHandler {
             toCancel.size(), assetId, announcementId == null ? "any" : announcementId));
     for (GopacsOrder order : toCancel) {
       try {
-        resource.cancelOrder(tenantId, order.reference());
+        resource.cancelOrder(portfolio, order.reference());
         // Also the only record once the asset is deleted, as the writes below then go nowhere.
         LOG.info("Cancelled Distro GOPACS order " + order.reference() + " for asset " + assetId);
         orders.remove(order.reference());
@@ -777,7 +781,7 @@ public class DistroGopacsHandler {
     LOG.fine(String.format("Polling %d Distro GOPACS orders for asset %s", orders.size(), assetId));
     for (GopacsOrder tracked : List.copyOf(orders.values())) {
       try {
-        GopacsOrder order = resource.getOrder(tenantId, tracked.reference());
+        GopacsOrder order = resource.getOrder(portfolio, tracked.reference());
         if (!Objects.equals(order.status(), tracked.status())) {
           LOG.info(
               String.format(
@@ -830,7 +834,7 @@ public class DistroGopacsHandler {
       do {
         page =
             resource.listSettlements(
-                tenantId,
+                portfolio,
                 order.start(),
                 order.end(),
                 order.reference(),

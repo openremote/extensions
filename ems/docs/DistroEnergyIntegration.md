@@ -167,8 +167,8 @@ portfolio … and day …` and the run continues with the next day. The schedule
 Distro relays orders placed through its GOPACS Connector API to ETPA, where GOPACS can match them to solve grid
 congestion. OpenRemote does not poll GOPACS for this: the announcement comes from an `Ems GOPACS Asset` with
 redispatch enabled (see [GOPACS Integration](GopacsIntegration.md)), and `EmsOptimisationService` copies it to the
-Distro asset next to it. Neither handler references the other, so the Distro asset needs no portfolio or day-ahead
-setup.
+Distro asset next to it. Neither handler references the other. Orders are placed under the Distro asset's `portfolio`,
+the same one the day-ahead submissions use, so setting it also starts those.
 
 #### Configuration
 
@@ -176,19 +176,19 @@ setup.
 | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `DISTRO_GOPACS_CLIENT_ID`     | Yes      | OAuth client ID provided by Distro                                                                                                    |
 | `DISTRO_GOPACS_CLIENT_SECRET` | Yes      | OAuth client secret provided by Distro                                                                                                |
-| `DISTRO_GOPACS_TENANT_ID`     | Yes      | Distro tenant, e.g. `slimstrandnet`                                                                                                   |
 | `DISTRO_GOPACS_URL`           | No       | Base URL of the API (default: `https://api.distro.energy/v1`, development: `https://api.dev.distro.energy/v1`)                        |
 | `DISTRO_GOPACS_TOKEN_URL`     | No       | OAuth token endpoint (default: `https://auth.distro.energy/oauth2/token`, development: `https://auth.dev.distro.energy/oauth2/token`) |
 
-The handler does not start without the three required variables. Distro must also whitelist the manager's outbound IP
-address. Tokens are requested with client credentials and scope `distro-api/gopacs.access`, cached and refreshed
-shortly before they expire.
+The handler does not start without the two required variables or a `portfolio` on the asset. Distro must also
+whitelist the manager's outbound IP address. Tokens are requested with client credentials and scope
+`distro-api/gopacs.access`, cached and refreshed shortly before they expire.
 
 #### Asset Setup
 
 1. Place the `Ems Distro Energy Asset` under the same `Ems Energy Optimisation Asset` as the `Ems GOPACS Asset`. The
    announcement is copied from that GOPACS asset, and quantities are pre-filled from that parent's batteries
-2. Set `gopacsEnabled` to `true` on the `Ems Distro Energy Asset`
+2. Set `portfolio` to the Distro portfolio, e.g. `slimstrandnet`, and `gopacsEnabled` to `true` on the
+   `Ems Distro Energy Asset`
 
 These attributes are copied from the `Ems GOPACS Asset`:
 
@@ -232,15 +232,15 @@ sequenceDiagram
     G->>D: copied by EmsOptimisationService (announcement, window, effectivity)
     D->>D: Pre-fill gopacsOrderType and gopacsOrderQuantity
     Op->>D: Set gopacsOrderPrice, toggle gopacsConfirmOrder
-    D->>API: POST /gopacs/{tenant}/orders
+    D->>API: POST /gopacs/{portfolio}/orders
     loop Every 5 minutes while orders are tracked
-        D->>API: GET /gopacs/{tenant}/orders/{reference}
-        D->>API: GET /settlements/gopacs/{tenant} (once SETTLED)
+        D->>API: GET /gopacs/{portfolio}/orders/{reference}
+        D->>API: GET /settlements/gopacs/{portfolio} (once SETTLED)
     end
     Op->>D: Change gopacsOrderPrice
-    D->>API: PUT /gopacs/{tenant}/orders/{reference}
+    D->>API: PUT /gopacs/{portfolio}/orders/{reference}
     G->>D: announcement closes or changes
-    D->>API: DELETE /gopacs/{tenant}/orders/{reference}
+    D->>API: DELETE /gopacs/{portfolio}/orders/{reference}
 ```
 
 #### Order Sizing
@@ -292,6 +292,8 @@ are no longer tracked. The tracked orders are saved on the asset, so a restart p
 Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot
 be cancelled and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete
 nothing tracks them any more and their trades are not recorded, so check for them in Distro before deleting an asset.
+Changing `portfolio` stops the handler in the same way and starts a new one under the new portfolio. Distro does not
+know the remaining orders under that portfolio, so the new handler drops them on its first poll.
 
 #### Components
 

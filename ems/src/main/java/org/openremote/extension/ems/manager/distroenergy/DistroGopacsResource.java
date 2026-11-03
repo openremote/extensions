@@ -36,33 +36,33 @@ public interface DistroGopacsResource {
 
   /** 202 for a new order, 200 with the stored order when the reference already exists. */
   @POST
-  @Path("gopacs/{tenantId}/orders")
-  GopacsOrder createOrder(@PathParam("tenantId") String tenantId, GopacsOrderRequest request);
+  @Path("gopacs/{portfolio}/orders")
+  GopacsOrder createOrder(@PathParam("portfolio") String portfolio, GopacsOrderRequest request);
 
   @GET
-  @Path("gopacs/{tenantId}/orders/{reference}")
+  @Path("gopacs/{portfolio}/orders/{reference}")
   GopacsOrder getOrder(
-      @PathParam("tenantId") String tenantId, @PathParam("reference") String reference);
+      @PathParam("portfolio") String portfolio, @PathParam("reference") String reference);
 
   /** Only quantity, price, metadata and expiration may differ from the stored order. */
   @PUT
-  @Path("gopacs/{tenantId}/orders/{reference}")
+  @Path("gopacs/{portfolio}/orders/{reference}")
   GopacsOrder replaceOrder(
-      @PathParam("tenantId") String tenantId,
+      @PathParam("portfolio") String portfolio,
       @PathParam("reference") String reference,
       GopacsOrderRequest request);
 
   /** Synchronous: returns only once Distro has confirmed the cancellation. */
   @DELETE
-  @Path("gopacs/{tenantId}/orders/{reference}")
+  @Path("gopacs/{portfolio}/orders/{reference}")
   void cancelOrder(
-      @PathParam("tenantId") String tenantId, @PathParam("reference") String reference);
+      @PathParam("portfolio") String portfolio, @PathParam("reference") String reference);
 
   /** Matched settlements overlapping [start, end), one per effective trade. */
   @GET
-  @Path("settlements/gopacs/{tenantId}")
+  @Path("settlements/gopacs/{portfolio}")
   GopacsSettlementPage listSettlements(
-      @PathParam("tenantId") String tenantId,
+      @PathParam("portfolio") String portfolio,
       @QueryParam("start") long start,
       @QueryParam("end") long end,
       @QueryParam("orderReference") String orderReference,

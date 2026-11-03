@@ -601,30 +601,51 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
   }
 
   /**
-   * Runs one Distro GOPACS order handler for the asset while {@code gopacsEnabled} is true and none
-   * otherwise. A running handler is left alone: its tracked orders are restored from the asset on
-   * deploy, but a redeploy would still drop an in-flight poll.
+   * Runs one Distro GOPACS order handler for the asset while {@code gopacsEnabled} is true and the
+   * asset has a portfolio, and none otherwise. A running handler for the same portfolio is left
+   * alone: its tracked orders are restored from the asset on deploy, but a redeploy would still
+   * drop an in-flight poll. A portfolio change stops the handler like a disable, cancelling the
+   * open orders placed under the old portfolio, and starts a new one.
    */
   private void reconcileDistroGopacsHandler(EmsDistroEnergyAsset asset) {
     synchronized (distroGopacsLifecycleLock) {
       String assetId = asset.getId();
       boolean enabled = asset.getGopacsEnabled().orElse(false);
-      if (enabled == distroGopacsHandlerMap.containsKey(assetId)) {
+      String portfolio = asset.getPortfolio().filter(p -> !p.isBlank()).orElse(null);
+      DistroGopacsHandler running = distroGopacsHandlerMap.get(assetId);
+      boolean upToDate =
+          running == null ? !enabled : enabled && running.getPortfolio().equals(portfolio);
+      if (upToDate) {
         LOG.fine(
             String.format(
                 "Distro GOPACS handler for asset %s already %s",
                 assetId, enabled ? "running" : "stopped"));
         return;
       }
-      if (!enabled) {
-        LOG.info("gopacsEnabled is off, stopping Distro GOPACS handler for asset: " + assetId);
+      if (running != null) {
+        LOG.info(
+            String.format(
+                "%s, stopping Distro GOPACS handler for asset: %s",
+                enabled ? "Portfolio changed" : "gopacsEnabled is off", assetId));
         stopDistroGopacsHandler(assetId);
+        if (!enabled) {
+          return;
+        }
+      }
+      if (portfolio == null) {
+        LOG.warning(
+            "gopacsEnabled is on but the portfolio is blank, not starting Distro GOPACS handler"
+                + " for asset: "
+                + assetId);
         return;
       }
-      LOG.info("gopacsEnabled is on, starting Distro GOPACS handler for asset: " + assetId);
+      LOG.info(
+          String.format(
+              "gopacsEnabled is on, starting Distro GOPACS handler for asset %s, portfolio %s",
+              assetId, portfolio));
       DistroGopacsHandler handler;
       try {
-        handler = distroGopacsHandlerFactory.createHandler(assetId);
+        handler = distroGopacsHandlerFactory.createHandler(assetId, portfolio);
       } catch (Exception e) {
         // Missing credentials or an unusable URL must not take down the rest of the EMS service.
         LOG.log(Level.SEVERE, "Failed to deploy Distro GOPACS handler for asset: " + assetId, e);

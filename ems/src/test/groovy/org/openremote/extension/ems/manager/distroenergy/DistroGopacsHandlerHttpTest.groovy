@@ -47,11 +47,11 @@ import static org.openremote.container.web.WebTargetBuilder.createClient
  */
 class DistroGopacsHandlerHttpTest extends Specification {
 
-  static final String TENANT = "slimstrandnet"
+  static final String PORTFOLIO = "slimstrandnet"
   static final String TOKEN_PATH = "/oauth2/token"
-  static final String ORDERS_PATH = "/v1/gopacs/${TENANT}/orders"
+  static final String ORDERS_PATH = "/v1/gopacs/${PORTFOLIO}/orders"
   static final String ORDER_JSON = '''{
-    "reference": "ref-1", "orderId": "etpa-1", "tenantId": "slimstrandnet", "status": "PENDING",
+    "reference": "ref-1", "orderId": "etpa-1", "portfolio": "slimstrandnet", "status": "PENDING",
     "orderType": "SELL", "quantity": 0.2, "price": 45, "start": 1792677600, "end": 1792684800,
     "ean": "871685920001768800", "metadata": {"announcementId": "a-1"},
     "createdAt": 1792663200, "updatedAt": 1792663200, "lastSyncedAt": 1792663200,
@@ -96,8 +96,8 @@ class DistroGopacsHandlerHttpTest extends Specification {
             "871685920001768800", [announcementId: "a-1"], null)
 
     when:
-    def created = resource.createOrder(TENANT, request)
-    def fetched = resource.getOrder(TENANT, "ref-1")
+    def created = resource.createOrder(PORTFOLIO, request)
+    def fetched = resource.getOrder(PORTFOLIO, "ref-1")
 
     then: "the response is read, unknown fields ignored"
     created.status() == "PENDING"
@@ -128,7 +128,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
     wireMock.stubFor(post(urlPathEqualTo(ORDERS_PATH)).willReturn(okJson(ORDER_JSON)))
 
     when:
-    def stored = resource.createOrder(TENANT, new GopacsOrderRequest("ref-1", "SELL", 0.2,
+    def stored = resource.createOrder(PORTFOLIO, new GopacsOrderRequest("ref-1", "SELL", 0.2,
             1792677600, 1792684800, 45, "871685920001768800", [announcementId: "a-1"], null))
 
     then:
@@ -143,7 +143,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
             .withBody('{"code": "ORDER_LOCKED", "message": "locked", "details": [], "requestId": "r"}')))
 
     when:
-    resource.replaceOrder(TENANT, "ref-1", new GopacsOrderRequest("ref-1", "SELL", 0.2,
+    resource.replaceOrder(PORTFOLIO, "ref-1", new GopacsOrderRequest("ref-1", "SELL", 0.2,
             1792677600, 1792684800, 60, "871685920001768800", null, null))
 
     then:
@@ -158,7 +158,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
             .withBody('{"message": "Forbidden"}')))
 
     when:
-    resource.createOrder(TENANT, new GopacsOrderRequest("ref-1", "SELL", 0.2,
+    resource.createOrder(PORTFOLIO, new GopacsOrderRequest("ref-1", "SELL", 0.2,
             1792677600, 1792684800, 45, "871685920001768800", null, null))
 
     then:
@@ -171,7 +171,7 @@ class DistroGopacsHandlerHttpTest extends Specification {
     wireMock.stubFor(delete(urlPathEqualTo("${ORDERS_PATH}/ref-1")).willReturn(aResponse().withStatus(204)))
 
     when:
-    resource.cancelOrder(TENANT, "ref-1")
+    resource.cancelOrder(PORTFOLIO, "ref-1")
 
     then:
     wireMock.verify(deleteRequestedFor(urlPathEqualTo("${ORDERS_PATH}/ref-1")))
@@ -179,8 +179,8 @@ class DistroGopacsHandlerHttpTest extends Specification {
 
   def "settlements are listed for one order over its delivery window"() {
     given:
-    wireMock.stubFor(get(urlPathEqualTo("/v1/settlements/gopacs/${TENANT}")).willReturn(okJson('''{
-      "items": [{"tradeId": "trade-1", "orderReference": "ref-1", "tenantId": "slimstrandnet",
+    wireMock.stubFor(get(urlPathEqualTo("/v1/settlements/gopacs/${PORTFOLIO}")).willReturn(okJson('''{
+      "items": [{"tradeId": "trade-1", "orderReference": "ref-1", "portfolio": "slimstrandnet",
         "orderId": "etpa-1", "ean": "871685920001768800", "direction": "SELL",
         "start": 1792677600, "end": 1792684800, "capacity": 0.1, "volume": 0.2, "price": 45,
         "cost": 9, "volumeUnit": "MWH", "capacityUnit": "MW", "priceUnit": "EUR/MWH",
@@ -188,13 +188,13 @@ class DistroGopacsHandlerHttpTest extends Specification {
       "limit": 25, "offset": 0, "total": 1}''')))
 
     when:
-    def page = resource.listSettlements(TENANT, 1792677600, 1792684800, "ref-1", 100, 0)
+    def page = resource.listSettlements(PORTFOLIO, 1792677600, 1792684800, "ref-1", 100, 0)
 
     then:
     page.total() == 1
     page.items()*.tradeId() == ["trade-1"]
     page.items()[0].cost() == 9d
-    wireMock.verify(getRequestedFor(urlPathEqualTo("/v1/settlements/gopacs/${TENANT}"))
+    wireMock.verify(getRequestedFor(urlPathEqualTo("/v1/settlements/gopacs/${PORTFOLIO}"))
             .withQueryParam("start", equalTo("1792677600"))
             .withQueryParam("end", equalTo("1792684800"))
             .withQueryParam("orderReference", equalTo("ref-1"))

@@ -55,7 +55,7 @@ class DistroGopacsHandlerTest extends Specification {
 
   static final String ASSET_ID = "distroAsset1"
   static final String PARENT_ID = "optimisationAsset1"
-  static final String TENANT = "slimstrandnet"
+  static final String PORTFOLIO = "slimstrandnet"
   static final String EAN = "871685920001768800"
   static final String ANNOUNCEMENT = "4f1c2b3a-0000-4000-8000-000000000001"
   static final long NOW = Instant.parse("2026-10-22T10:00:00Z").toEpochMilli()
@@ -96,13 +96,12 @@ class DistroGopacsHandlerTest extends Specification {
       scheduleAtFixedRate(*_) >> Stub(ScheduledFuture)
     }
     def container = Stub(Container) {
-      getConfig() >> [(DistroGopacsHandler.DISTRO_GOPACS_TENANT_ID): TENANT]
       getService(TimerService) >> timerService
       getService(AssetStorageService) >> assetStorageService
       getService(AssetProcessingService) >> assetProcessingService
       getScheduledExecutor() >> executor
     }
-    handler = new DistroGopacsHandler(ASSET_ID, container, resource)
+    handler = new DistroGopacsHandler(ASSET_ID, PORTFOLIO, container, resource)
   }
 
   // --- sizing rules ---
@@ -228,7 +227,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
-    1 * resource.createOrder(TENANT, _) >> { String tenant, GopacsOrderRequest body ->
+    1 * resource.createOrder(PORTFOLIO, _) >> { String portfolio, GopacsOrderRequest body ->
       request = body
       return stored(body.reference(), "PENDING", ANNOUNCEMENT)
     }
@@ -255,9 +254,9 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
-    1 * resource.createOrder(TENANT, {
+    1 * resource.createOrder(PORTFOLIO, {
       it.quantity() == 0.2d && it.price() == 45.68d
-    }) >> { String tenant, GopacsOrderRequest body ->
+    }) >> { String portfolio, GopacsOrderRequest body ->
       stored(body.reference(), "SUBMITTED", ANNOUNCEMENT)
     }
   }
@@ -292,7 +291,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
-    1 * resource.createOrder(TENANT, _) >> { throw new WebApplicationException(403) }
+    1 * resource.createOrder(PORTFOLIO, _) >> { throw new WebApplicationException(403) }
     handler.orders.isEmpty()
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY) as Map).detail == "HTTP 403"
   }
@@ -306,7 +305,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
 
     then:
-    1 * resource.createOrder(TENANT, _) >> { throw new ProcessingException("Read timed out") }
+    1 * resource.createOrder(PORTFOLIO, _) >> { throw new ProcessingException("Read timed out") }
     handler.orders.size() == 1
     handler.orders.values().first().status() == "PENDING"
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).size() == 1
@@ -325,7 +324,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60.004d)
 
     then:
-    1 * resource.replaceOrder(TENANT, "open-current", {
+    1 * resource.replaceOrder(PORTFOLIO, "open-current", {
       it.price() == 60d && it.reference() == "open-current"
     }) >>
     stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
@@ -344,7 +343,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.name, ANNOUNCEMENT, "next")
 
     then:
-    1 * resource.cancelOrder(TENANT, "open-previous")
+    1 * resource.cancelOrder(PORTFOLIO, "open-previous")
     0 * resource.cancelOrder(*_)
     handler.orders.keySet() == ["matched-previous", "open-next"] as Set
   }
@@ -359,8 +358,8 @@ class DistroGopacsHandlerTest extends Specification {
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.name, false, true)
 
     then:
-    1 * resource.cancelOrder(TENANT, "a")
-    1 * resource.cancelOrder(TENANT, "b")
+    1 * resource.cancelOrder(PORTFOLIO, "a")
+    1 * resource.cancelOrder(PORTFOLIO, "b")
     0 * resource.cancelOrder(*_)
     handler.orders.keySet() == ["c"] as Set
   }
@@ -377,10 +376,10 @@ class DistroGopacsHandlerTest extends Specification {
     handler.pollOrders()
 
     then:
-    1 * resource.getOrder(TENANT, "live") >> stored("live", "MATCHED", ANNOUNCEMENT)
-    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.getOrder(TENANT, "gone") >> { throw new NotFoundException() }
-    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 0) >>
+    1 * resource.getOrder(PORTFOLIO, "live") >> stored("live", "MATCHED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "gone") >> { throw new NotFoundException() }
+    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 0) >>
             new GopacsSettlementPage([trade], 1)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "MATCHED"
@@ -398,7 +397,7 @@ class DistroGopacsHandlerTest extends Specification {
     handler.pollOrders()
 
     then:
-    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
     1 * resource.listSettlements(*_) >> { throw new NotFoundException() }
     handler.orders.isEmpty()
     sent.findAll {
@@ -420,10 +419,10 @@ class DistroGopacsHandlerTest extends Specification {
     handler.pollOrders()
 
     then:
-    1 * resource.getOrder(TENANT, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 0) >>
+    1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 0) >>
             new GopacsSettlementPage((1..100).collect { trade("t-$it") }, 101)
-    1 * resource.listSettlements(TENANT, seconds(START), seconds(END), "settled", 100, 100) >>
+    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 100) >>
             new GopacsSettlementPage([trade("t-101")], 101)
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.size() == 101
   }
@@ -454,8 +453,8 @@ class DistroGopacsHandlerTest extends Specification {
     handler.undeploy(true)
 
     then:
-    1 * resource.cancelOrder(TENANT, "pending")
-    1 * resource.cancelOrder(TENANT, "submitted")
+    1 * resource.cancelOrder(PORTFOLIO, "pending")
+    1 * resource.cancelOrder(PORTFOLIO, "submitted")
     0 * resource._
     handler.orders.keySet() == ["matched"] as Set
   }
