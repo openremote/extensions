@@ -415,7 +415,7 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
     def trade = { String id ->
       new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
-      0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW))
+              0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW))
     }
 
     when:
