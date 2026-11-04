@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * Order as stored by Distro. {@code status} stays a string so a status added to the draft API does
  * not break deserialisation; {@code orderId} is absent until ETPA acknowledged the order and {@code
- * reason} is only present for REJECTED or LOCKED.
+ * reason} is only present for REJECTED, LOCKED or CANCELED.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record GopacsOrder(

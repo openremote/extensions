@@ -108,7 +108,7 @@ public class DistroGopacsHandler {
 
   /** Statuses after which an order no longer changes and is no longer tracked. */
   protected static final Set<String> FINAL_STATUSES =
-      Set.of("SETTLED", "REVERTED", "REJECTED", "CANCELED");
+      Set.of("SETTLED", "REJECTED", "CANCELED", "EXPIRED");
 
   /** Relative effectivities in a GOPACS EAN effectivity category name, weakest first. */
   protected static final List<String> EFFECTIVITY_RANKS =

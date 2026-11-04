@@ -336,7 +336,7 @@ class DistroGopacsHandlerTest extends Specification {
     given:
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue("next")
     track(stored("open-previous", "PENDING", ANNOUNCEMENT))
-    track(stored("matched-previous", "MATCHED", ANNOUNCEMENT))
+    track(stored("locked-previous", "LOCKED", ANNOUNCEMENT))
     track(stored("open-next", "PENDING", "next"))
 
     when:
@@ -345,7 +345,7 @@ class DistroGopacsHandlerTest extends Specification {
     then:
     1 * resource.cancelOrder(PORTFOLIO, "open-previous")
     0 * resource.cancelOrder(*_)
-    handler.orders.keySet() == ["matched-previous", "open-next"] as Set
+    handler.orders.keySet() == ["locked-previous", "open-next"] as Set
   }
 
   def "the cancel flag cancels every open order and is reset"() {
@@ -367,7 +367,8 @@ class DistroGopacsHandlerTest extends Specification {
   def "polling keeps live orders, records settled trades and drops final orders"() {
     given:
     track(stored("live", "SUBMITTED", ANNOUNCEMENT))
-    track(stored("settled", "MATCHED", ANNOUNCEMENT))
+    track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
+    track(stored("expired", "SUBMITTED", ANNOUNCEMENT))
     track(stored("gone", "PENDING", ANNOUNCEMENT))
     def trade = new GopacsSettlement("trade-1", "settled", "BUY", seconds(START), seconds(END),
             0.2, 0.4, 45, 18, seconds(NOW), seconds(NOW))
@@ -376,13 +377,15 @@ class DistroGopacsHandlerTest extends Specification {
     handler.pollOrders()
 
     then:
-    1 * resource.getOrder(PORTFOLIO, "live") >> stored("live", "MATCHED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "live") >> stored("live", "LOCKED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "expired") >> stored("expired", "EXPIRED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "gone") >> { throw new NotFoundException() }
     1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 0) >>
             new GopacsSettlementPage([trade], 1)
+    0 * resource.listSettlements(*_)
     handler.orders.keySet() == ["live"] as Set
-    handler.orders["live"].status() == "MATCHED"
+    handler.orders["live"].status() == "LOCKED"
     sent.findAll {
       it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
     }*.value*.get()*.tradeId == ["trade-1"]
@@ -391,7 +394,7 @@ class DistroGopacsHandlerTest extends Specification {
 
   def "a failed settlement fetch is recorded and the settled order dropped"() {
     given:
-    track(stored("settled", "MATCHED", ANNOUNCEMENT))
+    track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
 
     when:
     handler.pollOrders()
@@ -409,7 +412,7 @@ class DistroGopacsHandlerTest extends Specification {
 
   def "settlements are read page by page until the total is reached"() {
     given:
-    track(stored("settled", "MATCHED", ANNOUNCEMENT))
+    track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
     def trade = { String id ->
       new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
       0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW))
@@ -447,7 +450,7 @@ class DistroGopacsHandlerTest extends Specification {
     given:
     track(stored("pending", "PENDING", ANNOUNCEMENT))
     track(stored("submitted", "SUBMITTED", "other-announcement"))
-    track(stored("matched", "MATCHED", ANNOUNCEMENT))
+    track(stored("locked", "LOCKED", ANNOUNCEMENT))
 
     when:
     handler.undeploy(true)
@@ -456,7 +459,7 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.cancelOrder(PORTFOLIO, "pending")
     1 * resource.cancelOrder(PORTFOLIO, "submitted")
     0 * resource._
-    handler.orders.keySet() == ["matched"] as Set
+    handler.orders.keySet() == ["locked"] as Set
   }
 
   def "deploy restores the orders saved on the asset"() {
