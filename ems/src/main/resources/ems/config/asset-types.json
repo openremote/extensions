@@ -155,7 +155,7 @@
       },
       {
         "type": "info",
-        "title": "Intraday — Flex Request",
+        "title": "Day ahead - Flex Request",
         "properties": {
           "include": []
         },
@@ -165,7 +165,7 @@
       },
       {
         "type": "info",
-        "title": "Intraday — Flex Order",
+        "title": "Day ahead - Flex Order",
         "properties": {
           "include": []
         },
@@ -176,7 +176,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "Redispatch — Configuration",
+        "title": "Redispatch - Configuration",
         "properties": {
           "include": []
         },
@@ -187,7 +187,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "Redispatch — Announcement",
+        "title": "Redispatch - Announcement",
         "properties": {
           "include": []
         },
@@ -209,7 +209,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — Bid",
+        "title": "Redispatch - Bid",
         "properties": {
           "include": []
         },
@@ -219,7 +219,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — Workflow",
+        "title": "Redispatch - Workflow",
         "properties": {
           "include": []
         },
@@ -229,7 +229,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — History",
+        "title": "Redispatch - History",
         "properties": {
           "include": []
         },
@@ -278,7 +278,7 @@
       },
       {
         "type": "info",
-        "title": "Day-ahead — Configuration",
+        "title": "Day ahead - Configuration",
         "properties": {
           "include": []
         },
@@ -288,7 +288,7 @@
       },
       {
         "type": "info",
-        "title": "Day-ahead — Status",
+        "title": "Day ahead - Status",
         "properties": {
           "include": []
         },
@@ -299,7 +299,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "GOPACS — Configuration",
+        "title": "Redispatch - Configuration",
         "properties": {
           "include": []
         },
@@ -309,7 +309,7 @@
       },
       {
         "type": "info",
-        "title": "GOPACS — Announcement",
+        "title": "Redispatch - Announcement",
         "properties": {
           "include": []
         },
@@ -326,7 +326,7 @@
       },
       {
         "type": "info",
-        "title": "GOPACS — Order",
+        "title": "Redispatch - Order",
         "properties": {
           "include": []
         },
@@ -343,7 +343,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "GOPACS — Status",
+        "title": "Redispatch - Status",
         "properties": {
           "include": []
         },
@@ -354,7 +354,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "GOPACS — History",
+        "title": "Redispatch - History",
         "properties": {
           "include": []
         },
