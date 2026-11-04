@@ -1127,7 +1127,10 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
               });
     }
 
-    if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ENABLED.getName())) {
+    // The GOPACS order handler only runs under a portfolio, so a portfolio write has to start,
+    // restart or stop it just like toggling gopacsEnabled does.
+    if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ENABLED.getName())
+        || attributeName.equals(EmsDistroEnergyAsset.PORTFOLIO.getName())) {
       reconcileDistroGopacsHandler(emsDistroEnergyAsset);
     } else if (DistroGopacsHandler.INPUTS.contains(attributeName)) {
       DistroGopacsHandler handler = distroGopacsHandlerMap.get(assetId);

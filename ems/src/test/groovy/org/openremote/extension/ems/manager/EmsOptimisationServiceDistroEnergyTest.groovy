@@ -269,6 +269,35 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     createdGopacsHandlers[1].deployCount == 1
   }
 
+  def "writing the portfolio attribute starts and restarts the GOPACS order handler"() {
+    given: "an enabled asset saved without a portfolio, so no handler runs yet"
+    def asset = gopacsAsset(true, null)
+    assetStorageService.find(ASSET_ID) >> asset
+    service.processAssetChange(event(PersistenceEvent.Cause.CREATE, asset))
+    assert createdGopacsHandlers.isEmpty()
+
+    when: "the portfolio is written as an attribute, as the UI does"
+    asset.setPortfolio("portfolio-a")
+    service.processAttributeEventEmsDistroEnergyAsset(
+            new AttributeEvent(ASSET_ID, EmsDistroEnergyAsset.PORTFOLIO.name, "portfolio-a"))
+
+    then: "a handler starts under it"
+    createdGopacsHandlers.size() == 1
+    createdGopacsHandlers[0].portfolio == "portfolio-a"
+    createdGopacsHandlers[0].deployCount == 1
+
+    when: "the portfolio attribute changes"
+    asset.setPortfolio("portfolio-b")
+    service.processAttributeEventEmsDistroEnergyAsset(
+            new AttributeEvent(ASSET_ID, EmsDistroEnergyAsset.PORTFOLIO.name, "portfolio-b"))
+
+    then: "the old handler cancels its open orders and a new one takes over"
+    createdGopacsHandlers[0].undeployCalls == [true]
+    createdGopacsHandlers.size() == 2
+    createdGopacsHandlers[1].portfolio == "portfolio-b"
+    createdGopacsHandlers[1].deployCount == 1
+  }
+
   def "no GOPACS order handler starts without a portfolio"() {
     when:
     service.processAssetChange(event(PersistenceEvent.Cause.CREATE, gopacsAsset(true, portfolio)))
