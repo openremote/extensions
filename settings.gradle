@@ -35,7 +35,7 @@ fileTree(
         .filter { !new File(it.parentFile, ".buildignore").exists() }
         .each {
           include it.parentFile.canonicalPath
-          .replace(rootDir.canonicalPath, "")
-          .replace("\\", ":")
-          .replace("/", ":")
+                  .replace(rootDir.canonicalPath, "")
+                  .replace("\\", ":")
+                  .replace("/", ":")
         }

@@ -190,7 +190,7 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     and: "verifying the signature fetched an OAuth2 token and resolved the DSO via the address book"
     conditions.eventually {
       wireMock.verify(postRequestedFor(urlPathEqualTo(OAUTH_PATH))
-      .withRequestBody(containing("grant_type=client_credentials")))
+              .withRequestBody(containing("grant_type=client_credentials")))
       wireMock.verify(getRequestedFor(urlPathEqualTo(ADDRESS_BOOK_PATH))
               .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN)))
     }
@@ -198,8 +198,8 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     and: "the FlexRequestResponse and FlexOffer are actually POSTed to the broker as signed XML with a bearer token"
     conditions.eventually {
       wireMock.verify(postRequestedFor(urlPathEqualTo(BROKER_PATH))
-      .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-      .withRequestBody(containing("SignedMessage")))
+              .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+              .withRequestBody(containing("SignedMessage")))
       def payloads = decodedBrokerPayloads()
       assert payloads.any { it.contains("FlexRequestResponse") }
       assert payloads.any { it.contains("FlexOffer") }
@@ -220,8 +220,8 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     and: "a FlexOrderResponse is POSTed to the broker as signed XML with a bearer token"
     conditions.eventually {
       wireMock.verify(postRequestedFor(urlPathEqualTo(BROKER_PATH))
-      .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-      .withRequestBody(containing("SignedMessage")))
+              .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+              .withRequestBody(containing("SignedMessage")))
       assert decodedBrokerPayloads().any { it.contains("FlexOrderResponse") }
     }
   }
@@ -240,8 +240,8 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     and: "a rejected FlexRequestResponse with a reason is delivered to the broker as signed XML"
     conditions.eventually {
       wireMock.verify(postRequestedFor(urlPathEqualTo(BROKER_PATH))
-      .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-      .withRequestBody(containing("SignedMessage")))
+              .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+              .withRequestBody(containing("SignedMessage")))
       assert decodedBrokerPayloads().any {
         it.contains("FlexRequestResponse") && it.contains('Result="Rejected"') && it.contains("RejectionReason=")
       }

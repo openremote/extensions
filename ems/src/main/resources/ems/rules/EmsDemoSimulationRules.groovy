@@ -243,8 +243,8 @@ rules.add()
         .then({ facts ->
           // Get power set-point for each battery
           def powerSetpointBatteries = facts
-          .matchAssetState(new AssetQuery().parents(energyOptimisationAssetId).attributeNames("powerSetpoint"))
-          .toList()
+                  .matchAssetState(new AssetQuery().parents(energyOptimisationAssetId).attributeNames("powerSetpoint"))
+                  .toList()
 
           String[] attributeNames = ["energyCapacity", "energyLevel", "energyLevelPercentage"]
 
