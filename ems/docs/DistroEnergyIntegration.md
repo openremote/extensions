@@ -235,7 +235,7 @@ sequenceDiagram
     D->>API: POST /gopacs/{portfolio}/orders
     loop Every 5 minutes while orders are tracked
         D->>API: GET /gopacs/{portfolio}/orders/{reference}
-        D->>API: GET /settlements/gopacs/{portfolio} (once SETTLED)
+        D->>API: GET /settlements/gopacs/{portfolio}/{reference} (once SETTLED)
     end
     Op->>D: Change gopacsOrderPrice
     D->>API: PUT /gopacs/{portfolio}/orders/{reference}
@@ -284,10 +284,11 @@ untracks it when Distro answers `404`. Either way the failure is recorded as `CR
 `PENDING` and `SUBMITTED` orders are open: they are cancelled when their announcement closes or is replaced by another,
 or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
 announcement. A `LOCKED` order cannot be changed
-(Distro answers `423`) and keeps its old price. `MATCHED` orders stay tracked until they are `SETTLED`, at which point
-all their trades are recorded in `gopacsSettlementHistory`. Distro makes the trades available as soon as an order is
-`SETTLED`, so they are fetched once; a failed fetch is recorded as `SETTLEMENTS_FAILED` and not retried. Orders that are `SETTLED`, `REVERTED`, `REJECTED` or `CANCELED`
-are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
+(Distro answers `423`) and keeps its old price. Matched orders stay tracked until they are `SETTLED`, at which point
+all their trades are recorded in `gopacsSettlementHistory`, with the capacity, volume and price units Distro reports
+(`MW`/`MWH`/`EUR/MWH` or `KW`/`KWH`/`EUR/KWH`). Distro makes the trades available as soon as an order is `SETTLED`, so
+they are fetched once; a failed fetch or a settled order without trades is recorded as `SETTLEMENTS_FAILED` and not
+retried. Orders that are `SETTLED`, `EXPIRED`, `REJECTED` or `CANCELED` are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
 
 Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot
 be cancelled and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete
@@ -303,7 +304,7 @@ distroenergy/
   DistroGopacsResource.java       RESTEasy client proxy for the GOPACS Connector API
   dto/GopacsOrderRequest.java     Create and replace body
   dto/GopacsOrder.java            Order as stored by Distro
-  dto/GopacsSettlement*.java      Settled trades
+  dto/GopacsSettlement.java       One trade of a settled order
 ```
 
 ### Testing

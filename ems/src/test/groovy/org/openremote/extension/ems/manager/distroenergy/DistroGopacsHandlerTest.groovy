@@ -29,7 +29,6 @@ import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectric
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement
-import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlementPage
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.model.Container
@@ -370,8 +369,8 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
     track(stored("expired", "SUBMITTED", ANNOUNCEMENT))
     track(stored("gone", "PENDING", ANNOUNCEMENT))
-    def trade = new GopacsSettlement("trade-1", "settled", "BUY", seconds(START), seconds(END),
-            0.2, 0.4, 45, 18, seconds(NOW), seconds(NOW))
+    def trade = new GopacsSettlement("trade-1", "settled", EAN, "BUY", seconds(START), seconds(END),
+            0.2, "MW", 0.4, "MWH", 45, "EUR/MWH", 18, seconds(NOW), seconds(NOW))
 
     when:
     handler.pollOrders()
@@ -381,14 +380,16 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "expired") >> stored("expired", "EXPIRED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "gone") >> { throw new NotFoundException() }
-    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 0) >>
-            new GopacsSettlementPage([trade], 1)
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> [trade]
     0 * resource.listSettlements(*_)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "LOCKED"
-    sent.findAll {
+    def recorded = sent.findAll {
       it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
-    }*.value*.get()*.tradeId == ["trade-1"]
+    }*.value*.get()
+    recorded*.tradeId == ["trade-1"]
+    recorded[0].subMap(["ean", "capacityUnit", "volumeUnit", "priceUnit", "modifiedAt", "recordedAt"]) ==
+    [ean: EAN, capacityUnit: "MW", volumeUnit: "MWH", priceUnit: "EUR/MWH", modifiedAt: seconds(NOW), recordedAt: NOW]
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
@@ -410,24 +411,22 @@ class DistroGopacsHandlerTest extends Specification {
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
   }
 
-  def "settlements are read page by page until the total is reached"() {
+  def "a settled order without trades is recorded and dropped"() {
     given:
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
-    def trade = { String id ->
-      new GopacsSettlement(id, "settled", "BUY", seconds(START), seconds(END),
-              0.1, 0.2, 45, 9, seconds(NOW), seconds(NOW))
-    }
 
     when:
     handler.pollOrders()
 
     then:
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 0) >>
-            new GopacsSettlementPage((1..100).collect { trade("t-$it") }, 101)
-    1 * resource.listSettlements(PORTFOLIO, seconds(START), seconds(END), "settled", 100, 100) >>
-            new GopacsSettlementPage([trade("t-101")], 101)
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.size() == 101
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> []
+    handler.orders.isEmpty()
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
+    }*.value*.get()*.action ==
+    ["STATUS", "SETTLEMENTS_FAILED"]
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
   }
 
   def "an undeployed handler ignores queued work"() {

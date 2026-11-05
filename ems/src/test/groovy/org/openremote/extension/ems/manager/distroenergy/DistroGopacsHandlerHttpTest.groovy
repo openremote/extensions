@@ -37,6 +37,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson
 import static com.github.tomakehurst.wiremock.client.WireMock.post
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor
 import static com.github.tomakehurst.wiremock.client.WireMock.put
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import static org.openremote.container.web.WebTargetBuilder.createClient
 
@@ -177,28 +178,31 @@ class DistroGopacsHandlerHttpTest extends Specification {
     wireMock.verify(deleteRequestedFor(urlPathEqualTo("${ORDERS_PATH}/ref-1")))
   }
 
-  def "settlements are listed for one order over its delivery window"() {
+  def "settlements are listed for one order reference"() {
     given:
-    wireMock.stubFor(get(urlPathEqualTo("/v1/settlements/gopacs/${PORTFOLIO}")).willReturn(okJson('''{
-      "items": [{"tradeId": "trade-1", "orderReference": "ref-1", "portfolio": "slimstrandnet",
-        "orderId": "etpa-1", "ean": "871685920001768800", "direction": "SELL",
-        "start": 1792677600, "end": 1792684800, "capacity": 0.1, "volume": 0.2, "price": 45,
-        "cost": 9, "volumeUnit": "MWH", "capacityUnit": "MW", "priceUnit": "EUR/MWH",
-        "currency": "EUR", "matchedAt": 1792670000, "settledAt": 1792690000}],
-      "limit": 25, "offset": 0, "total": 1}''')))
+    wireMock.stubFor(get(urlPathEqualTo("/v1/settlements/gopacs/${PORTFOLIO}/ref-1")).willReturn(okJson('''[
+      {"portfolio": "slimstrandnet", "orderReference": "ref-1", "broker": "etpa",
+        "ean": "871234567891234567", "tradeId": "ada69bb6-9a01-4c5f-a061-287760472a65",
+        "settledAt": 1790978400, "start": 1790978400, "end": 1790979300, "modifiedAt": 1790978500,
+        "capacity": 0.5, "volume": 0.125, "price": 40, "cost": 5,
+        "capacityUnit": "MW", "volumeUnit": "MWH", "priceUnit": "EUR/MWH", "direction": "BUY"},
+      {"portfolio": "slimstrandnet", "orderReference": "ref-1", "broker": "etpa",
+        "ean": "871234567891234567", "tradeId": "0b8c4c1e-58f5-4b8e-9a3e-0d7c9c1f2a11",
+        "settledAt": 1790978400, "start": 1790979300, "end": 1790980200, "modifiedAt": 1790978500,
+        "capacity": 200, "volume": 50, "price": 0.04, "cost": 2,
+        "capacityUnit": "KW", "volumeUnit": "KWH", "priceUnit": "EUR/KWH", "direction": "BUY"}]''')))
 
     when:
-    def page = resource.listSettlements(PORTFOLIO, 1792677600, 1792684800, "ref-1", 100, 0)
+    def settlements = resource.listSettlements(PORTFOLIO, "ref-1")
 
     then:
-    page.total() == 1
-    page.items()*.tradeId() == ["trade-1"]
-    page.items()[0].cost() == 9d
-    wireMock.verify(getRequestedFor(urlPathEqualTo("/v1/settlements/gopacs/${PORTFOLIO}"))
-            .withQueryParam("start", equalTo("1792677600"))
-            .withQueryParam("end", equalTo("1792684800"))
-            .withQueryParam("orderReference", equalTo("ref-1"))
-            .withQueryParam("limit", equalTo("100"))
-            .withQueryParam("offset", equalTo("0")))
+    settlements*.tradeId() == ["ada69bb6-9a01-4c5f-a061-287760472a65", "0b8c4c1e-58f5-4b8e-9a3e-0d7c9c1f2a11"]
+    settlements*.ean() == ["871234567891234567"] * 2
+    settlements*.capacityUnit() == ["MW", "KW"]
+    settlements*.volumeUnit() == ["MWH", "KWH"]
+    settlements*.priceUnit() == ["EUR/MWH", "EUR/KWH"]
+    settlements[0].cost() == 5d
+    settlements[0].modifiedAt() == 1790978500L
+    wireMock.verify(getRequestedFor(urlEqualTo("/v1/settlements/gopacs/${PORTFOLIO}/ref-1")))
   }
 }

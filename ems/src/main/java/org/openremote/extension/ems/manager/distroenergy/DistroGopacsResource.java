@@ -21,9 +21,10 @@ package org.openremote.extension.ems.manager.distroenergy;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 
 import jakarta.ws.rs.*;
+import java.util.List;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
-import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlementPage;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
 
 /**
  * Distro Energy GOPACS Connector API. All timestamps are epoch seconds. A non-2xx response surfaces
@@ -58,14 +59,9 @@ public interface DistroGopacsResource {
   void cancelOrder(
       @PathParam("portfolio") String portfolio, @PathParam("reference") String reference);
 
-  /** Matched settlements overlapping [start, end), one per effective trade. */
+  /** Every trade of one order; empty when Distro has none. */
   @GET
-  @Path("settlements/gopacs/{portfolio}")
-  GopacsSettlementPage listSettlements(
-      @PathParam("portfolio") String portfolio,
-      @QueryParam("start") long start,
-      @QueryParam("end") long end,
-      @QueryParam("orderReference") String orderReference,
-      @QueryParam("limit") int limit,
-      @QueryParam("offset") int offset);
+  @Path("settlements/gopacs/{portfolio}/{reference}")
+  List<GopacsSettlement> listSettlements(
+      @PathParam("portfolio") String portfolio, @PathParam("reference") String reference);
 }

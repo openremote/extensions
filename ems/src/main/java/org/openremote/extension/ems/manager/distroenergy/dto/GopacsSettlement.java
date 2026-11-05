@@ -20,17 +20,24 @@ package org.openremote.extension.ems.manager.distroenergy.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-/** One effective ETPA trade. Capacity in MW, volume in MWh, price in EUR/MWh, cost in EUR. */
+/**
+ * One ETPA trade of an order. Units are as Distro sends them, either KW, KWH and EUR/KWH or MW, MWH
+ * and EUR/MWH; cost is in EUR.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record GopacsSettlement(
     String tradeId,
     String orderReference,
+    String ean,
     String direction,
     long start,
     long end,
     double capacity,
+    String capacityUnit,
     double volume,
+    String volumeUnit,
     double price,
+    String priceUnit,
     double cost,
-    long matchedAt,
-    long settledAt) {}
+    long settledAt,
+    long modifiedAt) {}

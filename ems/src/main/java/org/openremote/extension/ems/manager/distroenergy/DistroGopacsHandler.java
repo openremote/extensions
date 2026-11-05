@@ -53,7 +53,6 @@ import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectric
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
-import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlementPage;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.asset.AssetStorageService;
 import org.openremote.model.Container;
@@ -92,9 +91,6 @@ public class DistroGopacsHandler {
 
   /** Distro takes quantities of at least 0.1 MW with at most one decimal, so steps of 100 kW. */
   protected static final double MIN_QUANTITY_KW = 100;
-
-  /** Largest page size the settlements endpoint accepts. */
-  protected static final int SETTLEMENT_PAGE_SIZE = 100;
 
   /** Distro's error bodies are short JSON; anything longer is cut off in logs and history. */
   private static final int MAX_ERROR_BODY_LENGTH = 500;
@@ -824,33 +820,22 @@ public class DistroGopacsHandler {
    * recording them and saving the tracked orders.
    *
    * <p>Distro makes the trades available as soon as the order is SETTLED, so they are fetched once.
-   * A failed fetch is recorded and not retried.
+   * A failed fetch, or a settled order without trades, is recorded and not retried.
    */
   protected void recordSettlements(GopacsOrder order) {
-    // Fetched in full before recording, so a failed page never leaves the trades half recorded.
-    List<GopacsSettlement> settlements = new ArrayList<>();
+    List<GopacsSettlement> settlements;
     try {
-      GopacsSettlementPage page;
-      do {
-        page =
-            resource.listSettlements(
-                portfolio,
-                order.start(),
-                order.end(),
-                order.reference(),
-                SETTLEMENT_PAGE_SIZE,
-                settlements.size());
-        if (page.items() != null) {
-          settlements.addAll(page.items());
-        }
-      } while (page.items() != null
-          && !page.items().isEmpty()
-          && settlements.size() < page.total());
+      settlements = resource.listSettlements(portfolio, order.reference());
     } catch (RuntimeException e) {
       String failure =
           logFailure(
               "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(), e);
       recordHistory("SETTLEMENTS_FAILED", order, failure);
+      return;
+    }
+    if (settlements == null || settlements.isEmpty()) {
+      LOG.warning("Distro returned no trades for settled GOPACS order " + order.reference());
+      recordHistory("SETTLEMENTS_FAILED", order, "Distro returned no trades");
       return;
     }
 
