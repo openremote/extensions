@@ -479,7 +479,9 @@ public class DistroGopacsHandler {
     if (SUGGESTION_INPUTS.contains(attributeName)) {
       updateSuggestion();
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.getName())) {
-      replaceOrders();
+      if (replaceOrders(orders.values())) {
+        saveOrders();
+      }
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName())
         && Boolean.TRUE.equals(value)) {
       LOG.info("Order confirmed for Distro GOPACS asset " + assetId);
@@ -823,30 +825,39 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Re-submits the replaceable orders for the current announcement at the asset's current price.
-   * Reads the price from the asset rather than the event, because the executor may run the
-   * reactions to two quick changes in either order. Orders already at that price are left alone, so
-   * the older of two reactions does not call Distro again.
+   * Re-submits those of the candidates that are replaceable and for the current announcement at the
+   * asset's current price. Reads the price from the asset rather than the event, because the
+   * executor may run the reactions to two quick changes in either order. Orders already at that
+   * price are left alone, so the older of two reactions does not call Distro again. Runs on every
+   * price change and again after every poll, so an order that was still pending when the price
+   * changed, or whose replace failed, gets the price once it is replaceable. Orders the operator
+   * asked to cancel are left to {@link #cancelStaleOrders}. Does not save the tracked orders.
+   *
+   * @return whether there were any such orders.
    */
-  protected void replaceOrders() {
+  protected boolean replaceOrders(Collection<GopacsOrder> candidates) {
     EmsDistroEnergyAsset asset = findAsset();
     String announcementId = asset == null ? null : asset.getGopacsAnnouncementId().orElse(null);
     Double currentPrice = asset == null ? null : asset.getGopacsOrderPrice().orElse(null);
     if (announcementId == null || currentPrice == null) {
-      return;
+      return false;
     }
     double price = roundToCents(currentPrice);
     List<GopacsOrder> toReplace =
-        ordersFor(announcementId, REPLACEABLE_STATUSES).stream()
-            .filter(order -> order.price() != price)
+        candidates.stream()
+            .filter(
+                order ->
+                    REPLACEABLE_STATUSES.contains(order.status())
+                        && announcementId.equals(announcementOf(order))
+                        && order.price() != price
+                        && !cancelRequested.contains(order.reference()))
             .toList();
     if (toReplace.isEmpty()) {
       LOG.fine(
           String.format(
-              "Price change for Distro GOPACS asset %s: no replaceable orders for announcement %s"
-                  + " other than at %s EUR/MWh",
+              "No Distro GOPACS orders of asset %s for announcement %s to replace at %s EUR/MWh",
               assetId, announcementId, price));
-      return;
+      return false;
     }
     for (GopacsOrder order : toReplace) {
       GopacsOrderRequest request = order.toRequest(price);
@@ -870,7 +881,7 @@ public class DistroGopacsHandler {
         recordHistory("REPLACE_FAILED", order, failure);
       }
     }
-    saveOrders();
+    return true;
   }
 
   /**
@@ -958,9 +969,10 @@ public class DistroGopacsHandler {
   /**
    * Refreshes every tracked order. A status change is recorded in the history and an order in a
    * final status is finished with, see {@link #finishOrder}. Then, with the statuses fresh, the
-   * open orders of an announcement that is no longer current are cancelled, which retries a cancel
-   * that failed when the announcement changed. Only orders refreshed in this poll are cancelled, so
-   * an outage that also fails the refresh does not add a failed cancel to the history every poll.
+   * orders not at the asset's price are replaced and the open orders of an announcement that is no
+   * longer current are cancelled, which retries a replace or cancel that did not happen when the
+   * price or announcement changed. Only orders refreshed in this poll are replaced or cancelled, so
+   * an outage that also fails the refresh does not add a failure to the history every poll.
    */
   protected synchronized void pollOrders() {
     if (undeployed || orders.isEmpty()) {
@@ -1003,6 +1015,8 @@ public class DistroGopacsHandler {
     }
     EmsDistroEnergyAsset asset = findAsset();
     if (asset != null) {
+      // The two pick disjoint orders: replacing skips what cancelling picks.
+      replaceOrders(refreshed);
       cancelStaleOrders(refreshed, asset.getGopacsAnnouncementId().orElse(null));
     }
     cancelRequested.retainAll(orders.keySet());

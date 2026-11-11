@@ -293,7 +293,9 @@ cancelled (Distro answers `423`).
 
 A price change replaces the `SUBMITTED` orders of the current announcement at the price the asset holds when the
 change is processed, so two quick changes cannot leave an order at the older price. Orders already at that price are
-left alone.
+left alone. Every poll replaces again what it refreshed and finds at another price, so an order that was still
+`PENDING` when the price changed, or whose replace failed, gets the new price once it is `SUBMITTED`. Orders the
+operator asked to cancel keep their price.
 
 Open orders are cancelled when their announcement closes or is replaced by another, or when the operator sets
 `gopacsCancelOrders`. A failed cancel is retried after every poll that refreshes the order, until the cancel succeeds or

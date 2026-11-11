@@ -386,6 +386,53 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders["open"].price() == 60d
   }
 
+  def "a poll replaces an order that was still pending when the price changed"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("open", "PENDING", ANNOUNCEMENT, 45))
+    asset.setGopacsOrderPrice(60d)
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60d)
+
+    then:
+    0 * resource._
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "open") >> stored("open", "SUBMITTED", ANNOUNCEMENT, 45)
+    1 * resource.replaceOrder(PORTFOLIO, "open", { it.price() == 60d }) >>
+    stored("open", "SUBMITTED", ANNOUNCEMENT, 60)
+    0 * resource._
+    handler.orders["open"].price() == 60d
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).open.price == 60d
+  }
+
+  def "a poll leaves the price of an order the operator asked to cancel"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("open", "SUBMITTED", ANNOUNCEMENT, 45))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.name, false, true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "open") >> { throw new WebApplicationException(502) }
+
+    when:
+    asset.setGopacsOrderPrice(60d)
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "open") >> stored("open", "SUBMITTED", ANNOUNCEMENT, 45)
+    1 * resource.cancelOrder(PORTFOLIO, "open")
+    1 * resource.listSettlements(PORTFOLIO, "open") >> []
+    0 * resource._
+    handler.orders.isEmpty()
+  }
+
   def "a new announcement cancels the open orders placed for the previous one"() {
     given:
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue("next")
