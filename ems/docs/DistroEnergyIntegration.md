@@ -203,8 +203,9 @@ These attributes are copied from the `Ems GOPACS Asset`:
 
 They are copied when one of them changes on the GOPACS asset, when either asset is saved, and when the manager starts.
 Only values that differ are written, so the redispatch poller rewriting the same announcement on each poll leaves the
-Distro asset alone. Nothing is copied while the parent has more than one `Ems GOPACS Asset`. Attribute links set up
-for an earlier version are no longer needed and can be removed.
+Distro asset alone. Nothing is copied while the parent has more than one `Ems GOPACS Asset`. Remove attribute links set
+up for an earlier version: they rewrite unchanged values, which makes the handler redo the pre-filled order on its next
+start and drop what the operator entered.
 
 | Attribute                            | Value Type       | Read-only | Purpose                                                                                          |
 | ------------------------------------ | ---------------- | --------- | ------------------------------------------------------------------------------------------------ |
@@ -217,7 +218,7 @@ for an earlier version are no longer needed and can be removed.
 | `gopacsCancelOrders`                 | Boolean          |           | Set to `true` to cancel every open order; reset by the handler                                   |
 | `gopacsOrders`                       | JSON object      | ✓         | Orders still being tracked, by reference, as last returned by Distro                             |
 | `gopacsOrderHistory`                 | JSON object      | ✓         | One data point per order action, status change, refused confirmation or price change             |
-| `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per settled trade                                                                 |
+| `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per order with trades, holding all of them                                        |
 | `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                                      |
 
 #### Workflow
@@ -235,7 +236,7 @@ sequenceDiagram
     D->>API: POST /gopacs/{portfolio}/orders
     loop Every 5 minutes while orders are tracked
         D->>API: GET /gopacs/{portfolio}/orders/{reference}
-        D->>API: GET /settlements/gopacs/{portfolio}/{reference} (once SETTLED)
+        D->>API: GET /settlements/gopacs/{portfolio}/{reference} (once final)
     end
     Op->>D: Change gopacsOrderPrice
     D->>API: PUT /gopacs/{portfolio}/orders/{reference}
@@ -253,19 +254,25 @@ sequenceDiagram
 **Quantity** is the constant power the batteries under the parent optimisation asset can hold for the whole window:
 
 - Only batteries allowed to charge (`BUY`) or discharge (`SELL`) and not `disconnected` count
-- Power: the sum of `chargePowerMaximum` or `dischargePowerMaximum`
-- Energy: the sum of the headroom to `energyLevelPercentageMaximum` (`BUY`, divided by `chargeEfficiency`) or to
-  `energyLevelPercentageMinimum` (`SELL`, multiplied by `dischargeEfficiency`), divided by the window duration
-- The lower of the two, rounded down to 100 kW steps. Distro's minimum order is 0.1 MW
+- Per battery, the lower of its power and its energy over the window:
+  - Power: `chargePowerMaximum` (`BUY`) or `dischargePowerMaximum` (`SELL`)
+  - Energy: the headroom to `energyLevelPercentageMaximum` (`BUY`, divided by `chargeEfficiency`) or to
+    `energyLevelPercentageMinimum` (`SELL`, multiplied by `dischargeEfficiency`), divided by the window duration
+- The sum over the batteries, rounded down to 100 kW steps. Distro's minimum order is 0.1 MW
+
+One battery's spare energy cannot cover another's power, so the limit is taken per battery before adding up. The handler
+pre-fills type and quantity whenever the announcement, its window or its effectivity changes, overwriting what was
+there. When it starts, it does the same if any of those changed after type and quantity were last written, as happens
+when they are copied in while it is not running. A type or quantity entered after the last change is kept.
 
 #### Placing an Order
 
 On `gopacsConfirmOrder` the handler rounds the quantity down to 100 kW steps and the price to cents, as Distro takes at
-most one decimal in MW and two in EUR/MWh. It then checks that there is an announcement, an 18-digit EAN, a `BUY` or
-`SELL` type, a quantity of at least 100 kW, a price, and a non-empty window that starts more than 15
-minutes from now (Distro's latest expiry). When `gopacsBidValidityEnd` is known it must not have passed, as GOPACS no
-longer takes bids for the announcement after it. A failed check is logged and recorded as `REFUSED` in `gopacsOrderHistory`.
-The order is sent with:
+most one decimal in MW and two in EUR/MWh. It strips the `ean.` prefix GOPACS uses from the EAN. It then checks that
+there is an announcement, an 18-digit EAN, a `BUY` or `SELL` type, a quantity of at least 100 kW, a price, and a
+non-empty window that starts more than 15 minutes from now (Distro's latest expiry). When `gopacsBidValidityEnd` is
+known it must not have passed, as GOPACS no longer takes bids for the announcement after it. A failed check is logged
+and recorded as `REFUSED` in `gopacsOrderHistory`. The order is sent with:
 
 | Field                  | Source                                                                                                                                    |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -281,20 +288,35 @@ untracks it when Distro answers `404`. Either way the failure is recorded as `CR
 
 #### Order Lifecycle
 
-`PENDING` and `SUBMITTED` orders are open: they are cancelled when their announcement closes or is replaced by another,
-or when the operator sets `gopacsCancelOrders`. A price change replaces the `SUBMITTED` orders of the current
-announcement. A `LOCKED` order cannot be changed
-(Distro answers `423`) and keeps its old price. Matched orders stay tracked until they are `SETTLED`, at which point
-all their trades are recorded in `gopacsSettlementHistory`, with the capacity, volume and price units Distro reports
-(`MW`/`MWH`/`EUR/MWH` or `KW`/`KWH`/`EUR/KWH`). Distro makes the trades available as soon as an order is `SETTLED`, so
-they are fetched once; a failed fetch or a settled order without trades is recorded as `SETTLEMENTS_FAILED` and not
-retried. Orders that are `SETTLED`, `EXPIRED`, `REJECTED` or `CANCELED` are no longer tracked. The tracked orders are saved on the asset, so a restart picks them up again.
+`PENDING` and `SUBMITTED` orders are open. Distro holds a `LOCKED` order for matching, so it cannot be replaced or
+cancelled (Distro answers `423`).
 
-Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. `LOCKED` and `MATCHED` orders cannot
-be cancelled and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete
-nothing tracks them any more and their trades are not recorded, so check for them in Distro before deleting an asset.
-Changing `portfolio` stops the handler in the same way and starts a new one under the new portfolio. Distro does not
-know the remaining orders under that portfolio, so the new handler drops them on its first poll.
+A price change replaces the `SUBMITTED` orders of the current announcement at the price the asset holds when the
+change is processed, so two quick changes cannot leave an order at the older price. Orders already at that price are
+left alone.
+
+Open orders are cancelled when their announcement closes or is replaced by another, or when the operator sets
+`gopacsCancelOrders`. A failed cancel is retried after every poll that refreshes the order, until the cancel succeeds or
+the order is no longer open, at the latest when it expires. Each failed attempt is recorded as `CANCEL_FAILED` in
+`gopacsOrderHistory`. For the announcement case the retry follows from the order's announcement. For an operator cancel
+the request is kept in memory, so a restart forgets it.
+
+An order that ends `SETTLED`, `EXPIRED`, `REJECTED` or `CANCELED` has its trades fetched. A partly matched order stays
+`SUBMITTED` at Distro and can end in any of these with trades, so all four are checked. All trades of an order are
+recorded as one data point in `gopacsSettlementHistory`, with the capacity, volume and price units Distro reports
+(`MW`/`MWH`/`EUR/MWH` or `KW`/`KWH`/`EUR/KWH`), after which the order is no longer tracked. An empty answer means no
+trades, except for a `SETTLED` order, which always has some. A failed fetch, or a `SETTLED` order without trades, keeps
+the order tracked and is retried on every poll until one day after the window ends. It is then recorded as
+`SETTLEMENTS_FAILED` and dropped, as is a fetch Distro refuses with a `4xx` other than `401`. The tracked orders are
+saved on the asset, so a restart picks them up again, retries included.
+
+Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. A cancel that fails for a reason a
+retry may fix is tried up to five times in all, 1, 2, 4 and 8 minutes apart. If any are still open after that, the
+handler logs them at `SEVERE`: cancel them in Distro, as they can still be matched. `LOCKED` orders cannot be cancelled
+and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete nothing tracks
+them any more and their trades are not recorded, so check for them in Distro before deleting an asset. Changing
+`portfolio` stops the handler in the same way and starts a new one under the new portfolio. Distro does not know the
+remaining orders under that portfolio, so the new handler drops them on its first poll.
 
 #### Components
 
@@ -304,7 +326,7 @@ distroenergy/
   DistroGopacsResource.java       RESTEasy client proxy for the GOPACS Connector API
   dto/GopacsOrderRequest.java     Create and replace body
   dto/GopacsOrder.java            Order as stored by Distro
-  dto/GopacsSettlement.java       One trade of a settled order
+  dto/GopacsSettlement.java       One trade of an order
 ```
 
 ### Testing
