@@ -221,6 +221,24 @@ start and drop what the operator entered.
 | `gopacsSettlementHistory`            | JSON object      | ✓         | One data point per order with trades, holding all of them                                        |
 | `gopacsLastSync`                     | Timestamp        | ✓         | When the tracked orders were last refreshed                                                      |
 
+#### Upgrading Existing Installations
+
+An `Ems Distro Energy Asset` created before GOPACS orders has none of the `gopacs*` attributes, and updating the
+extension does not add them on its own. The migration `V20261111_01__AddDistroGopacsOrderAttributes.sql` runs when the
+manager starts and adds every missing one, with the value type and read-only and data point meta in the table above.
+Attributes an asset already has keep their value and meta. `gopacsEnabled` is added empty, so no orders are placed
+until an operator sets it to `true`. On the same start the announcement inputs are copied from the `Ems GOPACS Asset`
+next to it.
+
+The asset viewer panels for the new attributes come from `ems/config/asset-types.json`, which is only written into the
+manager config when an energy management system is created. To show them in an existing installation, either:
+
+- Set `createEnergyManagementSystem` to `true` on the `Ems Energy Optimisation Setup Asset`. It writes the viewer config
+  before checking the name, so with the name of an existing system it creates no assets. This replaces the viewer
+  config of every EMS asset type with the one shipped in the extension, so redo any changes made to it.
+- Or copy the `EmsDistroEnergyAsset` entry of `asset-types.json` into `pages.assets.viewer.assetTypes` of the manager
+  config by hand.
+
 #### Workflow
 
 ```mermaid
