@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -161,6 +162,13 @@ public class DistroGopacsHandler {
 
   /** Tracked orders by reference, mirrored to {@link EmsDistroEnergyAsset#GOPACS_ORDERS}. */
   protected final Map<String, GopacsOrder> orders = new LinkedHashMap<>();
+
+  /**
+   * References of the orders the operator asked to cancel, so {@link #cancelStaleOrders} retries a
+   * cancel that failed after every poll. Held in memory only: after a restart the {@code
+   * CANCEL_FAILED} history entry is what is left of the request.
+   */
+  protected final Set<String> cancelRequested = new HashSet<>();
 
   protected ScheduledFuture<?> pollFuture;
 
@@ -480,7 +488,9 @@ public class DistroGopacsHandler {
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.getName())
         && Boolean.TRUE.equals(value)) {
       LOG.info("Cancel of all open orders requested for Distro GOPACS asset " + assetId);
-      cancel(ordersFor(null, OPEN_STATUSES));
+      List<GopacsOrder> open = ordersFor(null, OPEN_STATUSES);
+      open.forEach(order -> cancelRequested.add(order.reference()));
+      cancel(open);
       saveOrders();
       resetFlag(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS);
     }
@@ -864,10 +874,11 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Cancels those of the candidates that are open and placed for another announcement than the
-   * current one, or every open one when there is none. Runs on every change of announcement and
-   * again after every poll, so a cancel that failed is retried until it succeeds or the order is no
-   * longer open, at the latest when it expires. Does not save the tracked orders.
+   * Cancels those of the candidates that are open and either placed for another announcement than
+   * the current one, or every open one when there is none, or in {@link #cancelRequested}. Runs on
+   * every change of announcement and again after every poll, so a cancel that failed is retried
+   * until it succeeds or the order is no longer open, at the latest when it expires. Does not save
+   * the tracked orders.
    *
    * @return whether there were any such orders.
    */
@@ -878,14 +889,16 @@ public class DistroGopacsHandler {
             .filter(
                 order ->
                     OPEN_STATUSES.contains(order.status())
-                        && !Objects.equals(announcementOf(order), currentAnnouncementId))
+                        && (cancelRequested.contains(order.reference())
+                            || !Objects.equals(announcementOf(order), currentAnnouncementId)))
             .toList();
     if (stale.isEmpty()) {
       return false;
     }
     LOG.info(
         String.format(
-            "Cancelling %d open Distro GOPACS orders for asset %s that are not for announcement %s",
+            "Cancelling %d open Distro GOPACS orders for asset %s that the operator asked to cancel"
+                + " or that are not for announcement %s",
             stale.size(), assetId, currentAnnouncementId));
     cancel(stale);
     return true;
@@ -947,7 +960,7 @@ public class DistroGopacsHandler {
    * final status is finished with, see {@link #finishOrder}. Then, with the statuses fresh, the
    * open orders of an announcement that is no longer current are cancelled, which retries a cancel
    * that failed when the announcement changed. Only orders refreshed in this poll are cancelled, so
-   * a Distro outage does not add a failed cancel to the history every poll.
+   * an outage that also fails the refresh does not add a failed cancel to the history every poll.
    */
   protected synchronized void pollOrders() {
     if (undeployed || orders.isEmpty()) {
@@ -992,6 +1005,7 @@ public class DistroGopacsHandler {
     if (asset != null) {
       cancelStaleOrders(refreshed, asset.getGopacsAnnouncementId().orElse(null));
     }
+    cancelRequested.retainAll(orders.keySet());
     saveOrders();
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_LAST_SYNC, timerService.getCurrentTimeMillis());
   }

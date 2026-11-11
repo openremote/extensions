@@ -506,6 +506,28 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders.keySet() == ["c"] as Set
   }
 
+  def "a poll retries a cancel the operator asked for that failed"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("current", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.name, false, true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "current") >> { throw new WebApplicationException(502) }
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "current") >> stored("current", "SUBMITTED", ANNOUNCEMENT)
+    1 * resource.cancelOrder(PORTFOLIO, "current")
+    1 * resource.listSettlements(PORTFOLIO, "current") >> []
+    0 * resource._
+    handler.orders.isEmpty()
+  }
+
   def "polling keeps live orders, records settled trades and drops final orders"() {
     given:
     track(stored("live", "SUBMITTED", ANNOUNCEMENT))
