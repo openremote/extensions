@@ -463,9 +463,8 @@ public class DistroGopacsHandler {
 
     if (SUGGESTION_INPUTS.contains(attributeName)) {
       updateSuggestion();
-    } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.getName())
-        && value instanceof Number price) {
-      replaceOrders(price.doubleValue());
+    } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.getName())) {
+      replaceOrders();
     } else if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.getName())
         && Boolean.TRUE.equals(value)) {
       LOG.info("Order confirmed for Distro GOPACS asset " + assetId);
@@ -783,22 +782,32 @@ public class DistroGopacsHandler {
     saveOrders();
   }
 
-  /** Re-submits the replaceable orders for the current announcement at the new price. */
-  protected void replaceOrders(double price) {
+  /**
+   * Re-submits the replaceable orders for the current announcement at the asset's current price.
+   * Reads the price from the asset rather than the event, because the executor may run the
+   * reactions to two quick changes in either order. Orders already at that price are left alone, so
+   * the older of two reactions does not call Distro again.
+   */
+  protected void replaceOrders() {
     EmsDistroEnergyAsset asset = findAsset();
     String announcementId = asset == null ? null : asset.getGopacsAnnouncementId().orElse(null);
-    if (announcementId == null) {
+    Double currentPrice = asset == null ? null : asset.getGopacsOrderPrice().orElse(null);
+    if (announcementId == null || currentPrice == null) {
       return;
     }
-    List<GopacsOrder> toReplace = ordersFor(announcementId, REPLACEABLE_STATUSES);
+    double price = roundToCents(currentPrice);
+    List<GopacsOrder> toReplace =
+        ordersFor(announcementId, REPLACEABLE_STATUSES).stream()
+            .filter(order -> order.price() != price)
+            .toList();
     if (toReplace.isEmpty()) {
       LOG.fine(
           String.format(
-              "Price change for Distro GOPACS asset %s: no replaceable orders for announcement %s",
-              assetId, announcementId));
+              "Price change for Distro GOPACS asset %s: no replaceable orders for announcement %s"
+                  + " other than at %s EUR/MWh",
+              assetId, announcementId, price));
       return;
     }
-    price = roundToCents(price);
     for (GopacsOrder order : toReplace) {
       GopacsOrderRequest request = order.toRequest(price);
       try {

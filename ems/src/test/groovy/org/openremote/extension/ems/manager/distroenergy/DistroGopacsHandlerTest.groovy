@@ -351,6 +351,7 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("pending-current", "PENDING", ANNOUNCEMENT))
     track(stored("locked-current", "LOCKED", ANNOUNCEMENT))
     track(stored("open-other", "SUBMITTED", "other-announcement"))
+    asset.setGopacsOrderPrice(60.004d)
 
     when:
     handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 60.004d)
@@ -362,6 +363,27 @@ class DistroGopacsHandlerTest extends Specification {
     stored("open-current", "SUBMITTED", ANNOUNCEMENT, 60)
     0 * resource.replaceOrder(*_)
     handler.orders["open-current"].price() == 60d
+  }
+
+  def "a price change that runs after a newer one keeps the newer price"() {
+    given: "the asset already has the newer price when the older change runs"
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("open", "SUBMITTED", ANNOUNCEMENT, 45))
+    asset.setGopacsOrderPrice(60d)
+
+    when: "the newer change runs first"
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 50d, 60d)
+
+    then:
+    1 * resource.replaceOrder(PORTFOLIO, "open", { it.price() == 60d }) >>
+    stored("open", "SUBMITTED", ANNOUNCEMENT, 60)
+
+    when: "the older change runs last"
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ORDER_PRICE.name, 45d, 50d)
+
+    then:
+    0 * resource._
+    handler.orders["open"].price() == 60d
   }
 
   def "a new announcement cancels the open orders placed for the previous one"() {
