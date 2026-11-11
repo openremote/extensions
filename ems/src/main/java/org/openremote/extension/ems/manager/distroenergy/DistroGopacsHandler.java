@@ -480,11 +480,13 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * The constant power the batteries can hold for the whole window on one side: their combined
-   * maximum power, limited so the energy over the window fits their state-of-charge headroom (seen
-   * from the grid, so through the charge or discharge efficiency). Batteries that are not allowed
-   * on that side, are disconnected or lack the data to size them are left out. Rounded down to the
-   * 0.1 MW steps Distro accepts.
+   * The constant power the batteries can hold for the whole window on one side: per battery its
+   * maximum power, limited so its energy over the window fits its own state-of-charge headroom
+   * (seen from the grid, so through the charge or discharge efficiency), summed over the batteries.
+   * Each battery is limited on its own because one battery's spare energy cannot make up for
+   * another's power limit. Batteries that are not allowed on that side, are disconnected or lack
+   * the data to size them are left out. The total is rounded down to the 0.1 MW steps Distro
+   * accepts.
    */
   static double quantityKw(
       List<EmsElectricityBatteryAsset> batteries,
@@ -494,8 +496,7 @@ public class DistroGopacsHandler {
       return 0;
     }
     boolean buy = orderType == BUY;
-    double powerKw = 0;
-    double energyKwh = 0;
+    double totalKw = 0;
 
     for (EmsElectricityBatteryAsset battery : batteries) {
       boolean allowed =
@@ -529,15 +530,16 @@ public class DistroGopacsHandler {
           (buy ? battery.getChargeEfficiency() : battery.getDischargeEfficiency()).orElse(100)
               / 100.0;
       // Charging draws more from the grid than ends up stored; discharging delivers less.
-      energyKwh += buy ? headroomKwh / efficiency : headroomKwh * efficiency;
+      double energyKwh = buy ? headroomKwh / efficiency : headroomKwh * efficiency;
       // Discharge power is stored as a negative number.
-      powerKw +=
+      double powerKw =
           Math.abs(
               (buy ? battery.getChargePowerMaximum() : battery.getDischargePowerMaximum())
                   .orElse(0.0));
+      totalKw += Math.min(powerKw, energyKwh / windowHours);
     }
 
-    return roundDownToStep(Math.min(powerKw, energyKwh / windowHours));
+    return roundDownToStep(totalKw);
   }
 
   /** Rounded down to the 100 kW steps Distro accepts, so an order never offers more than asked. */

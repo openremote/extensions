@@ -139,6 +139,7 @@ class DistroGopacsHandlerTest extends Specification {
     "charge efficiency raises grid energy" | [battery(chargeEfficiency: 80)] | BUY | 2 || 200
     "discharge efficiency lowers it" | [battery(dischargeEfficiency: 50)] | SELL | 2 || 100
     "batteries add up" | [battery(), battery()] | BUY | 2 || 400
+    "one battery's energy cannot cover another's power" | [battery(capacity: 250d), battery(capacity: 2500d, chargeMax: 100d)] | BUY | 1 || 200
     "rounded down to 100 kW steps" | [battery(level: 45d)] | SELL | 2 || 100
     "charging not allowed" | [battery(allowCharging: false)] | BUY | 2 || 0
     "disconnected" | [battery(connection: EmsElectricityBatteryConnectionStatusValueType.disconnected)] | BUY | 2 || 0
