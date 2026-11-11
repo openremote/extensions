@@ -40,6 +40,7 @@ import spock.lang.Specification
 import java.time.Instant
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.BUY
 import static org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeValueType.SELL
@@ -69,6 +70,7 @@ class DistroGopacsHandlerTest extends Specification {
   List<AttributeEvent> sent
   DistroGopacsHandler handler
   long now = NOW
+  List<Map> scheduled
 
   def setupSpec() {
     // Asset construction needs the attribute descriptors of this extension's asset types.
@@ -80,6 +82,7 @@ class DistroGopacsHandlerTest extends Specification {
     asset = new EmsDistroEnergyAsset("distro").setId(ASSET_ID).setParentId(PARENT_ID)
     batteries = [battery()]
     sent = []
+    scheduled = []
 
     def assetProcessingService = Stub(AssetProcessingService) {
       sendAttributeEvent(_, _) >> { AttributeEvent event, String source -> sent << event }
@@ -95,6 +98,10 @@ class DistroGopacsHandlerTest extends Specification {
     def executor = Stub(ScheduledExecutorService) {
       execute(_) >> { Runnable task -> task.run() }
       scheduleAtFixedRate(*_) >> Stub(ScheduledFuture)
+      schedule(_ as Runnable, _, _) >> { Runnable task, long delay, TimeUnit unit ->
+        scheduled << [task: task, delayMillis: unit.toMillis(delay)]
+        return Stub(ScheduledFuture)
+      }
     }
     def container = Stub(Container) {
       getService(TimerService) >> timerService
@@ -370,6 +377,49 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders.keySet() == ["locked-previous", "open-next"] as Set
   }
 
+  def "a poll cancels the open orders of an announcement that closed"() {
+    given: "no current announcement"
+    track(stored("open", "SUBMITTED", ANNOUNCEMENT))
+    track(stored("locked", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "open") >> stored("open", "SUBMITTED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "locked") >> stored("locked", "LOCKED", ANNOUNCEMENT)
+    1 * resource.cancelOrder(PORTFOLIO, "open")
+    1 * resource.listSettlements(PORTFOLIO, "open") >> []
+    0 * resource._
+    handler.orders.keySet() == ["locked"] as Set
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).keySet() == ["locked"] as Set
+  }
+
+  def "a poll retries a cancel that failed when the announcement changed"() {
+    given:
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue("next")
+    track(stored("previous", "SUBMITTED", ANNOUNCEMENT))
+    track(stored("current", "SUBMITTED", "next"))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.name, ANNOUNCEMENT, "next")
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "previous") >> { throw new WebApplicationException(500) }
+    handler.orders.keySet() == ["previous", "current"] as Set
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "previous") >> stored("previous", "SUBMITTED", ANNOUNCEMENT)
+    1 * resource.getOrder(PORTFOLIO, "current") >> stored("current", "SUBMITTED", "next")
+    1 * resource.cancelOrder(PORTFOLIO, "previous")
+    1 * resource.listSettlements(PORTFOLIO, "previous") >> []
+    0 * resource._
+    handler.orders.keySet() == ["current"] as Set
+  }
+
   def "the cancel flag cancels every open order and is reset"() {
     given:
     track(stored("a", "PENDING", ANNOUNCEMENT))
@@ -563,6 +613,70 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.listSettlements(PORTFOLIO, "submitted") >> []
     0 * resource._
     handler.orders.keySet() == ["locked"] as Set
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
+    scheduled.isEmpty()
+  }
+
+  def "undeploying for good retries a cancel that failed in transit, for that order only"() {
+    given:
+    track(stored("flaky", "PENDING", ANNOUNCEMENT))
+    track(stored("fine", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "flaky") >> { throw new WebApplicationException(502) }
+    1 * resource.cancelOrder(PORTFOLIO, "fine")
+    1 * resource.listSettlements(PORTFOLIO, "fine") >> []
+    0 * resource._
+    scheduled*.delayMillis == [60_000L]
+
+    when:
+    scheduled[0].task.run()
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "flaky")
+    1 * resource.listSettlements(PORTFOLIO, "flaky") >> []
+    0 * resource._
+    handler.orders.isEmpty()
+    scheduled.size() == 1
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
+  }
+
+  def "undeploying for good gives up cancelling after five attempts over 15 minutes"() {
+    given:
+    track(stored("unreachable", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.undeploy(true)
+    runScheduled()
+
+    then:
+    5 * resource.cancelOrder(PORTFOLIO, "unreachable") >> {
+      throw new ProcessingException("Connect timed out")
+    }
+    0 * resource._
+    scheduled*.delayMillis == [60_000L, 120_000L, 240_000L, 480_000L]
+    handler.orders.keySet() == ["unreachable"] as Set
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
+    }*.value*.get()*.action == ["CANCEL_FAILED"] * 5
+  }
+
+  def "undeploying for good does not retry a cancel Distro refused with HTTP #status"() {
+    given:
+    track(stored("refused", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "refused") >> { throw new WebApplicationException(status) }
+    scheduled.isEmpty()
+
+    where:
+    status << [404, 423]
   }
 
   def "deploy restores the orders saved on the asset"() {
@@ -646,6 +760,13 @@ class DistroGopacsHandlerTest extends Specification {
   static GopacsSettlement trade(String tradeId, String reference) {
     return new GopacsSettlement(tradeId, reference, EAN, "BUY", seconds(START), seconds(END),
             0.2, "MW", 0.4, "MWH", 45, "EUR/MWH", 18, seconds(NOW), seconds(NOW))
+  }
+
+  /** Runs the scheduled tasks in order, including those they schedule. */
+  void runScheduled() {
+    for (int i = 0; i <scheduled.size(); i++) {
+      scheduled[i].task.run()
+    }
   }
 
   void track(GopacsOrder order) {
