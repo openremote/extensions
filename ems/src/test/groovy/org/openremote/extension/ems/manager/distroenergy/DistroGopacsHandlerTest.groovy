@@ -402,6 +402,7 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.getOrder(PORTFOLIO, "expired") >> stored("expired", "EXPIRED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "gone") >> { throw new NotFoundException() }
     1 * resource.listSettlements(PORTFOLIO, "settled") >> [trade("trade-1", "settled"), trade("trade-2", "settled")]
+    1 * resource.listSettlements(PORTFOLIO, "expired") >> []
     0 * resource.listSettlements(*_)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "LOCKED"
@@ -446,6 +447,59 @@ class DistroGopacsHandlerTest extends Specification {
     "are forbidden" | new WebApplicationException(403) | NOW || false | ["STATUS", "SETTLEMENTS_FAILED"]
     "still time out a day after the window" | new ProcessingException("Read timed out") | END + DAY || false | ["STATUS", "SETTLEMENTS_FAILED"]
     "are still missing a day after the window" | [] | END + DAY || false | ["STATUS", "SETTLEMENTS_FAILED"]
+  }
+
+  def "a partly matched order that ends #status records its trades"() {
+    given:
+    track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "partial") >> stored("partial", status, ANNOUNCEMENT)
+    1 * resource.listSettlements(PORTFOLIO, "partial") >> [trade("trade-1", "partial")]
+    handler.orders.isEmpty()
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
+    }*.value*.get()*.reference == ["partial"]
+
+    where:
+    status << ["EXPIRED", "CANCELED", "REJECTED"]
+  }
+
+  def "a cancelled order records the trades it matched before the cancel"() {
+    given:
+    track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.name, false, true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "partial")
+    1 * resource.listSettlements(PORTFOLIO, "partial") >> [trade("trade-1", "partial")]
+    handler.orders.isEmpty()
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
+    }*.value*.get()*.subMap(["action", "status"]) == [[action: "CANCELED", status: "CANCELED"]]
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
+    }*.value*.get()*.reference == ["partial"]
+  }
+
+  def "a cancelled order whose trades fail to load stays tracked as cancelled"() {
+    given:
+    track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS.name, false, true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "partial")
+    1 * resource.listSettlements(PORTFOLIO, "partial") >> {
+      throw new ProcessingException("Read timed out")
+    }
+    handler.orders["partial"].status() == "CANCELED"
   }
 
   def "the next poll retries the trades of a settled order without recording its status again"() {
@@ -505,6 +559,8 @@ class DistroGopacsHandlerTest extends Specification {
     then:
     1 * resource.cancelOrder(PORTFOLIO, "pending")
     1 * resource.cancelOrder(PORTFOLIO, "submitted")
+    1 * resource.listSettlements(PORTFOLIO, "pending") >> []
+    1 * resource.listSettlements(PORTFOLIO, "submitted") >> []
     0 * resource._
     handler.orders.keySet() == ["locked"] as Set
   }

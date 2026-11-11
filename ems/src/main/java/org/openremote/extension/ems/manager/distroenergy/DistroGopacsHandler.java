@@ -753,8 +753,10 @@ public class DistroGopacsHandler {
         resource.cancelOrder(portfolio, order.reference());
         // Also the only record once the asset is deleted, as the writes below then go nowhere.
         LOG.info("Cancelled Distro GOPACS order " + order.reference() + " for asset " + assetId);
-        orders.remove(order.reference());
-        recordHistory("CANCELED", order, null);
+        GopacsOrder canceled = order.withStatus("CANCELED");
+        recordHistory("CANCELED", canceled, null);
+        // It may have matched in part before the cancel took effect.
+        finishOrder(canceled);
       } catch (RuntimeException e) {
         String failure =
             logFailure(
@@ -831,12 +833,14 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Stops tracking an order in a final status once its trades are recorded. While they cannot be
-   * fetched yet the order stays tracked in its final status, so the next poll, also after a
-   * restart, tries again without recording the status change twice.
+   * Stops tracking an order in a final status once its trades are recorded. Any final order can
+   * have trades: Distro reports them when the order matches, and a partly matched order can still
+   * end EXPIRED, CANCELED or REJECTED. While they cannot be fetched the order stays tracked in its
+   * final status, so the next poll, also after a restart, tries again without recording the status
+   * change twice.
    */
   protected void finishOrder(GopacsOrder order) {
-    if (!"SETTLED".equals(order.status()) || recordSettlements(order)) {
+    if (recordSettlements(order)) {
       orders.remove(order.reference());
     } else {
       orders.put(order.reference(), order);
@@ -844,12 +848,13 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Records the trades of a settled order as one data point. A settled order's trades no longer
-   * change and the order is untracked right after, so they are recorded once, unless the manager
-   * stops between recording them and saving the tracked orders.
+   * Records the trades of an order in a final status as one data point. A final order's trades no
+   * longer change and the order is untracked right after, so they are recorded once, unless the
+   * manager stops between recording them and saving the tracked orders.
    *
-   * <p>A settled order always has trades, so a failed fetch or an empty answer is retried until
-   * {@link #SETTLEMENT_RETRY_WINDOW} after the order's window ends. An HTTP 4xx is not retried.
+   * <p>A failed fetch is retried until {@link #SETTLEMENT_RETRY_WINDOW} after the order's window
+   * ends, and so is an empty answer for a SETTLED order, which always has trades. An empty answer
+   * for any other final status means it never matched. An HTTP 4xx is not retried.
    *
    * @return true when the order is done with: its trades are recorded or will not be.
    */
@@ -860,10 +865,20 @@ public class DistroGopacsHandler {
     } catch (RuntimeException e) {
       String failure =
           logFailure(
-              "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(), e);
+              "Failed to fetch the trades of "
+                  + order.status()
+                  + " Distro GOPACS order "
+                  + order.reference(),
+              e);
       return settlementsFailed(order, failure, isClientError(e));
     }
     if (settlements == null || settlements.isEmpty()) {
+      if (!"SETTLED".equals(order.status())) {
+        LOG.fine(
+            String.format(
+                "%s Distro GOPACS order %s has no trades", order.status(), order.reference()));
+        return true;
+      }
       LOG.warning("Distro returned no trades for settled GOPACS order " + order.reference());
       return settlementsFailed(order, "Distro returned no trades", false);
     }

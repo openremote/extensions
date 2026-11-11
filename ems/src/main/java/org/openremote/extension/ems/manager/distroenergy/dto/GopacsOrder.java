@@ -58,6 +58,23 @@ public record GopacsOrder(
         null);
   }
 
+  /** The same order in another status. */
+  public GopacsOrder withStatus(String status) {
+    return new GopacsOrder(
+        reference,
+        orderId,
+        status,
+        orderType,
+        quantity,
+        price,
+        start,
+        end,
+        ean,
+        metadata,
+        customExpirationTime,
+        reason);
+  }
+
   /** The replace body that keeps everything but the price. */
   public GopacsOrderRequest toRequest(double price) {
     return new GopacsOrderRequest(
