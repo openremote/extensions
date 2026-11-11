@@ -90,6 +90,12 @@ public class DistroGopacsHandler {
   protected static final Duration POLL_INTERVAL = Duration.ofMinutes(5);
   protected static final long ISP_SECONDS = Duration.ofMinutes(15).toSeconds();
 
+  /**
+   * How long after an order's window ends a failed fetch of its trades is still retried. Distro
+   * stores the trades when the order matches, so they normally load on the first try.
+   */
+  protected static final Duration SETTLEMENT_RETRY_WINDOW = Duration.ofDays(1);
+
   /** Distro takes quantities of at least 0.1 MW with at most one decimal, so steps of 100 kW. */
   protected static final double MIN_QUANTITY_KW = 100;
 
@@ -683,9 +689,7 @@ public class DistroGopacsHandler {
       recordHistory("CREATED", order, null);
     } catch (RuntimeException e) {
       String failure = logFailure("Failed to place Distro GOPACS order for asset " + assetId, e);
-      if (e instanceof WebApplicationException wae
-          && wae.getResponse().getStatus() >= 400
-          && wae.getResponse().getStatus() < 500) {
+      if (isClientError(e)) {
         // Rejected outright, so Distro holds no order for this reference.
         orders.remove(request.reference());
       }
@@ -782,8 +786,8 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Refreshes every tracked order. A status change is recorded in the history; a settled order
-   * records its trades; an order in a final status stops being tracked.
+   * Refreshes every tracked order. A status change is recorded in the history and an order in a
+   * final status is finished with, see {@link #finishOrder}.
    */
   protected synchronized void pollOrders() {
     if (undeployed || orders.isEmpty()) {
@@ -805,10 +809,7 @@ public class DistroGopacsHandler {
           recordHistory("STATUS", order, order.reason());
         }
         if (FINAL_STATUSES.contains(order.status())) {
-          if ("SETTLED".equals(order.status())) {
-            recordSettlements(order);
-          }
-          orders.remove(order.reference());
+          finishOrder(order);
         } else {
           orders.put(order.reference(), order);
         }
@@ -830,14 +831,29 @@ public class DistroGopacsHandler {
   }
 
   /**
+   * Stops tracking an order in a final status once its trades are recorded. While they cannot be
+   * fetched yet the order stays tracked in its final status, so the next poll, also after a
+   * restart, tries again without recording the status change twice.
+   */
+  protected void finishOrder(GopacsOrder order) {
+    if (!"SETTLED".equals(order.status()) || recordSettlements(order)) {
+      orders.remove(order.reference());
+    } else {
+      orders.put(order.reference(), order);
+    }
+  }
+
+  /**
    * Records the trades of a settled order as one data point. A settled order's trades no longer
    * change and the order is untracked right after, so they are recorded once, unless the manager
    * stops between recording them and saving the tracked orders.
    *
-   * <p>Distro makes the trades available as soon as the order is SETTLED, so they are fetched once.
-   * A failed fetch, or a settled order without trades, is recorded and not retried.
+   * <p>A settled order always has trades, so a failed fetch or an empty answer is retried until
+   * {@link #SETTLEMENT_RETRY_WINDOW} after the order's window ends. An HTTP 4xx is not retried.
+   *
+   * @return true when the order is done with: its trades are recorded or will not be.
    */
-  protected void recordSettlements(GopacsOrder order) {
+  protected boolean recordSettlements(GopacsOrder order) {
     List<GopacsSettlement> settlements;
     try {
       settlements = resource.listSettlements(portfolio, order.reference());
@@ -845,13 +861,11 @@ public class DistroGopacsHandler {
       String failure =
           logFailure(
               "Failed to fetch the trades of settled Distro GOPACS order " + order.reference(), e);
-      recordHistory("SETTLEMENTS_FAILED", order, failure);
-      return;
+      return settlementsFailed(order, failure, isClientError(e));
     }
     if (settlements == null || settlements.isEmpty()) {
       LOG.warning("Distro returned no trades for settled GOPACS order " + order.reference());
-      recordHistory("SETTLEMENTS_FAILED", order, "Distro returned no trades");
-      return;
+      return settlementsFailed(order, "Distro returned no trades", false);
     }
 
     // One data point for all trades: OpenRemote stamps events with the current millisecond and
@@ -864,6 +878,30 @@ public class DistroGopacsHandler {
             settlements, new TypeReference<List<Map<String, Object>>>() {}));
     entry.put("recordedAt", timerService.getCurrentTimeMillis());
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY, entry);
+    return true;
+  }
+
+  /**
+   * Gives up on an order's trades when the failure is permanent or the retry window has passed.
+   *
+   * @return true when given up, false when the next poll should try again.
+   */
+  private boolean settlementsFailed(GopacsOrder order, String failure, boolean permanent) {
+    long giveUpAt = order.end() * 1000 + SETTLEMENT_RETRY_WINDOW.toMillis();
+    if (!permanent && timerService.getCurrentTimeMillis() < giveUpAt) {
+      LOG.info(
+          "Fetching the trades of Distro GOPACS order "
+              + order.reference()
+              + " again on the next poll");
+      return false;
+    }
+    LOG.severe(
+        String.format(
+            "Giving up on the trades of Distro GOPACS order %s for asset %s, they are not recorded:"
+                + " %s",
+            order.reference(), assetId, failure));
+    recordHistory("SETTLEMENTS_FAILED", order, failure);
+    return true;
   }
 
   protected void recordHistory(String action, GopacsOrder order, String detail) {
@@ -897,6 +935,15 @@ public class DistroGopacsHandler {
       LOG.log(Level.WARNING, message, e);
     }
     return failure;
+  }
+
+  /**
+   * Whether Distro answered with an HTTP 4xx, which a retry of the same request will not change.
+   */
+  static boolean isClientError(RuntimeException e) {
+    return e instanceof WebApplicationException wae
+        && wae.getResponse().getStatus() >= 400
+        && wae.getResponse().getStatus() < 500;
   }
 
   /** The HTTP status and the error body Distro sent, or the exception without a response. */

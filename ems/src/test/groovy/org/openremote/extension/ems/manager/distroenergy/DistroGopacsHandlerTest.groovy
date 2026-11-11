@@ -60,6 +60,7 @@ class DistroGopacsHandlerTest extends Specification {
   static final long NOW = Instant.parse("2026-10-22T10:00:00Z").toEpochMilli()
   static final long START = Instant.parse("2026-10-22T14:00:00Z").toEpochMilli()
   static final long END = Instant.parse("2026-10-22T16:00:00Z").toEpochMilli()
+  static final long DAY = 24 * 60 * 60 * 1000L
   static final long VALIDITY_END = Instant.parse("2026-10-22T12:07:00Z").toEpochMilli()
 
   DistroGopacsResource resource
@@ -67,6 +68,7 @@ class DistroGopacsHandlerTest extends Specification {
   List<EmsElectricityBatteryAsset> batteries
   List<AttributeEvent> sent
   DistroGopacsHandler handler
+  long now = NOW
 
   def setupSpec() {
     // Asset construction needs the attribute descriptors of this extension's asset types.
@@ -87,8 +89,8 @@ class DistroGopacsHandlerTest extends Specification {
       findAll(_) >> { batteries }
     }
     def timerService = Stub(TimerService) {
-      getCurrentTimeMillis() >> NOW
-      getNow() >> Instant.ofEpochMilli(NOW)
+      getCurrentTimeMillis() >> { now }
+      getNow() >> { Instant.ofEpochMilli(now) }
     }
     def executor = Stub(ScheduledExecutorService) {
       execute(_) >> { Runnable task -> task.run() }
@@ -414,8 +416,9 @@ class DistroGopacsHandlerTest extends Specification {
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
-  def "a failed settlement fetch is recorded and the settled order dropped"() {
+  def "trades that #label keep the settled order tracked: #tracked"() {
     given:
+    now = clock
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
 
     when:
@@ -423,16 +426,29 @@ class DistroGopacsHandlerTest extends Specification {
 
     then:
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(*_) >> { throw new NotFoundException() }
-    handler.orders.isEmpty()
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> {
+      if (answer instanceof Exception) {
+        throw answer
+      }
+      answer
+    }
+    handler.orders.containsKey("settled") == tracked
     sent.findAll {
       it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
-    }*.value*.get()*.action ==
-    ["STATUS", "SETTLEMENTS_FAILED"]
+    }*.value*.get()*.action == actions
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
+
+    where:
+    label | answer | clock || tracked | actions
+    "time out" | new ProcessingException("Read timed out") | NOW || true | ["STATUS"]
+    "fail with HTTP 500" | new WebApplicationException(500) | NOW || true | ["STATUS"]
+    "are not there yet" | [] | NOW || true | ["STATUS"]
+    "are forbidden" | new WebApplicationException(403) | NOW || false | ["STATUS", "SETTLEMENTS_FAILED"]
+    "still time out a day after the window" | new ProcessingException("Read timed out") | END + DAY || false | ["STATUS", "SETTLEMENTS_FAILED"]
+    "are still missing a day after the window" | [] | END + DAY || false | ["STATUS", "SETTLEMENTS_FAILED"]
   }
 
-  def "a settled order without trades is recorded and dropped"() {
+  def "the next poll retries the trades of a settled order without recording its status again"() {
     given:
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
 
@@ -441,13 +457,24 @@ class DistroGopacsHandlerTest extends Specification {
 
     then:
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
-    1 * resource.listSettlements(PORTFOLIO, "settled") >> []
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> {
+      throw new ProcessingException("Read timed out")
+    }
+    handler.orders["settled"].status() == "SETTLED"
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> [trade("trade-1", "settled")]
     handler.orders.isEmpty()
     sent.findAll {
       it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name
-    }*.value*.get()*.action ==
-    ["STATUS", "SETTLEMENTS_FAILED"]
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name }.isEmpty()
+    }*.value*.get()*.action == ["STATUS"]
+    sent.findAll {
+      it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
+    }*.value*.get()*.reference == ["settled"]
   }
 
   def "an undeployed handler ignores queued work"() {
