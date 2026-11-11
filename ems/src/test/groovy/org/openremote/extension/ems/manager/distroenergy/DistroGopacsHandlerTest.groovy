@@ -71,6 +71,7 @@ class DistroGopacsHandlerTest extends Specification {
   DistroGopacsHandler handler
   long now = NOW
   List<Map> scheduled
+  boolean executorShutdown
 
   def setupSpec() {
     // Asset construction needs the attribute descriptors of this extension's asset types.
@@ -83,6 +84,7 @@ class DistroGopacsHandlerTest extends Specification {
     batteries = [battery()]
     sent = []
     scheduled = []
+    executorShutdown = false
 
     def assetProcessingService = Stub(AssetProcessingService) {
       sendAttributeEvent(_, _) >> { AttributeEvent event, String source -> sent << event }
@@ -98,6 +100,7 @@ class DistroGopacsHandlerTest extends Specification {
     def executor = Stub(ScheduledExecutorService) {
       execute(_) >> { Runnable task -> task.run() }
       scheduleAtFixedRate(*_) >> Stub(ScheduledFuture)
+      isShutdown() >> { executorShutdown }
       schedule(_ as Runnable, _, _) >> { Runnable task, long delay, TimeUnit unit ->
         scheduled << [task: task, delayMillis: unit.toMillis(delay)]
         return Stub(ScheduledFuture)
@@ -377,6 +380,51 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders.keySet() == ["locked-previous", "open-next"] as Set
   }
 
+  def "an announcement change cancels against the asset's current announcement, not the event's"() {
+    given: "the asset already moved on to the next announcement when the older change runs"
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue("latest")
+    track(stored("for-middle", "SUBMITTED", "middle"))
+    track(stored("for-latest", "SUBMITTED", "latest"))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.name, ANNOUNCEMENT, "middle")
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "for-middle")
+    0 * resource.cancelOrder(*_)
+    handler.orders.keySet() == ["for-latest"] as Set
+  }
+
+  def "a closed announcement cancels every open order"() {
+    given: "no current announcement"
+    track(stored("a", "PENDING", ANNOUNCEMENT))
+    track(stored("b", "SUBMITTED", "older"))
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.name, ANNOUNCEMENT, null)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "a")
+    1 * resource.cancelOrder(PORTFOLIO, "b")
+    handler.orders.isEmpty()
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).isEmpty()
+  }
+
+  def "a poll does not cancel an order it could not refresh"() {
+    given: "no current announcement"
+    track(stored("unreachable", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "unreachable") >> {
+      throw new ProcessingException("Connect timed out")
+    }
+    0 * resource._
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }.isEmpty()
+  }
+
   def "a poll cancels the open orders of an announcement that closed"() {
     given: "no current announcement"
     track(stored("open", "SUBMITTED", ANNOUNCEMENT))
@@ -493,6 +541,7 @@ class DistroGopacsHandlerTest extends Specification {
     label | answer | clock || tracked | actions
     "time out" | new ProcessingException("Read timed out") | NOW || true | ["STATUS"]
     "fail with HTTP 500" | new WebApplicationException(500) | NOW || true | ["STATUS"]
+    "fail with HTTP 401" | new WebApplicationException(401) | NOW || true | ["STATUS"]
     "are not there yet" | [] | NOW || true | ["STATUS"]
     "are forbidden" | new WebApplicationException(403) | NOW || false | ["STATUS", "SETTLEMENTS_FAILED"]
     "still time out a day after the window" | new ProcessingException("Read timed out") | END + DAY || false | ["STATUS", "SETTLEMENTS_FAILED"]
@@ -602,6 +651,7 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("pending", "PENDING", ANNOUNCEMENT))
     track(stored("submitted", "SUBMITTED", "other-announcement"))
     track(stored("locked", "LOCKED", ANNOUNCEMENT))
+    save(handler.orders.values() + [stored("next-handler", "SUBMITTED", ANNOUNCEMENT)])
 
     when:
     handler.undeploy(true)
@@ -613,26 +663,29 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.listSettlements(PORTFOLIO, "submitted") >> []
     0 * resource._
     handler.orders.keySet() == ["locked"] as Set
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).keySet() == ["locked", "next-handler"] as Set
     scheduled.isEmpty()
   }
 
-  def "undeploying for good retries a cancel that failed in transit, for that order only"() {
+  def "undeploying for good retries a cancel that failed with #label, for that order only"() {
     given:
     track(stored("flaky", "PENDING", ANNOUNCEMENT))
     track(stored("fine", "SUBMITTED", ANNOUNCEMENT))
+    save(handler.orders.values())
 
     when:
     handler.undeploy(true)
 
     then:
-    1 * resource.cancelOrder(PORTFOLIO, "flaky") >> { throw new WebApplicationException(502) }
+    1 * resource.cancelOrder(PORTFOLIO, "flaky") >> { throw failure }
     1 * resource.cancelOrder(PORTFOLIO, "fine")
     1 * resource.listSettlements(PORTFOLIO, "fine") >> []
     0 * resource._
     scheduled*.delayMillis == [60_000L]
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).keySet() == ["flaky"] as Set
 
     when:
+    save(handler.orders.values())
     scheduled[0].task.run()
 
     then:
@@ -641,7 +694,43 @@ class DistroGopacsHandlerTest extends Specification {
     0 * resource._
     handler.orders.isEmpty()
     scheduled.size() == 1
-    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).isEmpty()
+
+    where:
+    label | failure
+    "HTTP 502" | new WebApplicationException(502)
+    "HTTP 401" | new WebApplicationException(401)
+    "a timeout" | new ProcessingException("Read timed out")
+  }
+
+  def "undeploying for good saves a cancelled order whose trades failed to load as cancelled"() {
+    given:
+    track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
+    save(handler.orders.values())
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "partial")
+    1 * resource.listSettlements(PORTFOLIO, "partial") >> {
+      throw new ProcessingException("Read timed out")
+    }
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).partial.status == "CANCELED"
+    scheduled.isEmpty()
+  }
+
+  def "undeploying for good does not schedule a retry on an executor that shut down"() {
+    given:
+    executorShutdown = true
+    track(stored("flaky", "SUBMITTED", ANNOUNCEMENT))
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    1 * resource.cancelOrder(PORTFOLIO, "flaky") >> { throw new WebApplicationException(502) }
+    scheduled.isEmpty()
   }
 
   def "undeploying for good gives up cancelling after five attempts over 15 minutes"() {
@@ -767,6 +856,13 @@ class DistroGopacsHandlerTest extends Specification {
     for (int i = 0; i <scheduled.size(); i++) {
       scheduled[i].task.run()
     }
+  }
+
+  /** Saves the orders on the asset, as {@code deploy()} finds them. */
+  void save(Collection<GopacsOrder> toSave) {
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ORDERS)
+            .setValue(ValueUtil.JSON.convertValue(toSave.collectEntries { [(it.reference()): it] },
+            org.openremote.model.value.ValueType.ObjectMap))
   }
 
   void track(GopacsOrder order) {

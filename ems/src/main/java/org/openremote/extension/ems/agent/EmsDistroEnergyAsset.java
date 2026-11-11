@@ -109,7 +109,10 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
 
   // --- GOPACS orders: status ---
 
-  /** Orders still being tracked, keyed by reference. Terminal orders drop out. */
+  /**
+   * Orders still being tracked, keyed by reference. Final orders drop out once their trades are
+   * recorded.
+   */
   public static final AttributeDescriptor<ObjectMap> GOPACS_ORDERS =
       new AttributeDescriptor<>(
           "gopacsOrders", ValueType.JSON_OBJECT, new MetaItem<>(MetaItemType.READ_ONLY));

@@ -29,6 +29,7 @@ import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -101,7 +102,8 @@ public class DistroGopacsHandler {
 
   /**
    * Delay before the first retry of those cancels. It doubles after each attempt, so the attempts
-   * span 15 minutes: the time Distro by default lets an order expire before its window starts.
+   * span 15 minutes, enough to ride out a short Distro outage without a stopped handler lingering
+   * for hours. An order still open after that can match until it expires, which is logged.
    */
   protected static final Duration CANCEL_RETRY_DELAY = Duration.ofMinutes(1);
 
@@ -253,13 +255,7 @@ public class DistroGopacsHandler {
   public synchronized void deploy() {
     EmsDistroEnergyAsset asset = findAsset();
     if (asset != null) {
-      asset
-          .getGopacsOrders()
-          .ifPresent(
-              saved ->
-                  orders.putAll(
-                      ValueUtil.JSON.convertValue(
-                          saved, new TypeReference<LinkedHashMap<String, GopacsOrder>>() {})));
+      orders.putAll(savedOrders(asset));
       // An undeploy within a second of a toggle skips its reset, and a flag left true would make
       // the next toggle an unchanged value that is ignored.
       for (AttributeDescriptor<Boolean> flag :
@@ -309,46 +305,79 @@ public class DistroGopacsHandler {
    * Cancels the open orders of a handler that stopped for good, then closes the client. Nothing
    * polls these orders anymore and an order left open at Distro can still match until it expires,
    * so cancels that fail for a reason a retry may fix are tried again, with a doubling delay, up to
-   * {@link #CANCEL_ATTEMPTS} attempts. Giving up is logged as severe.
+   * {@link #CANCEL_ATTEMPTS} attempts. Orders that may still be open when the client closes are
+   * logged as severe: those whose cancel kept failing or was refused, and LOCKED ones, which cannot
+   * be cancelled.
    *
-   * <p>The tracked orders are not saved: a handler started for the asset in the meantime, after a
-   * re-enable or a portfolio change, owns them now. At worst the saved orders include some that are
-   * cancelled, which the next handler's first poll untracks.
+   * <p>Only the outcome for the orders it cancels is written to the orders saved on the asset, see
+   * {@link #saveOutcomes}.
    *
    * <p>Synchronized so it waits for a running order action, like the close in {@link #undeploy}.
    *
    * @param toCancel the orders to cancel, or null for every open order.
    */
   protected synchronized void cancelBeforeClose(List<GopacsOrder> toCancel, int attempt) {
+    List<GopacsOrder> attempted = toCancel == null ? ordersFor(null, OPEN_STATUSES) : toCancel;
     List<GopacsOrder> failed = List.of();
     try {
-      failed = cancel(toCancel == null ? ordersFor(null, OPEN_STATUSES) : toCancel);
+      failed = cancel(attempted);
+      saveOutcomes(attempted);
     } catch (RuntimeException e) {
       LOG.log(Level.WARNING, "Failed to cancel open Distro GOPACS orders for asset " + assetId, e);
     }
-    if (failed.isEmpty()) {
-      closeClient();
+    // A shut-down executor silently drops what is scheduled on it, so the retry would never run.
+    if (!failed.isEmpty() && attempt < CANCEL_ATTEMPTS && !scheduledExecutorService.isShutdown()) {
+      long delayMillis = CANCEL_RETRY_DELAY.toMillis() << (attempt - 1);
+      LOG.warning(
+          String.format(
+              "Cancelling Distro GOPACS orders %s for asset %s failed, retrying in %d s (attempt %d"
+                  + " of %d)",
+              failed.stream().map(GopacsOrder::reference).toList(),
+              assetId,
+              delayMillis / 1000,
+              attempt + 1,
+              CANCEL_ATTEMPTS));
+      List<GopacsOrder> retry = failed;
+      scheduledExecutorService.schedule(
+          () -> cancelBeforeClose(retry, attempt + 1), delayMillis, TimeUnit.MILLISECONDS);
       return;
     }
-    List<String> references = failed.stream().map(GopacsOrder::reference).toList();
-    if (attempt >= CANCEL_ATTEMPTS) {
+    List<String> mayBeOpen =
+        orders.values().stream()
+            .filter(order -> !FINAL_STATUSES.contains(order.status()))
+            .map(GopacsOrder::reference)
+            .toList();
+    if (!mayBeOpen.isEmpty()) {
       LOG.severe(
           String.format(
-              "Gave up cancelling Distro GOPACS orders %s for asset %s after %d attempts: they can"
-                  + " still be matched until they expire. Cancel them in Distro.",
-              references, assetId, attempt));
-      closeClient();
+              "Stopped Distro GOPACS handler for asset %s without cancelling orders %s: they may"
+                  + " still be open and matched until they expire. Cancel them in Distro.",
+              assetId, mayBeOpen));
+    }
+    closeClient();
+  }
+
+  /**
+   * Writes the outcome of cancelling the orders into the orders saved on the asset and leaves the
+   * rest as saved, as a handler started for the asset in the meantime saves its own orders there.
+   * An order that is finished with is removed; one still tracked is saved as it is now, so the next
+   * handler neither records its cancel as a status change nor its trades a second time.
+   */
+  private void saveOutcomes(List<GopacsOrder> attempted) {
+    EmsDistroEnergyAsset asset = findAsset();
+    if (asset == null) {
       return;
     }
-    long delayMillis = CANCEL_RETRY_DELAY.toMillis() << (attempt - 1);
-    LOG.warning(
-        String.format(
-            "Cancelling Distro GOPACS orders %s for asset %s failed, retrying in %d s (attempt %d of"
-                + " %d)",
-            references, assetId, delayMillis / 1000, attempt + 1, CANCEL_ATTEMPTS));
-    List<GopacsOrder> retry = failed;
-    scheduledExecutorService.schedule(
-        () -> cancelBeforeClose(retry, attempt + 1), delayMillis, TimeUnit.MILLISECONDS);
+    Map<String, GopacsOrder> saved = savedOrders(asset);
+    for (GopacsOrder order : attempted) {
+      GopacsOrder current = orders.get(order.reference());
+      if (current == null) {
+        saved.remove(order.reference());
+      } else if (saved.containsKey(order.reference())) {
+        saved.put(order.reference(), current);
+      }
+    }
+    sendOrders(saved);
   }
 
   private void closeClient() {
@@ -414,7 +443,11 @@ public class DistroGopacsHandler {
     }
     if (attributeName.equals(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID.getName())) {
       // The announcement closed or was superseded: what is still open for it can no longer help.
-      if (cancelStaleOrders(value instanceof String announcementId ? announcementId : null)) {
+      // Compared with the asset's announcement rather than this event's value, because the
+      // executor may run the reactions to two quick changes in either order.
+      EmsDistroEnergyAsset asset = findAsset();
+      if (asset != null
+          && cancelStaleOrders(orders.values(), asset.getGopacsAnnouncementId().orElse(null))) {
         saveOrders();
       }
     }
@@ -783,16 +816,17 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Cancels the open orders placed for another announcement than the current one, or every open
-   * order when there is none. Runs on every change of announcement and again after every poll, so a
-   * cancel that failed is retried until it succeeds or the order is no longer open, at the latest
-   * when it expires. Does not save the tracked orders.
+   * Cancels those of the candidates that are open and placed for another announcement than the
+   * current one, or every open one when there is none. Runs on every change of announcement and
+   * again after every poll, so a cancel that failed is retried until it succeeds or the order is no
+   * longer open, at the latest when it expires. Does not save the tracked orders.
    *
    * @return whether there were any such orders.
    */
-  protected boolean cancelStaleOrders(String currentAnnouncementId) {
+  protected boolean cancelStaleOrders(
+      Collection<GopacsOrder> candidates, String currentAnnouncementId) {
     List<GopacsOrder> stale =
-        orders.values().stream()
+        candidates.stream()
             .filter(
                 order ->
                     OPEN_STATUSES.contains(order.status())
@@ -813,7 +847,7 @@ public class DistroGopacsHandler {
    * Cancels the orders at Distro. A cancelled order is finished like any order in a final status,
    * as it may have matched in part before the cancel took effect. Does not save the tracked orders.
    *
-   * @return the orders whose cancel failed for a reason a retry may fix, so not for an HTTP 4xx.
+   * @return the orders whose cancel failed for a reason a retry may fix, see {@link #isPermanent}.
    *     Distro answers 423 when the order is no longer SUBMITTED or PENDING.
    */
   protected List<GopacsOrder> cancel(List<GopacsOrder> toCancel) {
@@ -835,7 +869,7 @@ public class DistroGopacsHandler {
                     + assetId,
                 e);
         recordHistory("CANCEL_FAILED", order, failure);
-        if (!isClientError(e)) {
+        if (!isPermanent(e)) {
           failed.add(order);
         }
       }
@@ -864,13 +898,15 @@ public class DistroGopacsHandler {
    * Refreshes every tracked order. A status change is recorded in the history and an order in a
    * final status is finished with, see {@link #finishOrder}. Then, with the statuses fresh, the
    * open orders of an announcement that is no longer current are cancelled, which retries a cancel
-   * that failed when the announcement changed.
+   * that failed when the announcement changed. Only orders refreshed in this poll are cancelled, so
+   * a Distro outage does not add a failed cancel to the history every poll.
    */
   protected synchronized void pollOrders() {
     if (undeployed || orders.isEmpty()) {
       return;
     }
     LOG.fine(String.format("Polling %d Distro GOPACS orders for asset %s", orders.size(), assetId));
+    List<GopacsOrder> refreshed = new ArrayList<>();
     for (GopacsOrder tracked : List.copyOf(orders.values())) {
       try {
         GopacsOrder order = resource.getOrder(portfolio, tracked.reference());
@@ -889,6 +925,7 @@ public class DistroGopacsHandler {
           finishOrder(order);
         } else {
           orders.put(order.reference(), order);
+          refreshed.add(order);
         }
       } catch (WebApplicationException e) {
         if (e.getResponse().getStatus() == 404) {
@@ -905,7 +942,7 @@ public class DistroGopacsHandler {
     }
     EmsDistroEnergyAsset asset = findAsset();
     if (asset != null) {
-      cancelStaleOrders(asset.getGopacsAnnouncementId().orElse(null));
+      cancelStaleOrders(refreshed, asset.getGopacsAnnouncementId().orElse(null));
     }
     saveOrders();
     sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_LAST_SYNC, timerService.getCurrentTimeMillis());
@@ -933,7 +970,8 @@ public class DistroGopacsHandler {
    *
    * <p>A failed fetch is retried until {@link #SETTLEMENT_RETRY_WINDOW} after the order's window
    * ends, and so is an empty answer for a SETTLED order, which always has trades. An empty answer
-   * for any other final status means it never matched. An HTTP 4xx is not retried.
+   * for any other final status means it never matched. A permanent failure, see {@link
+   * #isPermanent}, is not retried.
    *
    * @return true when the order is done with: its trades are recorded or will not be.
    */
@@ -949,7 +987,7 @@ public class DistroGopacsHandler {
                   + " Distro GOPACS order "
                   + order.reference(),
               e);
-      return settlementsFailed(order, failure, isClientError(e));
+      return settlementsFailed(order, failure, isPermanent(e));
     }
     if (settlements == null || settlements.isEmpty()) {
       if (!"SETTLED".equals(order.status())) {
@@ -984,9 +1022,9 @@ public class DistroGopacsHandler {
     long giveUpAt = order.end() * 1000 + SETTLEMENT_RETRY_WINDOW.toMillis();
     if (!permanent && timerService.getCurrentTimeMillis() < giveUpAt) {
       LOG.info(
-          "Fetching the trades of Distro GOPACS order "
+          "Keeping Distro GOPACS order "
               + order.reference()
-              + " again on the next poll");
+              + " tracked to fetch its trades again later");
       return false;
     }
     LOG.severe(
@@ -1012,9 +1050,24 @@ public class DistroGopacsHandler {
   }
 
   protected void saveOrders() {
+    sendOrders(orders);
+  }
+
+  private void sendOrders(Map<String, GopacsOrder> toSave) {
     sendAttributeEvent(
         EmsDistroEnergyAsset.GOPACS_ORDERS,
-        ValueUtil.JSON.convertValue(orders, new TypeReference<Map<String, Object>>() {}));
+        ValueUtil.JSON.convertValue(toSave, new TypeReference<Map<String, Object>>() {}));
+  }
+
+  /** The orders saved on the asset, by reference. */
+  private static Map<String, GopacsOrder> savedOrders(EmsDistroEnergyAsset asset) {
+    return asset
+        .getGopacsOrders()
+        .map(
+            saved ->
+                ValueUtil.JSON.convertValue(
+                    saved, new TypeReference<LinkedHashMap<String, GopacsOrder>>() {}))
+        .orElseGet(LinkedHashMap::new);
   }
 
   /**
@@ -1031,13 +1084,19 @@ public class DistroGopacsHandler {
     return failure;
   }
 
-  /**
-   * Whether Distro answered with an HTTP 4xx, which a retry of the same request will not change.
-   */
+  /** Whether Distro answered with an HTTP 4xx, so it did not act on the request. */
   static boolean isClientError(RuntimeException e) {
     return e instanceof WebApplicationException wae
         && wae.getResponse().getStatus() >= 400
         && wae.getResponse().getStatus() < 500;
+  }
+
+  /**
+   * Whether a retry of the request cannot succeed: an HTTP 4xx other than 401. The OAuth filter
+   * only fetches a new token when the cached one expires, so a rejected token is fixed in time.
+   */
+  static boolean isPermanent(RuntimeException e) {
+    return isClientError(e) && ((WebApplicationException) e).getResponse().getStatus() != 401;
   }
 
   /** The HTTP status and the error body Distro sent, or the exception without a response. */
