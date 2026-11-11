@@ -71,6 +71,8 @@ class DistroGopacsHandlerTest extends Specification {
   DistroGopacsHandler handler
   long now = NOW
   List<Map> scheduled
+  List<Runnable> polls
+  boolean storageDown
   boolean executorShutdown
 
   def setupSpec() {
@@ -84,13 +86,20 @@ class DistroGopacsHandlerTest extends Specification {
     batteries = [battery()]
     sent = []
     scheduled = []
+    polls = []
+    storageDown = false
     executorShutdown = false
 
     def assetProcessingService = Stub(AssetProcessingService) {
       sendAttributeEvent(_, _) >> { AttributeEvent event, String source -> sent << event }
     }
     def assetStorageService = Stub(AssetStorageService) {
-      find(ASSET_ID) >> { asset }
+      find(ASSET_ID) >> {
+        if (storageDown) {
+          throw new IllegalStateException("database unavailable")
+        }
+        asset
+      }
       findAll(_) >> { batteries }
     }
     def timerService = Stub(TimerService) {
@@ -99,7 +108,10 @@ class DistroGopacsHandlerTest extends Specification {
     }
     def executor = Stub(ScheduledExecutorService) {
       execute(_) >> { Runnable task -> task.run() }
-      scheduleAtFixedRate(*_) >> Stub(ScheduledFuture)
+      scheduleAtFixedRate(*_) >> { Runnable task, long delay, long period, TimeUnit unit ->
+        polls << task
+        return Stub(ScheduledFuture)
+      }
       isShutdown() >> { executorShutdown }
       schedule(_ as Runnable, _, _) >> { Runnable task, long delay, TimeUnit unit ->
         scheduled << [task: task, delayMillis: unit.toMillis(delay)]
@@ -870,6 +882,28 @@ class DistroGopacsHandlerTest extends Specification {
 
     where:
     status << [404, 423]
+  }
+
+  def "a poll that fails on storage does not stop the polling"() {
+    given:
+    handler.deploy()
+    track(stored("open", "SUBMITTED", ANNOUNCEMENT))
+    storageDown = true
+
+    when:
+    polls[0].run()
+
+    then: "the failure is caught, so the executor runs the task again"
+    1 * resource.getOrder(PORTFOLIO, "open") >> stored("open", "SUBMITTED", ANNOUNCEMENT)
+    notThrown(RuntimeException)
+
+    when:
+    storageDown = false
+    polls[0].run()
+
+    then:
+    1 * resource.getOrder(PORTFOLIO, "open") >> stored("open", "SUBMITTED", ANNOUNCEMENT)
+    sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
   def "deploy restores the orders saved on the asset"() {

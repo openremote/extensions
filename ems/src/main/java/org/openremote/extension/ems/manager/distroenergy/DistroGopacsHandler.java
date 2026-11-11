@@ -285,7 +285,23 @@ public class DistroGopacsHandler {
     long pollMillis = POLL_INTERVAL.toMillis();
     pollFuture =
         scheduledExecutorService.scheduleAtFixedRate(
-            this::pollOrders, pollMillis, pollMillis, TimeUnit.MILLISECONDS);
+            () -> {
+              // A periodic task that throws is never run again, so one failed read of the asset
+              // during a database outage would otherwise end every refresh and retry for good.
+              try {
+                pollOrders();
+              } catch (RuntimeException e) {
+                LOG.log(
+                    Level.SEVERE,
+                    "Failed to poll the Distro GOPACS orders for asset "
+                        + assetId
+                        + "; trying again at the next poll",
+                    e);
+              }
+            },
+            pollMillis,
+            pollMillis,
+            TimeUnit.MILLISECONDS);
     LOG.info(
         "Deployed Distro GOPACS handler for asset " + assetId + " (" + orders.size() + " tracked)");
   }
