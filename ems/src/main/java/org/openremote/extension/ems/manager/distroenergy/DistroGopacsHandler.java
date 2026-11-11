@@ -251,11 +251,18 @@ public class DistroGopacsHandler {
     return portfolio;
   }
 
-  /** Restores the tracked orders saved on the asset and starts polling them. */
+  /**
+   * Restores the tracked orders saved on the asset and starts polling them. Also redoes the
+   * pre-filled order when the announcement inputs changed while no handler ran, see {@link
+   * #suggestionOutdated}.
+   */
   public synchronized void deploy() {
     EmsDistroEnergyAsset asset = findAsset();
     if (asset != null) {
       orders.putAll(savedOrders(asset));
+      if (suggestionOutdated(asset)) {
+        updateSuggestion();
+      }
       // An undeploy within a second of a toggle skips its reset, and a flag left true would make
       // the next toggle an unchanged value that is ignored.
       for (AttributeDescriptor<Boolean> flag :
@@ -477,6 +484,29 @@ public class DistroGopacsHandler {
       saveOrders();
       resetFlag(EmsDistroEnergyAsset.GOPACS_CANCEL_ORDERS);
     }
+  }
+
+  /**
+   * Whether an input of the pre-filled order changed after the order type and quantity were last
+   * written. That happens when the inputs are copied in while no handler runs. A type or quantity
+   * the operator entered for the current inputs is newer than them, so it is kept.
+   */
+  static boolean suggestionOutdated(EmsDistroEnergyAsset asset) {
+    return latestTimestamp(asset, SUGGESTION_INPUTS)
+        > latestTimestamp(
+            asset,
+            Set.of(
+                EmsDistroEnergyAsset.GOPACS_ORDER_TYPE.getName(),
+                EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.getName()));
+  }
+
+  private static long latestTimestamp(EmsDistroEnergyAsset asset, Set<String> attributeNames) {
+    return attributeNames.stream()
+        .flatMap(name -> asset.getAttribute(name).stream())
+        .flatMap(attribute -> attribute.getTimestamp().stream())
+        .mapToLong(Long::longValue)
+        .max()
+        .orElse(0);
   }
 
   /** Pre-fills order type and quantity for the current announcement, or clears both. */

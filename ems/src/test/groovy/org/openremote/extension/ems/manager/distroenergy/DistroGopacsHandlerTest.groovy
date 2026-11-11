@@ -816,6 +816,74 @@ class DistroGopacsHandlerTest extends Specification {
     handler.orders == [saved: saved]
   }
 
+  def "deploy pre-fills the order for announcement inputs copied in while the handler was off"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    stamp(NOW, DistroGopacsHandler.SUGGESTION_INPUTS)
+
+    when:
+    handler.deploy()
+
+    then:
+    sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE) == SELL
+    sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY) == 200d
+  }
+
+  def "deploy redoes an order pre-filled for earlier announcement inputs"() {
+    given:
+    order(BUY, 300d, 45d)
+    stamp(NOW - 1, [EmsDistroEnergyAsset.GOPACS_ORDER_TYPE.name, EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.name])
+    announcement("BUY_LOW_SELL_HIGH")
+    stamp(NOW, DistroGopacsHandler.SUGGESTION_INPUTS)
+
+    when:
+    handler.deploy()
+
+    then:
+    sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_TYPE) == SELL
+    sentValue(EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY) == 200d
+  }
+
+  def "deploy clears an order pre-filled for an announcement that closed while the handler was off"() {
+    given:
+    order(BUY, 300d, 45d)
+    stamp(NOW - 1, [EmsDistroEnergyAsset.GOPACS_ORDER_TYPE.name, EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.name])
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue(null, NOW)
+
+    when:
+    handler.deploy()
+
+    then:
+    sent.find { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_TYPE.name }.value.isEmpty()
+    sent.find { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY.name }.value.isEmpty()
+  }
+
+  def "deploy keeps a #attribute.name the operator entered after the announcement inputs changed"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    stamp(NOW, DistroGopacsHandler.SUGGESTION_INPUTS)
+    asset.attributes.getOrCreate(attribute).setValue(value, NOW + 1)
+
+    when:
+    handler.deploy()
+
+    then:
+    sent.isEmpty()
+
+    where:
+    attribute | value
+    EmsDistroEnergyAsset.GOPACS_ORDER_TYPE | BUY
+    EmsDistroEnergyAsset.GOPACS_ORDER_QUANTITY | 300d
+  }
+
+  def "deploy without an announcement suggests nothing"() {
+    when:
+    handler.deploy()
+
+    then:
+    sent.isEmpty()
+  }
+
   def "deploy resets a confirm flag left true by an earlier undeploy"() {
     given:
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER).setValue(true)
@@ -898,6 +966,15 @@ class DistroGopacsHandlerTest extends Specification {
     asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ORDERS)
             .setValue(ValueUtil.JSON.convertValue(toSave.collectEntries { [(it.reference()): it] },
             org.openremote.model.value.ValueType.ObjectMap))
+  }
+
+  /** Sets the time the attributes were last written, as stored attributes carry it. */
+  void stamp(long timestamp, Collection<String> attributeNames) {
+    attributeNames.each {
+      asset.getAttribute(it).ifPresent { attribute ->
+        attribute.setTimestamp(timestamp)
+      }
+    }
   }
 
   void track(GopacsOrder order) {
