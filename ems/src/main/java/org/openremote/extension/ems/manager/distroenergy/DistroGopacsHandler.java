@@ -830,9 +830,9 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Records each trade of a settled order. A settled order's trades no longer change and the order
-   * is untracked right after, so each trade is recorded once, unless the manager stops between
-   * recording them and saving the tracked orders.
+   * Records the trades of a settled order as one data point. A settled order's trades no longer
+   * change and the order is untracked right after, so they are recorded once, unless the manager
+   * stops between recording them and saving the tracked orders.
    *
    * <p>Distro makes the trades available as soon as the order is SETTLED, so they are fetched once.
    * A failed fetch, or a settled order without trades, is recorded and not retried.
@@ -854,11 +854,16 @@ public class DistroGopacsHandler {
       return;
     }
 
-    for (GopacsSettlement settlement : settlements) {
-      Map<String, Object> entry = ValueUtil.JSON.convertValue(settlement, new TypeReference<>() {});
-      entry.put("recordedAt", timerService.getCurrentTimeMillis());
-      sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY, entry);
-    }
+    // One data point for all trades: OpenRemote stamps events with the current millisecond and
+    // keeps one data point per timestamp, so trades sent one by one would overwrite each other.
+    Map<String, Object> entry = new HashMap<>();
+    entry.put("reference", order.reference());
+    entry.put(
+        "trades",
+        ValueUtil.JSON.convertValue(
+            settlements, new TypeReference<List<Map<String, Object>>>() {}));
+    entry.put("recordedAt", timerService.getCurrentTimeMillis());
+    sendAttributeEvent(EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY, entry);
   }
 
   protected void recordHistory(String action, GopacsOrder order, String detail) {

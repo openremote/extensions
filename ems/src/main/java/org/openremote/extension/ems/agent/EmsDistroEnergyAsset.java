@@ -122,7 +122,7 @@ public class EmsDistroEnergyAsset extends Asset<EmsDistroEnergyAsset> {
           new MetaItem<>(MetaItemType.READ_ONLY),
           new MetaItem<>(MetaItemType.STORE_DATA_POINTS));
 
-  /** One data point per settled trade. */
+  /** One data point per order with trades: its reference and all of its trades. */
   public static final AttributeDescriptor<ObjectMap> GOPACS_SETTLEMENT_HISTORY =
       new AttributeDescriptor<>(
           "gopacsSettlementHistory",

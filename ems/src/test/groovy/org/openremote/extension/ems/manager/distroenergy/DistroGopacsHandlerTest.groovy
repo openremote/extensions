@@ -390,8 +390,6 @@ class DistroGopacsHandlerTest extends Specification {
     track(stored("settled", "SUBMITTED", ANNOUNCEMENT))
     track(stored("expired", "SUBMITTED", ANNOUNCEMENT))
     track(stored("gone", "PENDING", ANNOUNCEMENT))
-    def trade = new GopacsSettlement("trade-1", "settled", EAN, "BUY", seconds(START), seconds(END),
-            0.2, "MW", 0.4, "MWH", 45, "EUR/MWH", 18, seconds(NOW), seconds(NOW))
 
     when:
     handler.pollOrders()
@@ -401,16 +399,18 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.getOrder(PORTFOLIO, "settled") >> stored("settled", "SETTLED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "expired") >> stored("expired", "EXPIRED", ANNOUNCEMENT)
     1 * resource.getOrder(PORTFOLIO, "gone") >> { throw new NotFoundException() }
-    1 * resource.listSettlements(PORTFOLIO, "settled") >> [trade]
+    1 * resource.listSettlements(PORTFOLIO, "settled") >> [trade("trade-1", "settled"), trade("trade-2", "settled")]
     0 * resource.listSettlements(*_)
     handler.orders.keySet() == ["live"] as Set
     handler.orders["live"].status() == "LOCKED"
     def recorded = sent.findAll {
       it.name == EmsDistroEnergyAsset.GOPACS_SETTLEMENT_HISTORY.name
     }*.value*.get()
-    recorded*.tradeId == ["trade-1"]
-    recorded[0].subMap(["ean", "capacityUnit", "volumeUnit", "priceUnit", "modifiedAt", "recordedAt"]) ==
-    [ean: EAN, capacityUnit: "MW", volumeUnit: "MWH", priceUnit: "EUR/MWH", modifiedAt: seconds(NOW), recordedAt: NOW]
+    recorded.size() == 1
+    recorded[0].subMap(["reference", "recordedAt"]) == [reference: "settled", recordedAt: NOW]
+    recorded[0].trades*.tradeId == ["trade-1", "trade-2"]
+    recorded[0].trades[0].subMap(["ean", "capacityUnit", "volumeUnit", "priceUnit", "modifiedAt"]) ==
+    [ean: EAN, capacityUnit: "MW", volumeUnit: "MWH", priceUnit: "EUR/MWH", modifiedAt: seconds(NOW)]
     sentValue(EmsDistroEnergyAsset.GOPACS_LAST_SYNC) == NOW
   }
 
@@ -558,6 +558,11 @@ class DistroGopacsHandlerTest extends Specification {
   static GopacsOrder stored(String reference, String status, String announcementId, double price = 45) {
     return new GopacsOrder(reference, null, status, "SELL", 0.2, price, seconds(START), seconds(END),
             EAN, [announcementId: announcementId], null, null)
+  }
+
+  static GopacsSettlement trade(String tradeId, String reference) {
+    return new GopacsSettlement(tradeId, reference, EAN, "BUY", seconds(START), seconds(END),
+            0.2, "MW", 0.4, "MWH", 45, "EUR/MWH", 18, seconds(NOW), seconds(NOW))
   }
 
   void track(GopacsOrder order) {
