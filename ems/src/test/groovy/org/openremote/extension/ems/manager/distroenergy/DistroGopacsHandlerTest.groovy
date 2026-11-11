@@ -27,6 +27,7 @@ import org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeVa
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderPage
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement
 import org.openremote.manager.asset.AssetProcessingService
@@ -125,6 +126,8 @@ class DistroGopacsHandlerTest extends Specification {
       getScheduledExecutor() >> executor
     }
     handler = new DistroGopacsHandler(ASSET_ID, PORTFOLIO, container, resource)
+    // Adopting untracked orders has its own tests; elsewhere the first poll would list them too.
+    handler.adopted = true
   }
 
   // --- sizing rules ---
@@ -262,7 +265,7 @@ class DistroGopacsHandlerTest extends Specification {
     request.end() == seconds(END)
     request.price() == 45d
     request.ean() == EAN
-    request.metadata() == [announcementId: ANNOUNCEMENT]
+    request.metadata() == [announcementId: ANNOUNCEMENT, assetId: ASSET_ID]
     request.customExpirationTime() == seconds("2026-10-22T12:00:00Z")
     handler.orders.keySet() == [request.reference()] as Set
     (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).containsKey(request.reference())
@@ -585,6 +588,66 @@ class DistroGopacsHandlerTest extends Specification {
     1 * resource.listSettlements(PORTFOLIO, "current") >> []
     0 * resource._
     handler.orders.isEmpty()
+  }
+
+  def "the first poll tracks the unfinished orders Distro holds for this asset"() {
+    given:
+    handler.adopted = false
+    announcement("BUY_LOW_SELL_HIGH")
+    track(stored("tracked", "SUBMITTED", ANNOUNCEMENT, 45, ASSET_ID))
+
+    when:
+    handler.pollOrders()
+
+    then: "every page of every unfinished status is listed"
+    1 * resource.listOrders(PORTFOLIO, "PENDING", 100, 0) >>
+            page(2, stored("lost", "PENDING", ANNOUNCEMENT, 45, ASSET_ID),
+            stored("other-asset", "PENDING", ANNOUNCEMENT, 45, "otherAsset"))
+    1 * resource.listOrders(PORTFOLIO, "SUBMITTED", 100, 0) >>
+            page(2, stored("tracked", "SUBMITTED", ANNOUNCEMENT, 45, ASSET_ID))
+    1 * resource.listOrders(PORTFOLIO, "SUBMITTED", 100, 1) >>
+            page(2, stored("untagged", "SUBMITTED", ANNOUNCEMENT))
+    1 * resource.listOrders(PORTFOLIO, "LOCKED", 100, 0) >> page(0)
+
+    then: "only the untracked order of this asset is adopted, and refreshed with the rest"
+    1 * resource.getOrder(PORTFOLIO, "tracked") >> stored("tracked", "SUBMITTED", ANNOUNCEMENT, 45, ASSET_ID)
+    1 * resource.getOrder(PORTFOLIO, "lost") >> stored("lost", "SUBMITTED", ANNOUNCEMENT, 45, ASSET_ID)
+    0 * resource._
+    handler.orders.keySet() == ["tracked", "lost"] as Set
+    (sentValue(EmsDistroEnergyAsset.GOPACS_ORDERS) as Map).keySet() == ["tracked", "lost"] as Set
+    historyActions() == ["ADOPTED", "STATUS"]
+
+    when:
+    handler.pollOrders()
+
+    then: "later polls do not list again"
+    2 * resource.getOrder(PORTFOLIO, _) >> { String portfolio, String reference ->
+      stored(reference, "SUBMITTED", ANNOUNCEMENT, 45, ASSET_ID)
+    }
+    0 * resource._
+  }
+
+  def "a poll that cannot list the orders lists them again on the next poll"() {
+    given:
+    handler.adopted = false
+
+    when:
+    handler.pollOrders()
+
+    then:
+    1 * resource.listOrders(PORTFOLIO, "PENDING", 100, 0) >> {
+      throw new ProcessingException("Connect timed out")
+    }
+    0 * resource._
+    !handler.adopted
+
+    when:
+    handler.pollOrders()
+
+    then:
+    3 * resource.listOrders(PORTFOLIO, _, 100, 0) >> page(0)
+    0 * resource._
+    handler.adopted
   }
 
   def "polling keeps live orders, records settled trades and drops final orders"() {
@@ -1047,9 +1110,21 @@ class DistroGopacsHandlerTest extends Specification {
     asset.setGopacsOrderPrice(price)
   }
 
-  static GopacsOrder stored(String reference, String status, String announcementId, double price = 45) {
+  static GopacsOrder stored(String reference, String status, String announcementId, double price = 45,
+          String assetId = null) {
+    def metadata = assetId == null ? [announcementId: announcementId]
+    : [announcementId: announcementId, assetId: assetId]
     return new GopacsOrder(reference, null, status, "SELL", 0.2, price, seconds(START), seconds(END),
-            EAN, [announcementId: announcementId], null, null)
+            EAN, metadata, null, null)
+  }
+
+  static GopacsOrderPage page(int total, GopacsOrder... items) {
+    return new GopacsOrderPage(items as List, 100, 0, total)
+  }
+
+  List<String> historyActions() {
+    return sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDER_HISTORY.name }
+    .collect { (it.value.orElse(null) as Map).action as String }
   }
 
   static GopacsSettlement trade(String tradeId, String reference) {

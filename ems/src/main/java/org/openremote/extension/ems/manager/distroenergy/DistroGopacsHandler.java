@@ -53,6 +53,7 @@ import org.openremote.extension.ems.agent.EmsDistroEnergyAsset.GopacsOrderTypeVa
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset;
 import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectricityBatteryConnectionStatusValueType;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderPage;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
 import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
@@ -116,6 +117,15 @@ public class DistroGopacsHandler {
 
   public static final String METADATA_ANNOUNCEMENT_ID = "announcementId";
 
+  /** Metadata key naming the asset an order was placed for, see {@link #adoptUntrackedOrders}. */
+  public static final String METADATA_ASSET_ID = "assetId";
+
+  /** The statuses of the orders Distro may still hold open, including LOCKED ones. */
+  protected static final List<String> UNFINISHED_STATUSES =
+      List.of("PENDING", "SUBMITTED", "LOCKED");
+
+  protected static final int LIST_PAGE_SIZE = 100;
+
   /** Orders that can still be cancelled. Only SUBMITTED ones can be replaced. */
   protected static final Set<String> OPEN_STATUSES = Set.of("PENDING", "SUBMITTED");
 
@@ -169,6 +179,9 @@ public class DistroGopacsHandler {
    * CANCEL_FAILED} history entry is what is left of the request.
    */
   protected final Set<String> cancelRequested = new HashSet<>();
+
+  /** Whether {@link #adoptUntrackedOrders} has run since deploy. */
+  protected boolean adopted;
 
   protected ScheduledFuture<?> pollFuture;
 
@@ -812,7 +825,7 @@ public class DistroGopacsHandler {
             end / 1000,
             price,
             ean,
-            Map.of(METADATA_ANNOUNCEMENT_ID, announcementId),
+            Map.of(METADATA_ANNOUNCEMENT_ID, announcementId, METADATA_ASSET_ID, assetId),
             expirationSeconds(startSeconds, validityEndSeconds, nowSeconds));
     LOG.info(
         String.format(
@@ -965,6 +978,47 @@ public class DistroGopacsHandler {
     return failed;
   }
 
+  /**
+   * Tracks the unfinished orders Distro holds for this asset that are not tracked yet. The order is
+   * tracked before it is posted, but saving it on the asset is asynchronous, so a crash just after
+   * Distro accepted it can leave it untracked while it can still be matched. Picked up here, it is
+   * refreshed, replaced, cancelled and settled like any other. Only orders whose metadata names
+   * this asset are taken, as a portfolio may serve more than one asset. Does not save the tracked
+   * orders.
+   *
+   * @return whether Distro could list the orders; if not, the next poll tries again.
+   */
+  protected boolean adoptUntrackedOrders() {
+    List<GopacsOrder> listed = new ArrayList<>();
+    try {
+      for (String status : UNFINISHED_STATUSES) {
+        GopacsOrderPage page;
+        int offset = 0;
+        do {
+          page = resource.listOrders(portfolio, status, LIST_PAGE_SIZE, offset);
+          listed.addAll(page.items());
+          offset += page.items().size();
+        } while (!page.items().isEmpty() && offset < page.total());
+      }
+    } catch (RuntimeException e) {
+      logFailure("Failed to list the Distro GOPACS orders for asset " + assetId, e);
+      return false;
+    }
+    for (GopacsOrder order : listed) {
+      if (order.metadata() != null
+          && assetId.equals(order.metadata().get(METADATA_ASSET_ID))
+          && !orders.containsKey(order.reference())) {
+        LOG.warning(
+            String.format(
+                "Tracking %s Distro GOPACS order %s for asset %s that was not tracked",
+                order.status(), order.reference(), assetId));
+        orders.put(order.reference(), order);
+        recordHistory("ADOPTED", order, null);
+      }
+    }
+    return true;
+  }
+
   /** The tracked orders in one of the statuses, for the announcement or for any when null. */
   protected List<GopacsOrder> ordersFor(String announcementId, Set<String> statuses) {
     List<GopacsOrder> matching = new ArrayList<>();
@@ -983,15 +1037,23 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Refreshes every tracked order. A status change is recorded in the history and an order in a
-   * final status is finished with, see {@link #finishOrder}. Then, with the statuses fresh, the
-   * orders not at the asset's price are replaced and the open orders of an announcement that is no
-   * longer current are cancelled, which retries a replace or cancel that did not happen when the
-   * price or announcement changed. Only orders refreshed in this poll are replaced or cancelled, so
-   * an outage that also fails the refresh does not add a failure to the history every poll.
+   * Refreshes every tracked order, after adopting the untracked ones on the first poll since
+   * deploy, see {@link #adoptUntrackedOrders}. A status change is recorded in the history and an
+   * order in a final status is finished with, see {@link #finishOrder}. Then, with the statuses
+   * fresh, the orders not at the asset's price are replaced and the open orders of an announcement
+   * that is no longer current are cancelled, which retries a replace or cancel that did not happen
+   * when the price or announcement changed. Only orders refreshed in this poll are replaced or
+   * cancelled, so an outage that also fails the refresh does not add a failure to the history every
+   * poll.
    */
   protected synchronized void pollOrders() {
-    if (undeployed || orders.isEmpty()) {
+    if (undeployed) {
+      return;
+    }
+    if (!adopted) {
+      adopted = adoptUntrackedOrders();
+    }
+    if (orders.isEmpty()) {
       return;
     }
     LOG.fine(String.format("Polling %d Distro GOPACS orders for asset %s", orders.size(), assetId));

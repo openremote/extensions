@@ -23,6 +23,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 import jakarta.ws.rs.*;
 import java.util.List;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
+import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderPage;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
 
@@ -39,6 +40,15 @@ public interface DistroGopacsResource {
   @POST
   @Path("gopacs/{portfolio}/orders")
   GopacsOrder createOrder(@PathParam("portfolio") String portfolio, GopacsOrderRequest request);
+
+  /** The stored orders in the status, newest first; limit is 25, 50 or 100. */
+  @GET
+  @Path("gopacs/{portfolio}/orders")
+  GopacsOrderPage listOrders(
+      @PathParam("portfolio") String portfolio,
+      @QueryParam("status") String status,
+      @QueryParam("limit") int limit,
+      @QueryParam("offset") int offset);
 
   @GET
   @Path("gopacs/{portfolio}/orders/{reference}")

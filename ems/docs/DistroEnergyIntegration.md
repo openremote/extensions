@@ -279,12 +279,17 @@ and recorded as `REFUSED` in `gopacsOrderHistory`. The order is sent with:
 | `reference`            | A new random UUID                                                                                                                         |
 | `quantity`             | `gopacsOrderQuantity` in MW                                                                                                               |
 | `start`, `end`         | `gopacsStartTime`, `gopacsEndTime` in Unix seconds                                                                                        |
-| `metadata`             | `{"announcementId": <gopacsAnnouncementId>}`, which links the order to its announcement                                                   |
+| `metadata`             | `{"announcementId": <gopacsAnnouncementId>, "assetId": <asset id>}`, which links the order to its announcement and asset                  |
 | `customExpirationTime` | `gopacsBidValidityEnd` rounded down to a quarter-hour, unless it is unknown, passed, or after Distro's default of 15 minutes before start |
 
 The order is tracked as `PENDING` before it is posted. When Distro rejects it with a `4xx` it is untracked again. On a
 timeout or a `5xx` it stays tracked, because Distro may have accepted it: the next poll picks up its real status, or
 untracks it when Distro answers `404`. Either way the failure is recorded as `CREATE_FAILED`.
+
+Saving the tracked orders on the asset is asynchronous, so a crash just after Distro accepted an order can leave it
+untracked. The first poll after the handler starts therefore lists the `PENDING`, `SUBMITTED` and `LOCKED` orders of the
+portfolio and tracks those whose `assetId` is the asset's but are not tracked yet, recording `ADOPTED` in
+`gopacsOrderHistory`. If Distro cannot list them, the next poll tries again.
 
 #### Order Lifecycle
 
@@ -328,6 +333,7 @@ distroenergy/
   DistroGopacsResource.java       RESTEasy client proxy for the GOPACS Connector API
   dto/GopacsOrderRequest.java     Create and replace body
   dto/GopacsOrder.java            Order as stored by Distro
+  dto/GopacsOrderPage.java        One page of listed orders
   dto/GopacsSettlement.java       One trade of an order
 ```
 

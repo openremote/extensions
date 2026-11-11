@@ -124,6 +124,23 @@ class DistroGopacsHandlerHttpTest extends Specification {
             .withHeader("Authorization", equalTo("Bearer token-1")))
   }
 
+  def "orders are listed by status, one page at a time"() {
+    given:
+    wireMock.stubFor(get(urlPathEqualTo(ORDERS_PATH))
+            .willReturn(okJson("""{"items": [${ORDER_JSON}], "limit": 100, "offset": 0, "total": 1}""")))
+
+    when:
+    def page = resource.listOrders(PORTFOLIO, "SUBMITTED", 100, 0)
+
+    then:
+    page.items()*.reference() == ["ref-1"]
+    page.total() == 1
+    wireMock.verify(getRequestedFor(urlPathEqualTo(ORDERS_PATH))
+            .withQueryParam("status", equalTo("SUBMITTED"))
+            .withQueryParam("limit", equalTo("100"))
+            .withQueryParam("offset", equalTo("0")))
+  }
+
   def "posting an existing reference returns the stored order"() {
     given:
     wireMock.stubFor(post(urlPathEqualTo(ORDERS_PATH)).willReturn(okJson(ORDER_JSON)))
