@@ -362,8 +362,17 @@ public class DistroGopacsHandler {
    * rest as saved, as a handler started for the asset in the meantime saves its own orders there.
    * An order that is finished with is removed; one still tracked is saved as it is now, so the next
    * handler neither records its cancel as a status change nor its trades a second time.
+   *
+   * <p>Known gap: a handler started while these cancels are still being retried has already
+   * restored the orders, so it records a cancelled order's status change and trades again.
+   *
+   * <p>Does nothing without orders: the saved orders read here could then predate a save still on
+   * its way, and writing them back would undo it.
    */
   private void saveOutcomes(List<GopacsOrder> attempted) {
+    if (attempted.isEmpty()) {
+      return;
+    }
     EmsDistroEnergyAsset asset = findAsset();
     if (asset == null) {
       return;

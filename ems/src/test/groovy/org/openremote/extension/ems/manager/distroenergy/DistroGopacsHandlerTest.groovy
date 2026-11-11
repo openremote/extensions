@@ -703,6 +703,19 @@ class DistroGopacsHandlerTest extends Specification {
     "a timeout" | new ProcessingException("Read timed out")
   }
 
+  def "undeploying for good with nothing open leaves the saved orders alone"() {
+    given:
+    track(stored("locked", "LOCKED", ANNOUNCEMENT))
+    save([stored("settled-by-last-poll", "SUBMITTED", ANNOUNCEMENT)])
+
+    when:
+    handler.undeploy(true)
+
+    then:
+    0 * resource._
+    sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
+  }
+
   def "undeploying for good saves a cancelled order whose trades failed to load as cancelled"() {
     given:
     track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
