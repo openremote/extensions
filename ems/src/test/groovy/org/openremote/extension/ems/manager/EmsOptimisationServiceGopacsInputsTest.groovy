@@ -222,6 +222,19 @@ class EmsOptimisationServiceGopacsInputsTest extends Specification {
     sent.isEmpty()
   }
 
+  def "a GOPACS change copies nothing while it has another GOPACS sibling"() {
+    given:
+    storedAssets << gopacsAsset() << gopacsAsset().setId("gopacsAsset2") << distroAsset()
+
+    when:
+    service.processAttributeEventEmsGOPACSAsset(
+            new AttributeEvent(GOPACS_ID, EmsGOPACSAsset.REDISPATCH_ANNOUNCEMENT_ID.name,
+            ANNOUNCEMENT_ID))
+
+    then:
+    sent.isEmpty()
+  }
+
   def "an input the Distro asset lacks is skipped and the others are still copied"() {
     given:
     def distro = distroAsset()

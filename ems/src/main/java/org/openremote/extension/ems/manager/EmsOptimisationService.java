@@ -1350,7 +1350,11 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     return gopacsAsset;
   }
 
-  /** Copies the announcement inputs from the GOPACS asset to every Distro asset next to it. */
+  /**
+   * Copies the announcement inputs from the GOPACS asset to every Distro asset next to it. Goes
+   * through {@link #syncDistroGopacsInputsTo}, so nothing is copied while the parent has more than
+   * one GOPACS asset.
+   */
   private void syncDistroGopacsInputsFrom(EmsGOPACSAsset gopacsAsset) {
     if (gopacsAsset.getParentId() == null) {
       return;
@@ -1359,7 +1363,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         .getAssetStorageService()
         .findAll(
             new AssetQuery().parents(gopacsAsset.getParentId()).types(EmsDistroEnergyAsset.class))
-        .forEach(asset -> syncDistroGopacsInputs(gopacsAsset, (EmsDistroEnergyAsset) asset));
+        .forEach(asset -> syncDistroGopacsInputsTo((EmsDistroEnergyAsset) asset));
   }
 
   /** Copies the announcement inputs to the Distro asset from the GOPACS asset next to it. */
