@@ -53,6 +53,7 @@ import org.openremote.extension.ems.agent.EmsElectricityBatteryAsset.EmsElectric
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrder;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsOrderRequest;
 import org.openremote.extension.ems.manager.distroenergy.dto.GopacsSettlement;
+import org.openremote.extension.ems.manager.gopacs.GOPACSHandler;
 import org.openremote.manager.asset.AssetProcessingService;
 import org.openremote.manager.asset.AssetStorageService;
 import org.openremote.model.Container;
@@ -544,6 +545,18 @@ public class DistroGopacsHandler {
     return Math.floor(kw / MIN_QUANTITY_KW) * MIN_QUANTITY_KW;
   }
 
+  /**
+   * The bare EAN code Distro takes. The EAN is copied from the GOPACS asset's contracted EAN, which
+   * may carry GOPACS's optional, case-insensitive "ean." prefix.
+   */
+  static String eanCode(String ean) {
+    String trimmed = ean.trim();
+    return trimmed.regionMatches(
+            true, 0, GOPACSHandler.EAN_PREFIX, 0, GOPACSHandler.EAN_PREFIX.length())
+        ? trimmed.substring(GOPACSHandler.EAN_PREFIX.length())
+        : trimmed;
+  }
+
   /** Distro takes prices with at most two decimals. */
   static double roundToCents(double price) {
     return Math.round(price * 100) / 100.0;
@@ -613,7 +626,7 @@ public class DistroGopacsHandler {
       return;
     }
     String announcementId = asset.getGopacsAnnouncementId().orElse(null);
-    String ean = asset.getGopacsEan().orElse(null);
+    String ean = asset.getGopacsEan().map(DistroGopacsHandler::eanCode).orElse(null);
     GopacsOrderTypeValueType orderType = asset.getGopacsOrderType().orElse(null);
     Double enteredKw = asset.getGopacsOrderQuantity().orElse(null);
     Double price = asset.getGopacsOrderPrice().map(DistroGopacsHandler::roundToCents).orElse(null);

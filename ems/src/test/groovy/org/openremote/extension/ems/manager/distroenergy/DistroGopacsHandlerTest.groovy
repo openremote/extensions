@@ -260,6 +260,26 @@ class DistroGopacsHandlerTest extends Specification {
     }
   }
 
+  def "confirming strips the GOPACS ean. prefix from the EAN: #configured"() {
+    given:
+    announcement("BUY_LOW_SELL_HIGH")
+    order(SELL, 200, 45)
+    asset.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_EAN).setValue(configured)
+
+    when:
+    handler.processAttributeChange(EmsDistroEnergyAsset.GOPACS_CONFIRM_ORDER.name, false, true)
+
+    then:
+    1 * resource.createOrder(PORTFOLIO, {
+      it.ean() == EAN
+    }) >> { String portfolio, GopacsOrderRequest body ->
+      stored(body.reference(), "SUBMITTED", ANNOUNCEMENT)
+    }
+
+    where:
+    configured << ["ean." + EAN, "EAN." + EAN, " " + EAN + " "]
+  }
+
   def "confirming refuses what Distro would reject: #label"() {
     given:
     announcement("BUY_LOW_SELL_HIGH")
