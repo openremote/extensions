@@ -20,6 +20,17 @@ The day-ahead API rules that shape the integration:
 - For next-day delivery Distro uses the most recent submission received before **09:00 Europe/Amsterdam** on the
   preceding day
 
+### One Distro Customer per Manager
+
+The Distro credentials are environment variables, so every realm on a manager shares them. Distro assigns a portfolio
+to each OAuth client and refuses orders for any other, so a realm cannot reach another customer's portfolio by setting
+it on an asset. It can act under the shared client's portfolio, though: any user who may edit an `Ems Distro Energy
+Asset` in any realm can submit day-ahead orders or place GOPACS orders on behalf of the Distro customer.
+
+Only enable the integration on a manager that serves a single Distro customer, or where every realm with an `Ems Distro
+Energy Asset` acts for that customer. Per-realm credentials are tracked in
+[#142](https://github.com/openremote/extensions/issues/142).
+
 ### Getting Started
 
 To submit day-ahead orders through OpenRemote, you need the following:
