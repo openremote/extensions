@@ -155,7 +155,7 @@
       },
       {
         "type": "info",
-        "title": "Intraday — Flex Request",
+        "title": "Day ahead - Flex Request",
         "properties": {
           "include": []
         },
@@ -165,7 +165,7 @@
       },
       {
         "type": "info",
-        "title": "Intraday — Flex Order",
+        "title": "Day ahead - Flex Order",
         "properties": {
           "include": []
         },
@@ -176,7 +176,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "Redispatch — Configuration",
+        "title": "Redispatch - Configuration",
         "properties": {
           "include": []
         },
@@ -187,7 +187,7 @@
       {
         "type": "info",
         "column": 1,
-        "title": "Redispatch — Announcement",
+        "title": "Redispatch - Announcement",
         "properties": {
           "include": []
         },
@@ -209,7 +209,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — Bid",
+        "title": "Redispatch - Bid",
         "properties": {
           "include": []
         },
@@ -219,7 +219,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — Workflow",
+        "title": "Redispatch - Workflow",
         "properties": {
           "include": []
         },
@@ -229,7 +229,7 @@
       },
       {
         "type": "info",
-        "title": "Redispatch — History",
+        "title": "Redispatch - History",
         "properties": {
           "include": []
         },
@@ -278,7 +278,7 @@
       },
       {
         "type": "info",
-        "title": "Configuration",
+        "title": "Day ahead - Configuration",
         "properties": {
           "include": []
         },
@@ -288,12 +288,78 @@
       },
       {
         "type": "info",
-        "title": "Status",
+        "title": "Day ahead - Status",
         "properties": {
           "include": []
         },
         "attributes": {
           "include": ["lastSubmission", "daysSubmitted"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch - Configuration",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsEnabled"]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch - Announcement",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "gopacsEan",
+            "gopacsAnnouncementId",
+            "gopacsStartTime",
+            "gopacsEndTime",
+            "gopacsBidValidityEnd",
+            "gopacsEanEffectivity"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "title": "Redispatch - Order",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": [
+            "gopacsOrderType",
+            "gopacsOrderQuantity",
+            "gopacsOrderPrice",
+            "gopacsConfirmOrder",
+            "gopacsCancelOrders"
+          ]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch - Status",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsOrders", "gopacsLastSync"]
+        }
+      },
+      {
+        "type": "info",
+        "column": 1,
+        "title": "Redispatch - History",
+        "properties": {
+          "include": []
+        },
+        "attributes": {
+          "include": ["gopacsOrderHistory", "gopacsSettlementHistory"]
         }
       },
       {
