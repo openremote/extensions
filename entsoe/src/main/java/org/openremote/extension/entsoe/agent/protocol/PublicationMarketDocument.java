@@ -121,8 +121,4 @@ public class PublicationMarketDocument {
   public List<TimeSeries> getTimeSeries() {
     return timeSeries;
   }
-
-  public PeriodTimeInterval getPeriodTimeInterval() {
-    return periodTimeInterval;
-  }
 }
