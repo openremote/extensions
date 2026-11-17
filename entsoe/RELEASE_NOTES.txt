@@ -1,0 +1,39 @@
+Unreleased — ENTSO-E gap handling and EMS tariff availability
+
+BREAKING BEHAVIOUR: predicted prices can contain timestamped null values
+
+ENTSO-E now writes null predictions for explicitly unavailable prices and clears
+existing future predictions in validated gaps between returned periods to null.
+These entries retain their timestamps; they are not deleted. This can replace a
+previously available price. A later publication can restore a numeric price.
+
+This affects every consumer of these forecasts, including custom rules, EMS or
+other extensions, external applications, and integrations outside this repository.
+Consumers that assume every datapoint is numeric may fail during unboxing,
+arithmetic, comparisons, aggregation, or interpolation. Updating OpenRemote core
+alone does not make these consumers null-safe. Review them before deploying this
+ENTSO-E update.
+
+Required consumer adaptations:
+- Treat null as unavailable. Do not interpret it as zero or carry a previous price
+  through an explicitly unavailable interval.
+- Preserve time alignment when handling gaps. Dropping null entries and then
+  treating the remaining entries as consecutive can bridge unavailable intervals
+  or assign decisions to the wrong timestamps.
+- Define how unavailable intervals affect calculations. EMS now excludes any
+  tariff averaging window containing a null and continues with complete windows.
+  Import and export windows are evaluated independently; if neither has a complete
+  window for a day, there are no tariff-based zones for that day. Other optimisation
+  logic continues. Both EmsOptimisation and EmsOptimisationBeta include this fix.
+- Handle absent JSON values as well as explicit nulls: the core 'all' query retains
+  the timestamp as 'x' but omits 'y' for an unavailable value. LTTB omits unavailable
+  points entirely and must not be used to detect or preserve all gap markers.
+- Test unavailable values at the beginning, middle, and end of a forecast, all-null
+  forecasts, repeated polling, and recovery when prices become available again.
+
+Scope and compatibility:
+- OpenRemote 1.33.0 or later is required for the core JSON-null query support.
+- Malformed price amounts reject the entire affected period and disable gap
+  clearing for the response. They are not interpreted as unavailable prices.
+- The EMS fix covers tariff averaging and zone selection in this repository. It
+  does not establish that custom rules or consumers in other projects are safe.

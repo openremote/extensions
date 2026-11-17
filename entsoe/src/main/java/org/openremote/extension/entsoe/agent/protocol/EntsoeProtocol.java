@@ -36,9 +36,11 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,6 +57,7 @@ import org.openremote.model.attribute.Attribute;
 import org.openremote.model.attribute.AttributeEvent;
 import org.openremote.model.attribute.AttributeRef;
 import org.openremote.model.datapoint.ValueDatapoint;
+import org.openremote.model.datapoint.query.AssetDatapointAllQuery;
 import org.openremote.model.syslog.SyslogCategory;
 
 public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLink> {
@@ -235,7 +238,8 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       return;
     }
 
-    List<ValueDatapoint<?>> predictedDatapoints = buildPredictedDatapoints(document);
+    DecodedPublication decoded = decodePublication(document);
+    List<ValueDatapoint<?>> predictedDatapoints = decoded.values();
     if (predictedDatapoints.isEmpty()) {
       linkedAttributesForZone.forEach(
           entry ->
@@ -253,8 +257,28 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
           AttributeRef attributeRef = entry.getKey();
           Attribute attribute = entry.getValue();
           LOG.fine("Updating pricing information data for attribute " + attribute.getName());
+          List<ValueDatapoint<?>> updates = new ArrayList<>(predictedDatapoints);
+          if (!decoded.gaps().isEmpty()) {
+            long nowMillis = timerService.getCurrentTimeMillis();
+            // Gaps have no declared resolution. Invalidate existing timestamps without inventing a
+            // grid.
+            for (TimeRange gap : decoded.gaps()) {
+              long from = Math.max(nowMillis, gap.start());
+              if (from >= gap.end()) {
+                continue;
+              }
+              predictedDatapointService
+                  .queryDatapoints(
+                      attributeRef.getId(),
+                      attributeRef.getName(),
+                      new AssetDatapointAllQuery(from, gap.end() - 1))
+                  .stream()
+                  .filter(point -> point.getValue() != null)
+                  .forEach(point -> updates.add(new ValueDatapoint<>(point.getTimestamp(), null)));
+            }
+          }
           predictedDatapointService.updateValues(
-              attributeRef.getId(), attributeRef.getName(), predictedDatapoints);
+              attributeRef.getId(), attributeRef.getName(), updates);
         });
   }
 
@@ -437,62 +461,187 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
   }
 
   protected List<ValueDatapoint<?>> buildPredictedDatapoints(PublicationMarketDocument document) {
+    return decodePublication(document).values();
+  }
+
+  private DecodedPublication decodePublication(PublicationMarketDocument document) {
     List<ValueDatapoint<?>> values = new ArrayList<>();
+    List<TimeRange> coverage = new ArrayList<>();
+    boolean complete = true;
     long nowMillis = timerService.getCurrentTimeMillis();
     if (document.getTimeSeries() == null || document.getTimeSeries().isEmpty()) {
-      return values;
+      return new DecodedPublication(values, List.of());
     }
 
     for (PublicationMarketDocument.TimeSeries timeSeries : document.getTimeSeries()) {
+      String curveType = timeSeries.getCurveType();
+      if (!"A01".equals(curveType) && !"A03".equals(curveType)) {
+        LOG.warning(
+            "Skipping ENTSO-E time series with unsupported curve type: '" + curveType + "'");
+        complete = false;
+        continue;
+      }
+
       if (timeSeries.getPeriods() == null || timeSeries.getPeriods().isEmpty()) {
+        complete = false;
         continue;
       }
 
       for (PublicationMarketDocument.Period period : timeSeries.getPeriods()) {
         if (period == null || period.getPoints() == null || period.getPoints().isEmpty()) {
+          complete = false;
           continue;
         }
 
-        PublicationMarketDocument.PeriodTimeInterval timeInterval =
-            period.getTimeInterval() != null
-                ? period.getTimeInterval()
-                : document.getPeriodTimeInterval();
+        PublicationMarketDocument.PeriodTimeInterval timeInterval = period.getTimeInterval();
         if (timeInterval == null
             || timeInterval.getStart() == null
+            || timeInterval.getEnd() == null
             || period.getResolution() == null) {
+          LOG.warning("Skipping ENTSO-E period without its own start, end, or resolution");
+          complete = false;
           continue;
         }
 
         final Instant start;
+        final Instant end;
         final Duration resolution;
+        final long intervalCount;
         try {
           start = parseEntsoeInstant(timeInterval.getStart());
+          end = parseEntsoeInstant(timeInterval.getEnd());
           resolution = Duration.parse(period.getResolution());
+          if (!end.isAfter(start) || resolution.isZero() || resolution.isNegative()) {
+            LOG.warning("Skipping ENTSO-E period with non-positive duration or resolution");
+            complete = false;
+            continue;
+          }
+          Duration duration = Duration.between(start, end);
+          intervalCount = duration.dividedBy(resolution);
+          if (intervalCount == 0 || !resolution.multipliedBy(intervalCount).equals(duration)) {
+            LOG.warning(
+                "Skipping ENTSO-E period whose duration is not a multiple of its resolution");
+            complete = false;
+            continue;
+          }
         } catch (Exception e) {
           LOG.log(Level.WARNING, e, () -> "Could not parse ENTSO-E timeseries time data");
+          complete = false;
           continue;
         }
 
-        period.getPoints().stream()
-            .filter(
-                point ->
-                    point.getPosition() != null
-                        && point.getPosition() > 0
-                        && point.getPriceAmount() != null)
-            .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
-            .forEach(
-                point -> {
-                  long timestamp =
-                      start.plus(resolution.multipliedBy(point.getPosition() - 1L)).toEpochMilli();
-                  if (timestamp >= nowMillis) {
-                    values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
-                  }
-                });
+        if (!hasValidPeriodPositions(period.getPoints(), curveType, intervalCount)) {
+          complete = false;
+          continue;
+        }
+        // Validate every price before recording coverage or emitting any part of the period.
+        // Only an absent amount means unavailable; malformed amounts reject the period.
+        try {
+          for (PublicationMarketDocument.Point point : period.getPoints()) {
+            point.getPriceAmount();
+          }
+        } catch (NumberFormatException e) {
+          LOG.warning("Skipping ENTSO-E period with malformed price amount");
+          complete = false;
+          continue;
+        }
+        coverage.add(new TimeRange(start.toEpochMilli(), end.toEpochMilli()));
+        List<PublicationMarketDocument.Point> points =
+            period.getPoints().stream()
+                .sorted(Comparator.comparingInt(PublicationMarketDocument.Point::getPosition))
+                .toList();
+
+        if ("A03".equals(curveType)) {
+          addVariableBlockDatapoints(points, start, end, resolution, nowMillis, values);
+          continue;
+        }
+
+        // Persist explicit unavailability so a later publication can clear stale prices.
+        points.forEach(
+            point -> {
+              long timestamp =
+                  start.plus(resolution.multipliedBy(point.getPosition() - 1L)).toEpochMilli();
+              if (timestamp >= nowMillis) {
+                values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
+              }
+            });
       }
     }
 
     values.sort(Comparator.comparingLong(ValueDatapoint::getTimestamp));
-    return values;
+    return new DecodedPublication(values, complete ? findPeriodGaps(coverage) : List.of());
+  }
+
+  private record TimeRange(long start, long end) {}
+
+  private record DecodedPublication(List<ValueDatapoint<?>> values, List<TimeRange> gaps) {}
+
+  private List<TimeRange> findPeriodGaps(List<TimeRange> coverage) {
+    List<TimeRange> gaps = new ArrayList<>();
+    coverage.sort(Comparator.comparingLong(TimeRange::start));
+    if (coverage.isEmpty()) {
+      return gaps;
+    }
+    long coveredEnd = coverage.get(0).end();
+    for (int i = 1; i < coverage.size(); i++) {
+      TimeRange interval = coverage.get(i);
+      if (interval.start() > coveredEnd) {
+        gaps.add(new TimeRange(coveredEnd, interval.start()));
+      }
+      // Include coverage from every series, merging adjacent and overlapping periods.
+      coveredEnd = Math.max(coveredEnd, interval.end());
+    }
+    return gaps;
+  }
+
+  protected boolean hasValidPeriodPositions(
+      List<PublicationMarketDocument.Point> points, String curveType, long intervalCount) {
+    Set<Integer> positions = new HashSet<>();
+    for (PublicationMarketDocument.Point point : points) {
+      Integer position = point != null ? point.getPosition() : null;
+      if (position == null
+          || position < 1
+          || position > intervalCount
+          || !positions.add(position)) {
+        LOG.warning("Skipping ENTSO-E period with missing, duplicate, or out-of-range positions");
+        return false;
+      }
+    }
+
+    if (!positions.contains(1)) {
+      LOG.warning("Skipping ENTSO-E period without position 1");
+      return false;
+    }
+    // Unique positions in [1, intervalCount] cover A01 completely only when all are present.
+    if ("A01".equals(curveType) && positions.size() != intervalCount) {
+      LOG.warning("Skipping incomplete ENTSO-E A01 period");
+      return false;
+    }
+    return true;
+  }
+
+  protected void addVariableBlockDatapoints(
+      List<PublicationMarketDocument.Point> points,
+      Instant start,
+      Instant end,
+      Duration resolution,
+      long nowMillis,
+      List<ValueDatapoint<?>> values) {
+    // Expand unavailable blocks as nulls too, replacing any previously stored prices.
+    for (int i = 0; i < points.size(); i++) {
+      PublicationMarketDocument.Point point = points.get(i);
+      Instant blockStart = start.plus(resolution.multipliedBy(point.getPosition() - 1L));
+      Instant blockEnd =
+          i + 1 < points.size()
+              ? start.plus(resolution.multipliedBy(points.get(i + 1).getPosition() - 1L))
+              : end;
+      for (Instant time = blockStart; time.isBefore(blockEnd); time = time.plus(resolution)) {
+        long timestamp = time.toEpochMilli();
+        if (timestamp >= nowMillis) {
+          values.add(new ValueDatapoint<>(timestamp, point.getPriceAmount()));
+        }
+      }
+    }
   }
 
   protected Instant parseEntsoeInstant(String value) {

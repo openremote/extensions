@@ -2154,6 +2154,7 @@ public class EmsOptimisation implements OptimisationMethod {
 
     Map<LocalDate, IndexedDatapoint> tariffImportDailyMinimumMap =
         IntStream.range(0, tariffImportMovingAverage.size())
+            .filter(i -> tariffImportMovingAverage.get(i).getValue() != null)
             .mapToObj(
                 i -> {
                   ValueDatapoint<?> dp = tariffImportMovingAverage.get(i);
@@ -2167,6 +2168,7 @@ public class EmsOptimisation implements OptimisationMethod {
 
     Map<LocalDate, IndexedDatapoint> tariffExportDailyMinimumMap =
         IntStream.range(0, tariffExportMovingAverage.size())
+            .filter(i -> tariffExportMovingAverage.get(i).getValue() != null)
             .mapToObj(
                 i -> {
                   ValueDatapoint<?> dp = tariffExportMovingAverage.get(i);
@@ -2397,24 +2399,30 @@ public class EmsOptimisation implements OptimisationMethod {
     }
 
     double sum = 0.0;
+    int unavailableCount = 0;
 
     for (int i = 0; i < dataPoints.size(); i++) {
       Double value = (Double) dataPoints.get(i).getValue();
-      sum += value;
+      if (value == null) {
+        unavailableCount++;
+      } else {
+        sum += value;
+      }
 
       if (i >= window) {
         Double valueOld = (Double) dataPoints.get(i - window).getValue();
-        sum -= valueOld;
+        if (valueOld == null) {
+          unavailableCount--;
+        } else {
+          sum -= valueOld;
+        }
       }
 
       if (i >= window - 1) {
-        double avg = sum / window;
-
-        ValueDatapoint<?> original = dataPoints.get(i);
-
-        ValueDatapoint<Double> averaged =
-            new ValueDatapoint<>(original.getTimestamp(), round(avg, 7));
-        result.add(averaged);
+        // Keep unavailable windows in the result so indices still map to the input tariffs.
+        // A partial window must not be used to select a charge or discharge zone.
+        Double avg = unavailableCount == 0 ? round(sum / window, 7) : null;
+        result.add(new ValueDatapoint<>(dataPoints.get(i).getTimestamp(), avg));
       }
     }
 
