@@ -7,6 +7,9 @@ bin-release/
 [Oo]ut/
 [Tt]mp/
 
+# Checkout of openremote/core
+/core/
+
 # Other files and folders
 .settings/
 .gradle/

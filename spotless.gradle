@@ -38,10 +38,26 @@ def readIgnorePatterns = { File ignoreFile ->
   return patterns
 }
 def prettierIgnorePatterns = readIgnorePatterns(rootProject.file('tools/spotless/.prettierignore'))
+def readGitIgnoredPatterns = {
+  def gitIgnored = providers.exec {
+    workingDir rootProject.projectDir
+    commandLine 'git', 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'
+    ignoreExitValue = true
+  }
+  // Null outside a git checkout
+  if (gitIgnored.result.get().exitValue != 0) {
+    return null
+  }
+  return gitIgnored.standardOutput.asText.get()
+          .split('\u0000')
+          .findAll()
+          .collect { it.endsWith('/') ? it + '**' : it }
+}
+List<String> gitIgnoredPatterns = readGitIgnoredPatterns()
 def targetWithIgnores = { Collection<String> includes, Collection<String> excludes = [] ->
   rootProject.fileTree(rootProject.projectDir) {
     includes.each { include it }
-    (prettierIgnorePatterns + excludes + ['core/**']).each { exclude it }
+    (prettierIgnorePatterns + (gitIgnoredPatterns ?: []) + excludes).each { exclude it }
   }
 }
 String blockCommentLicenseDelimiter = '(?![ \\t]*/\\*(?:[ \\t]+|\\R[ \\t]*\\*[ \\t]+)Copyright\\b)(?![ \\t]*\\*)[ \\t]*\\S'
@@ -107,4 +123,9 @@ spotless {
 def yarnInstallTask = getYarnInstallTask()
 tasks.matching { it.name.startsWith("spotless") }.configureEach {
   dependsOn yarnInstallTask
+  if (gitIgnoredPatterns == null) {
+    doFirst {
+      throw new GradleException('Spotless needs a git checkout to exclude git-ignored files')
+    }
+  }
 }
