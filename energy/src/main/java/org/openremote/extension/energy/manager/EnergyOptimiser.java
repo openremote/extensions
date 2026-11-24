@@ -229,7 +229,7 @@ public class EnergyOptimiser {
       i++;
     }
 
-    // Convert schedule intervals to match optimisation intervals - need to look at schedule for
+    // Convert schedule intervals to match optimization intervals - need to look at schedule for
     if (intervalSize <= 1d) {
       int hourIntervals = (int) (1d / intervalSize);
 
@@ -487,7 +487,7 @@ public class EnergyOptimiser {
                       + op.value[2]));
     }
 
-    // Go through each earning opportunity and determine if it can be utilised without breaching the
+    // Go through each earning opportunity and determine if it can be utilized without breaching the
     // energy min
     // levels
     for (Pair<Integer, double[]> earningOpportunity : earningOpportunities) {
@@ -923,7 +923,7 @@ public class EnergyOptimiser {
         powerEnd = powerMax;
       }
 
-      // Normalise the cost
+      // Normalize the cost
       cost = cost / (-1d * powerEnd);
 
       return new double[] {cost, powerEnd, powerStart};
@@ -996,7 +996,7 @@ public class EnergyOptimiser {
         }
       }
 
-      // Normalise the cost
+      // Normalize the cost
       cost = cost / powerEnd;
 
       return new double[] {cost, powerStart, powerEnd};

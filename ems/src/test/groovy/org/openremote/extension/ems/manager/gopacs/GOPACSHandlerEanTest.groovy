@@ -28,7 +28,7 @@ import spock.lang.Specification
 class GOPACSHandlerEanTest extends Specification {
 
   def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
-    expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
+    expect: "the optional, case-insensitive ean. prefix is normalized to lower-case and added when missing"
     GOPACSHandler.toCongestionPoint(input) == expected
 
     where:

@@ -10,9 +10,9 @@
   - [Electricity Battery Asset](docs/assets/EmsElectricityBatteryAsset.md)
   - [Day Ahead Asset](docs/assets/EmsDayAheadAsset.md)
 
-**Optimisation methods**
+**Optimization methods**
 
-- [EMS optimisation](docs/optimisationMethods/EmsOptimisation.md)
+- [EMS optimization](docs/optimisationMethods/EmsOptimisation.md)
 
 **GOPACS**
 

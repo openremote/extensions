@@ -1,6 +1,6 @@
 Unreleased — ENTSO-E gap handling and EMS tariff availability
 
-BREAKING BEHAVIOUR: predicted prices can contain timestamped null values
+BREAKING BEHAVIOR: predicted prices can contain timestamped null values
 
 ENTSO-E now writes null predictions for explicitly unavailable prices and clears
 existing future predictions in validated gaps between returned periods to null.
@@ -23,7 +23,7 @@ Required consumer adaptations:
 - Define how unavailable intervals affect calculations. EMS now excludes any
   tariff averaging window containing a null and continues with complete windows.
   Import and export windows are evaluated independently; if neither has a complete
-  window for a day, there are no tariff-based zones for that day. Other optimisation
+  window for a day, there are no tariff-based zones for that day. Other optimization
   logic continues. Both EmsOptimisation and EmsOptimisationBeta include this fix.
 - Handle absent JSON values as well as explicit nulls: the core 'all' query retains
   the timestamp as 'x' but omits 'y' for an unavailable value. LTTB omits unavailable

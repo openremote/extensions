@@ -27,7 +27,7 @@ Alternatively, the values can be imported and modified in a spreadsheet applicat
 - Export the updated profile as a `.csv` file (ensure that the values are `,` comma-separated)
 - Open the exported CSV file in a text editor, and copy its contents into the respective `Power Limit Maximum Profile manual input` or `Power Limit Minimum Profile manual input` field. Click the submit arrow to save the changes
 
-**Note**: Configuration of either only a maximum profile, only a minimum profile, or both profiles is supported. The optimisation routine does not require both profiles to be defined.
+**Note**: Configuration of either only a maximum profile, only a minimum profile, or both profiles is supported. The optimization routine does not require both profiles to be defined.
 
 3. Display power limit profiles:
    - Go to the `Insights` page and click the `+` icon
@@ -138,9 +138,9 @@ Add the [ENTSO-E extension](https://github.com/openremote/extensions/tree/main/e
    - Link the `nlPrices` attribute forecast of the **Entsoe agent** to the `tariffImport` of the `Ems Energy Optimisation Asset` using a custom Groovy rule. Don't forget to make the conversion from €/MWh to €/kWh. OpenRemote currently does not provide built-in functionality for linking/summing forecasts.
    - Repeat the above step for the `tariffExport` of the `Ems Energy Optimisation Asset`, and additionally multiply the forecast prices with -1.
 
-### 7) Select Optimisation method
+### 7) Select Optimization method
 
 - Go to the `Assets` page, select the **EMS** asset created in section 1
-- Find the `Optimisatiom method` attribute and select `Ems optimisation` from the dropdown menu. This will start the optimisation routine
+- Find the `optimisationMethod` attribute and select `Ems optimisation` from the dropdown menu. This will start the optimization routine
 
-The EMS is now set up and the optimisation is running. For a detailed explanation about the `Ems optimisation` method, see (Work in progress)
+The EMS is now set up and the optimization is running. For a detailed explanation about the `Ems optimisation` method, see (Work in progress)

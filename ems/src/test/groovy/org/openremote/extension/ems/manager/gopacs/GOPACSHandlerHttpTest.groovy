@@ -168,7 +168,7 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     stubBrokerAccepts()
   }
 
-  // The manager services minus the EMS optimisation services, which would otherwise deploy their own
+  // The manager services minus the EMS optimization services, which would otherwise deploy their own
   // GOPACS handler (on the same /gopacs path) from any persisted EmsGOPACSAsset.
   private Iterable<ContainerService> gopacsServices() {
     defaultServices().findAll {

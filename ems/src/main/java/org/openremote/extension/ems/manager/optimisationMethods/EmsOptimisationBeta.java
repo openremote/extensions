@@ -82,7 +82,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
   }
 
   private void runOptimisationMethodEms(String energyOptimisationAssetId, Services services) {
-    // Get energy optimisation asset
+    // Get energy optimization asset
     EmsEnergyOptimisationAsset energyOptimisationAsset =
         (EmsEnergyOptimisationAsset)
             services.getAssetStorageService().find(energyOptimisationAssetId);
@@ -97,7 +97,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
     StringBuilder advancedSettingsAttributesBody = new StringBuilder();
 
-    String firstRow = String.format("Optimisation method '%s':\n", optimisationMethodName);
+    String firstRow = String.format("Optimization method '%s':\n", optimisationMethodName);
     advancedSettingsAttributesBody.append(firstRow);
 
     for (String[] row : advancedSettingsAttributesInfo) {
@@ -155,7 +155,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
       LOG.info(
           String.format(
-              "%s; Energy optimisation asset has %s battery asset(s). Number of batteries with '%s'= %s and '%s'= %s",
+              "%s; Energy optimization asset has %s battery asset(s). Number of batteries with '%s'= %s and '%s'= %s",
               logPrefixEnergyOptimisation,
               electricityBatteryAssets.size(),
               EmsElectricityBatteryAsset.ALLOW_CHARGING.getName(),
@@ -170,7 +170,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
     if (powerNet == null) {
       LOG.warning(
           String.format(
-              "%s; Failed to perform '%s' energy optimisation method. '%s' attribute is not connected",
+              "%s; Failed to perform '%s' energy optimization method. '%s' attribute is not connected",
               logPrefixEnergyOptimisation,
               optimisationMethodName,
               EmsEnergyOptimisationAsset.POWER_NET.getName()));
@@ -199,7 +199,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         && powerLimitMaximumProfileTotal <= powerLimitMinimumProfileTotal) {
       LOG.warning(
           String.format(
-              "%s; Failed to perform '%s' energy optimisation method. The '%s'= %s kW is lower than or equal to '%s'= %s kW for timestamp='%s'",
+              "%s; Failed to perform '%s' energy optimization method. The '%s'= %s kW is lower than or equal to '%s'= %s kW for timestamp='%s'",
               logPrefixEnergyOptimisation,
               optimisationMethodName,
               EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName(),
@@ -959,7 +959,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
             infoStr.insert(
                 0,
                 String.format(
-                    "Battery energy level percentage calculation timed out during power limit optimisation at timestamp = %s",
+                    "Battery energy level percentage calculation timed out during power limit optimization at timestamp = %s",
                     timestampsMillisList.get(predictionListIndex)));
             infoStr.append(
                 String.format(
@@ -990,7 +990,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
           useDayAheadTariffs = dayAheadAsset.getUseTariffDayAheadForecasts().orElse(false);
         }
 
-        // Get the tariff forecasts from energy optimisation asset for 1 week, timestamps are
+        // Get the tariff forecasts from energy optimization asset for 1 week, timestamps are
         // ordered from newest to oldest (descending order)
         List<ValueDatapoint<?>> tariffExportDatapoints =
             getTariffDatapoints(
@@ -1094,7 +1094,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
         //                System.out.println("energyLevelPercentageDefaultList = " +
         // energyLevelPercentageDefaultList);
 
-        // Optimise forecast based on tariffs
+        // Optimize forecast based on tariffs
         for (int i = 1;
             i < chargeAndDischargeZonesList.size() && i < energyLevelPredictionListSize;
             i++) {
@@ -1207,7 +1207,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                   infoStr.insert(
                       0,
                       String.format(
-                          "Battery energy level percentage calculation timed out during tariff charge optimisation at timestamp = %s",
+                          "Battery energy level percentage calculation timed out during tariff charge optimization at timestamp = %s",
                           timestampsMillisList.get(i)));
                   infoStr.append(
                       String.format(
@@ -1330,7 +1330,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
                   infoStr.insert(
                       0,
                       String.format(
-                          "Battery energy level percentage calculation timed out during tariff discharge optimisation at timestamp = %s",
+                          "Battery energy level percentage calculation timed out during tariff discharge optimization at timestamp = %s",
                           timestampsMillisList.get(i)));
                   infoStr.append(
                       String.format(
@@ -1527,7 +1527,7 @@ public class EmsOptimisationBeta implements OptimisationMethod {
 
       LOG.warning(
           String.format(
-              "%s; Failed to perform '%s' energy optimisation method. The difference between '%s' - %s = %s kW is smaller than the fluctuation margin sum = %s kW for timestamp='%s'",
+              "%s; Failed to perform '%s' energy optimization method. The difference between '%s' - %s = %s kW is smaller than the fluctuation margin sum = %s kW for timestamp='%s'",
               logPrefixEnergyOptimisation,
               optimisationMethodName,
               EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_TOTAL.getName(),

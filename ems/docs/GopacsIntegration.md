@@ -90,13 +90,13 @@ sequenceDiagram
     Note left of DSO: Auto-response confirming the order
 ```
 
-**How flex orders feed into optimisation:**
+**How flex orders feed into optimization:**
 
 1. Flex order power values are written as predicted data points on the `Ems GOPACS Asset` attributes (
    `powerLimitMaximumProfileFlexOrder`, `powerLimitMinimumProfileFlexOrder`)
 2. `EmsOptimisationService.updatePowerLimitProfileTotalForecasts()` merges these GOPACS constraints with manual power
    limits from the parent `Ems energy optimisation asset`
-3. The combined limits are used by the optimisation methods to constrain energy scheduling
+3. The combined limits are used by the optimization methods to constrain energy scheduling
 
 #### Inbound Endpoint
 

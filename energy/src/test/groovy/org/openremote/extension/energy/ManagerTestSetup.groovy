@@ -53,7 +53,7 @@ class ManagerTestSetup extends ManagerSetup {
     KeycloakTestSetup keycloakTestSetup = setupService.getTaskOfType(KeycloakTestSetup.class)
     realmEnergyName = keycloakTestSetup.realmEnergy.getName()
 
-    EnergyOptimisationAsset electricityOptimisationAsset = new EnergyOptimisationAsset("Optimisation")
+    EnergyOptimisationAsset electricityOptimisationAsset = new EnergyOptimisationAsset("Optimization")
     electricityOptimisationAsset.setIntervalSize(3d)
     electricityOptimisationAsset.setRealm(keycloakTestSetup.realmEnergy.getName())
     electricityOptimisationAsset.setFinancialWeighting(100)

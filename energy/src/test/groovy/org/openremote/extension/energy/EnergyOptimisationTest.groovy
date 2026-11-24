@@ -62,15 +62,15 @@ class EnergyOptimisationTest extends Specification {
   def tariffImports = [3, -5, 10, 1, 3, -5, 7, 8]
   def powerNets = [-5, -25, 15, 0, 0, -5, -5, -2]
 
-  def "Check basic import optimiser"() {
+  def "Check basic import optimizer"() {
 
-    given: "an energy optimisation instance"
+    given: "an energy optimization instance"
     def optimisation = new EnergyOptimiser(intervalSize, 1d)
 
     and: "some import parameters"
     def powerImportMax = 7d
 
-    when: "we request the optimised import power values for the input parameters"
+    when: "we request the optimized import power values for the input parameters"
     def powerNetLimits = new double[intervalCount]
     Arrays.fill(powerNetLimits, 30d)
     def costCalculator = optimisation.getImportOptimiser(powerNets as double[], powerNetLimits, tariffImports as double[], tariffExports as double[], 0d)
@@ -81,7 +81,7 @@ class EnergyOptimisationTest extends Specification {
       optimisedInterval.value[0]
     }))
 
-    then: "the optimised import values should be correct"
+    then: "the optimized import values should be correct"
     optimisedPower.get(0).key == 5
     optimisedPower.get(0).value[0] == -5d
     optimisedPower.get(0).value[1] == 0d
@@ -115,7 +115,7 @@ class EnergyOptimisationTest extends Specification {
     optimisedPower.get(7).value[1] == 0d
     optimisedPower.get(7).value[2] == 7d
 
-    when: "we request the optimised consumption cost values for the EV asset with a minimum power requirement of 6"
+    when: "we request the optimized consumption cost values for the EV asset with a minimum power requirement of 6"
     optimisedPower = IntStream.range(0, intervalCount).mapToObj{
       new Pair<>(it, costCalculator.apply(it, [6d, powerImportMax] as double[]))
     }.collect()
@@ -123,7 +123,7 @@ class EnergyOptimisationTest extends Specification {
       optimisedInterval.value[0]
     }))
 
-    then: "the optimised import values should be correct"
+    then: "the optimized import values should be correct"
     optimisedPower.get(0).key == 5
     optimisedPower.get(0).value[0] == -5d
     optimisedPower.get(0).value[1] == 6d
@@ -158,16 +158,16 @@ class EnergyOptimisationTest extends Specification {
     optimisedPower.get(7).value[2] == 7d
   }
 
-  def "Check basic export optimiser"() {
+  def "Check basic export optimizer"() {
 
-    given: "an energy optimisation instance"
+    given: "an energy optimization instance"
     currentInterval = 0
     def optimisation = new EnergyOptimiser(intervalSize, 1d)
 
     and: "some storage export parameters"
     def powerExportMax = -20d
 
-    when: "we request the optimised export power values for the input parameters"
+    when: "we request the optimized export power values for the input parameters"
     def powerNetLimits = new double[intervalCount]
     Arrays.fill(powerNetLimits, -30d)
     def costCalculator = optimisation.getExportOptimiser(powerNets as double[], powerNetLimits, tariffImports as double[], tariffExports as double[], 0d)
@@ -178,7 +178,7 @@ class EnergyOptimisationTest extends Specification {
       optimisedInterval.value[0]
     }))
 
-    then: "the optimised export values should be correct"
+    then: "the optimized export values should be correct"
     optimisedPower.get(0).key == 2
     optimisedPower.get(0).value[0] == -9.5d
     optimisedPower.get(0).value[1] == -20d
@@ -215,7 +215,7 @@ class EnergyOptimisationTest extends Specification {
 
   def "Check energy schedule extraction"() {
 
-    given: "an energy optimisation instance"
+    given: "an energy optimization instance"
     currentInterval = 0
     def startOfDay = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
     def currentTime = startOfDay.plus(23, ChronoUnit.HOURS)
@@ -274,7 +274,7 @@ class EnergyOptimisationTest extends Specification {
     then: "the energy min levels should be correct"
     energyMinLevels == [160d, 40d, 40d, 40d, 40d, 40d, 40d, 40d] as double[]
 
-    when: "the optimisation is changed to have an interval size less than 1 hour"
+    when: "the optimization is changed to have an interval size less than 1 hour"
     energyMinLevels = new double[24*4]
     energyMaxLevels = new double[24*4]
     Arrays.fill(energyMinLevels, energyLevelMin)
@@ -291,9 +291,9 @@ class EnergyOptimisationTest extends Specification {
     }
   }
 
-  def "Check full storage optimisation functionality"() {
+  def "Check full storage optimization functionality"() {
 
-    given: "an energy optimisation instance"
+    given: "an energy optimization instance"
     currentInterval = 0
     def startOfDay = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
     def currentTime = startOfDay.plus(23, ChronoUnit.HOURS)
@@ -348,23 +348,23 @@ class EnergyOptimisationTest extends Specification {
     then: "the energy min levels should be correct"
     energyMinLevels == [40d, 40d, 160d, 40d, 40d, 40d, 40d, 40d] as double[]
 
-    when: "the energy min levels are normalised"
+    when: "the energy min levels are normalized"
     optimisation.normaliseEnergyMinRequirements(energyMinLevels, powerImportMaxCalculator, powerExportMaxCalculator, currentEnergyLevel)
 
-    then: "the energy min levels should be correctly normalised"
+    then: "the energy min levels should be correctly normalized"
     energyMinLevels == [118d, 139d, 160d, 100d, 40d, 40d, 40d, 40d] as double[]
 
     when: "the energy min levels are modified to improve code coverage in this test"
     Arrays.fill(energyMaxLevels, 170d)
     energyMinLevels = [133d, 150d, 166d, 130d, 130d, 100d, 10d, 100d] as double[]
 
-    and: "the energy min levels are normalised"
+    and: "the energy min levels are normalized"
     optimisation.normaliseEnergyMinRequirements(energyMinLevels, powerImportMaxCalculator, powerExportMaxCalculator, currentEnergyLevel)
 
-    then: "the energy min levels should be correctly normalised"
+    then: "the energy min levels should be correctly normalized"
     energyMinLevels == [121d, 142d, 163d, 130d, 130d, 100d, 79d, 100d] as double[]
 
-    when: "the import requirements are optimised"
+    when: "the import requirements are optimized"
     def powerNetLimits = new double[intervalCount]
     Arrays.fill(powerNetLimits, 30d)
     def importCostCalculator = optimisation.getImportOptimiser(powerNets as double[], powerNetLimits, tariffImports as double[], tariffExports as double[], 0d)
@@ -374,7 +374,7 @@ class EnergyOptimisationTest extends Specification {
       new double[it][1]
     })
 
-    and: "the export requirements are optimised"
+    and: "the export requirements are optimized"
     Arrays.fill(powerNetLimits, -30d)
     def exportCostCalculator = optimisation.getExportOptimiser(powerNets as double[], powerNetLimits, tariffImports as double[], tariffExports as double[], 0d)
     double[][] optimisedExport = IntStream.range(0, intervalCount).mapToObj{
@@ -404,7 +404,7 @@ class EnergyOptimisationTest extends Specification {
     when: "the earning opportunities are applied to the power setpoints"
     optimisation.applyEarningOpportunities(optimisedImport, optimisedExport, energyMinLevels, energyMaxLevels, powerSetpoints, energyLevelCalculator, powerImportMaxCalculator, powerExportMaxCalculator)
 
-    then: "the power setpoints should have been updated to reflect utilisation of earning opportunities"
+    then: "the power setpoints should have been updated to reflect utilization of earning opportunities"
     powerSetpoints[0] == 7d
     powerSetpoints[1] == 7d
     powerSetpoints[2] == 7d

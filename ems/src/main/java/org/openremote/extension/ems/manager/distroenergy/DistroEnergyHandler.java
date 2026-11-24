@@ -438,7 +438,7 @@ public class DistroEnergyHandler {
       return List.of();
     }
 
-    // Walk backwards so every gap has the next forecast value of the day to hand. Only the repeated
+    // Walk backward so every gap has the next forecast value of the day to hand. Only the repeated
     // DST hour takes it. A filled position never becomes a source, so what is borrowed is always a
     // real forecast value rather than another gap's 0.0.
     int dstFilled = 0;
@@ -542,7 +542,7 @@ public class DistroEnergyHandler {
 
   public void undeploy() {
     if (nextRequestFuture != null) {
-      LOG.fine("Cancelling scheduled day-ahead submissions for portfolio " + portfolio);
+      LOG.fine("Canceling scheduled day-ahead submissions for portfolio " + portfolio);
       // Interrupt to abort any in-flight HTTP call before closing the client
       nextRequestFuture.cancel(true);
       nextRequestFuture = null;

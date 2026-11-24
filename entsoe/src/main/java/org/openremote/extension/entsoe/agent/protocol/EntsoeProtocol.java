@@ -133,7 +133,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
               + attribute.getName()
               + " of asset "
               + assetId
-              + " not of supported type. Predicted data points will still be generated but inconsistent behaviour could occur.");
+              + " not of supported type. Predicted data points will still be generated but inconsistent behavior could occur.");
     }
     restartPollingWithInitialDelay();
   }
@@ -371,7 +371,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       factory.setXMLResolver((publicId, systemId, baseUri, namespace) -> null);
       return factory;
     } catch (Exception e) {
-      throw new IllegalStateException("Failed to initialise secure XMLInputFactory", e);
+      throw new IllegalStateException("Failed to initialize secure XMLInputFactory", e);
     }
   }
 
@@ -380,7 +380,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       return JAXBContext.newInstance(PublicationMarketDocument.class);
     } catch (Exception e) {
       throw new IllegalStateException(
-          "Failed to initialise PublicationMarketDocument JAXB context", e);
+          "Failed to initialize PublicationMarketDocument JAXB context", e);
     }
   }
 
@@ -389,7 +389,7 @@ public class EntsoeProtocol extends AbstractProtocol<EntsoeAgent, EntsoeAgentLin
       return PUBLICATION_MARKET_DOCUMENT_CONTEXT.createUnmarshaller();
     } catch (Exception e) {
       throw new IllegalStateException(
-          "Failed to initialise PublicationMarketDocument unmarshaller", e);
+          "Failed to initialize PublicationMarketDocument unmarshaller", e);
     }
   }
 

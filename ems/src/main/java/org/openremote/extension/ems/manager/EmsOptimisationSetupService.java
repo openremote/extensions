@@ -234,7 +234,7 @@ public class EmsOptimisationSetupService implements ContainerService {
       return infoFieldMessage;
     }
 
-    // Create Energy Optimisation Asset
+    // Create Energy Optimization Asset
     EmsEnergyOptimisationAsset energyOptimisationAsset =
         new EmsEnergyOptimisationAsset(energyOptimisationAssetName);
     energyOptimisationAsset.setId(UniqueIdentifierGenerator.generateId()).setParent(setupAsset);

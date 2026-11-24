@@ -143,12 +143,12 @@ public class GOPACSHandler
   protected ObjectMapper objectMapper;
 
   // Scheduled from Undertow request threads (delayed replies, FlexOffers, power updates) and
-  // cancelled from the service thread on undeploy, so the list itself must be thread-safe.
+  // canceled from the service thread on undeploy, so the list itself must be thread-safe.
   private final List<ScheduledFuture<?>> scheduledFutureList =
       Collections.synchronizedList(new ArrayList<>());
 
   // Guarded by the scheduledFutureList monitor, which is what makes the check in schedule() and
-  // the cancel loop in undeploy() exclusive: either the task is tracked and then cancelled, or it
+  // the cancel loop in undeploy() exclusive: either the task is tracked and then canceled, or it
   // is never scheduled at all.
   private boolean undeployed;
 
@@ -353,7 +353,7 @@ public class GOPACSHandler
   }
 
   /**
-   * Schedules a task, tracking its {@link ScheduledFuture} so it can be cancelled on {@link
+   * Schedules a task, tracking its {@link ScheduledFuture} so it can be canceled on {@link
    * #undeploy()}. Already-completed futures are pruned first so the tracked list does not grow
    * unbounded across the handler's lifetime.
    *
@@ -731,7 +731,7 @@ public class GOPACSHandler
     }
     String trimmed = ean.trim();
     if (trimmed.regionMatches(true, 0, EAN_PREFIX, 0, EAN_PREFIX.length())) {
-      // Already prefixed (any case) — normalise the prefix to its canonical lower-case form.
+      // Already prefixed (any case) — normalize the prefix to its canonical lower-case form.
       return EAN_PREFIX + trimmed.substring(EAN_PREFIX.length());
     }
     return EAN_PREFIX + trimmed;

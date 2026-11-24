@@ -132,7 +132,7 @@ class DistroGopacsHandlerTest extends Specification {
 
   // --- sizing rules ---
 
-  def "category #category with buy #buyKw kW and sell #sellKw kW favours #expected"() {
+  def "category #category with buy #buyKw kW and sell #sellKw kW favors #expected"() {
     expect:
     DistroGopacsHandler.orderTypeFor(category, buyKw, sellKw) == expected
 
@@ -733,7 +733,7 @@ class DistroGopacsHandlerTest extends Specification {
     status << ["EXPIRED", "CANCELED", "REJECTED"]
   }
 
-  def "a cancelled order records the trades it matched before the cancel"() {
+  def "a canceled order records the trades it matched before the cancel"() {
     given:
     track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
 
@@ -752,7 +752,7 @@ class DistroGopacsHandlerTest extends Specification {
     }*.value*.get()*.reference == ["partial"]
   }
 
-  def "a cancelled order whose trades fail to load stays tracked as cancelled"() {
+  def "a canceled order whose trades fail to load stays tracked as canceled"() {
     given:
     track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
 
@@ -882,7 +882,7 @@ class DistroGopacsHandlerTest extends Specification {
     sent.findAll { it.name == EmsDistroEnergyAsset.GOPACS_ORDERS.name }.isEmpty()
   }
 
-  def "undeploying for good saves a cancelled order whose trades failed to load as cancelled"() {
+  def "undeploying for good saves a canceled order whose trades failed to load as canceled"() {
     given:
     track(stored("partial", "SUBMITTED", ANNOUNCEMENT))
     save(handler.orders.values())
@@ -912,7 +912,7 @@ class DistroGopacsHandlerTest extends Specification {
     scheduled.isEmpty()
   }
 
-  def "undeploying for good gives up cancelling after five attempts over 15 minutes"() {
+  def "undeploying for good gives up canceling after five attempts over 15 minutes"() {
     given:
     track(stored("unreachable", "SUBMITTED", ANNOUNCEMENT))
 
