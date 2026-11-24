@@ -209,7 +209,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     when: "it is disabled"
     service.processAssetChange(event(PersistenceEvent.Cause.UPDATE, gopacsAsset(false)))
 
-    then: "it is stopped for good, cancelling its open orders"
+    then: "it is stopped for good, canceling its open orders"
     createdGopacsHandlers[0].undeployCalls == [true]
   }
 
@@ -220,7 +220,7 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     when:
     service.processAssetChange(event(PersistenceEvent.Cause.DELETE, gopacsAsset(true)))
 
-    then: "it is stopped for good, cancelling its open orders"
+    then: "it is stopped for good, canceling its open orders"
     createdGopacsHandlers[0].undeployCalls == [true]
   }
 

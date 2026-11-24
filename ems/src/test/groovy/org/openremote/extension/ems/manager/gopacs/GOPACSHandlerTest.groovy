@@ -227,7 +227,7 @@ class GOPACSHandlerTest extends Specification {
   }
 
   def "toCongestionPoint canonicalises an EAN to the GOPACS ean.<code> format (#input -> #expected)"() {
-    expect: "the optional, case-insensitive ean. prefix is normalised to lower-case and added when missing"
+    expect: "the optional, case-insensitive ean. prefix is normalized to lower-case and added when missing"
     GOPACSHandler.toCongestionPoint(input) == expected
 
     where:
@@ -279,13 +279,13 @@ class GOPACSHandlerTest extends Specification {
     when: "the handler is undeployed"
     handler.undeploy()
 
-    then: "every scheduled future is cancelled"
+    then: "every scheduled future is canceled"
     pending.each { 1 * it.cancel(true) }
 
     when: "undeploy is called a second time"
     handler.undeploy()
 
-    then: "nothing is cancelled again, since the tracked list was already cleared"
+    then: "nothing is canceled again, since the tracked list was already cleared"
     pending.each { 0 * it.cancel(true) }
   }
 

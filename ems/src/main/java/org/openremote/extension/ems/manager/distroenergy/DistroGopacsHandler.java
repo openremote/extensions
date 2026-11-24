@@ -99,7 +99,7 @@ public class DistroGopacsHandler {
    */
   protected static final Duration SETTLEMENT_RETRY_WINDOW = Duration.ofDays(1);
 
-  /** Attempts at cancelling the open orders when the handler stops for good. */
+  /** Attempts at canceling the open orders when the handler stops for good. */
   protected static final int CANCEL_ATTEMPTS = 5;
 
   /**
@@ -126,7 +126,7 @@ public class DistroGopacsHandler {
 
   protected static final int LIST_PAGE_SIZE = 100;
 
-  /** Orders that can still be cancelled. Only SUBMITTED ones can be replaced. */
+  /** Orders that can still be canceled. Only SUBMITTED ones can be replaced. */
   protected static final Set<String> OPEN_STATUSES = Set.of("PENDING", "SUBMITTED");
 
   protected static final Set<String> REPLACEABLE_STATUSES = Set.of("SUBMITTED");
@@ -324,7 +324,7 @@ public class DistroGopacsHandler {
    *
    * @param cancelOpenOrders cancels the open orders first, for when the handler stops for good
    *     (disabled or asset deleted) rather than for a manager restart, which picks them up again.
-   *     Runs on the executor because the caller is an event thread and cancelling calls Distro. See
+   *     Runs on the executor because the caller is an event thread and canceling calls Distro. See
    *     {@link #cancelBeforeClose}.
    */
   public void undeploy(boolean cancelOpenOrders) {
@@ -351,7 +351,7 @@ public class DistroGopacsHandler {
    * so cancels that fail for a reason a retry may fix are tried again, with a doubling delay, up to
    * {@link #CANCEL_ATTEMPTS} attempts. Orders that may still be open when the client closes are
    * logged as severe: those whose cancel kept failing or was refused, and LOCKED ones, which cannot
-   * be cancelled.
+   * be canceled.
    *
    * <p>Only the outcome for the orders it cancels is written to the orders saved on the asset, see
    * {@link #saveOutcomes}.
@@ -374,7 +374,7 @@ public class DistroGopacsHandler {
       long delayMillis = CANCEL_RETRY_DELAY.toMillis() << (attempt - 1);
       LOG.warning(
           String.format(
-              "Cancelling Distro GOPACS orders %s for asset %s failed, retrying in %d s (attempt %d"
+              "Canceling Distro GOPACS orders %s for asset %s failed, retrying in %d s (attempt %d"
                   + " of %d)",
               failed.stream().map(GopacsOrder::reference).toList(),
               assetId,
@@ -394,7 +394,7 @@ public class DistroGopacsHandler {
     if (!mayBeOpen.isEmpty()) {
       LOG.severe(
           String.format(
-              "Stopped Distro GOPACS handler for asset %s without cancelling orders %s: they may"
+              "Stopped Distro GOPACS handler for asset %s without canceling orders %s: they may"
                   + " still be open and matched until they expire. Cancel them in Distro.",
               assetId, mayBeOpen));
     }
@@ -402,13 +402,13 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Writes the outcome of cancelling the orders into the orders saved on the asset and leaves the
+   * Writes the outcome of canceling the orders into the orders saved on the asset and leaves the
    * rest as saved, as a handler started for the asset in the meantime saves its own orders there.
    * An order that is finished with is removed; one still tracked is saved as it is now, so the next
    * handler neither records its cancel as a status change nor its trades a second time.
    *
    * <p>Known gap: a handler started while these cancels are still being retried has already
-   * restored the orders, so it records a cancelled order's status change and trades again.
+   * restored the orders, so it records a canceled order's status change and trades again.
    *
    * <p>Does nothing without orders: the saved orders read here could then predate a save still on
    * its way, and writing them back would undo it.
@@ -575,7 +575,7 @@ public class DistroGopacsHandler {
       if (orderType == null) {
         LOG.info(
             String.format(
-                "No order suggested for Distro GOPACS asset %s: effectivity category '%s' favours"
+                "No order suggested for Distro GOPACS asset %s: effectivity category '%s' favors"
                     + " neither side",
                 assetId, category));
       } else if (sideKw < MIN_QUANTITY_KW) {
@@ -619,7 +619,7 @@ public class DistroGopacsHandler {
    * side an order on the EAN helps most. When both sides are equally effective the side the
    * batteries can offer more of wins, BUY on a draw.
    *
-   * @return BUY, SELL, or null when neither side helps or the category is not recognised.
+   * @return BUY, SELL, or null when neither side helps or the category is not recognized.
    */
   static GopacsOrderTypeValueType orderTypeFor(String category, double buyKw, double sellKw) {
     if (category == null || !category.startsWith("BUY_")) {
@@ -937,7 +937,7 @@ public class DistroGopacsHandler {
     }
     LOG.info(
         String.format(
-            "Cancelling %d open Distro GOPACS orders for asset %s that the operator asked to cancel"
+            "Canceling %d open Distro GOPACS orders for asset %s that the operator asked to cancel"
                 + " or that are not for announcement %s",
             stale.size(), assetId, currentAnnouncementId));
     cancel(stale);
@@ -945,8 +945,8 @@ public class DistroGopacsHandler {
   }
 
   /**
-   * Cancels the orders at Distro. A cancelled order is finished like any order in a final status,
-   * as it may have matched in part before the cancel took effect. Does not save the tracked orders.
+   * Cancels the orders at Distro. A canceled order is finished like any order in a final status, as
+   * it may have matched in part before the cancel took effect. Does not save the tracked orders.
    *
    * @return the orders whose cancel failed for a reason a retry may fix, see {@link #isPermanent}.
    *     Distro answers 423 when the order is no longer SUBMITTED or PENDING.
@@ -957,7 +957,7 @@ public class DistroGopacsHandler {
       try {
         resource.cancelOrder(portfolio, order.reference());
         // Also the only record once the asset is deleted, as the writes below then go nowhere.
-        LOG.info("Cancelled Distro GOPACS order " + order.reference() + " for asset " + assetId);
+        LOG.info("Canceled Distro GOPACS order " + order.reference() + " for asset " + assetId);
         GopacsOrder canceled = order.withStatus("CANCELED");
         recordHistory("CANCELED", canceled, null);
         finishOrder(canceled);
@@ -982,8 +982,8 @@ public class DistroGopacsHandler {
    * Tracks the unfinished orders Distro holds for this asset that are not tracked yet. The order is
    * tracked before it is posted, but saving it on the asset is asynchronous, so a crash just after
    * Distro accepted it can leave it untracked while it can still be matched. Picked up here, it is
-   * refreshed, replaced, cancelled and settled like any other. Only orders whose metadata names
-   * this asset are taken, as a portfolio may serve more than one asset. Does not save the tracked
+   * refreshed, replaced, canceled and settled like any other. Only orders whose metadata names this
+   * asset are taken, as a portfolio may serve more than one asset. Does not save the tracked
    * orders.
    *
    * @return whether Distro could list the orders; if not, the next poll tries again.
@@ -1041,9 +1041,9 @@ public class DistroGopacsHandler {
    * deploy, see {@link #adoptUntrackedOrders}. A status change is recorded in the history and an
    * order in a final status is finished with, see {@link #finishOrder}. Then, with the statuses
    * fresh, the orders not at the asset's price are replaced and the open orders of an announcement
-   * that is no longer current are cancelled, which retries a replace or cancel that did not happen
+   * that is no longer current are canceled, which retries a replace or cancel that did not happen
    * when the price or announcement changed. Only orders refreshed in this poll are replaced or
-   * cancelled, so an outage that also fails the refresh does not add a failure to the history every
+   * canceled, so an outage that also fails the refresh does not add a failure to the history every
    * poll.
    */
   protected synchronized void pollOrders() {
@@ -1093,7 +1093,7 @@ public class DistroGopacsHandler {
     }
     EmsDistroEnergyAsset asset = findAsset();
     if (asset != null) {
-      // The two pick disjoint orders: replacing skips what cancelling picks.
+      // The two pick disjoint orders: replacing skips what canceling picks.
       replaceOrders(refreshed);
       cancelStaleOrders(refreshed, asset.getGopacsAnnouncementId().orElse(null));
     }

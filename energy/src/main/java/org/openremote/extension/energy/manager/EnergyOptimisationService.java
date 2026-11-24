@@ -71,7 +71,7 @@ import org.openremote.model.query.filter.StringPredicate;
 import org.openremote.model.util.ValueUtil;
 import org.openremote.model.value.MetaItemType;
 
-/** Handles optimisation instances for {@link EnergyOptimisationAsset}. */
+/** Handles optimization instances for {@link EnergyOptimisationAsset}. */
 public class EnergyOptimisationService extends RouteBuilder implements ContainerService {
 
   protected static class OptimisationInstance {
@@ -81,7 +81,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
 
     /**
      * This keeps track of a theoretical energy level of storage assets. This is used to calculate
-     * the theoretical un-optimised costs.
+     * the theoretical un-optimized costs.
      */
     Map<String, Double> unoptimisedStorageAssetEnergyLevels = new HashMap<>();
 
@@ -128,8 +128,8 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   public void start(Container container) throws Exception {
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
 
-    // Load all enabled optimisation assets and instantiate an optimiser for each
-    LOG.fine("Loading optimisation assets...");
+    // Load all enabled optimization assets and instantiate an optimizer for each
+    LOG.fine("Loading optimization assets...");
 
     List<EnergyOptimisationAsset> energyOptimisationAssets =
         assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
@@ -137,7 +137,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
             .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
             .toList();
 
-    LOG.fine("Found enabled optimisation asset count = " + energyOptimisationAssets.size());
+    LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
 
     energyOptimisationAssets.forEach(this::startOptimisation);
 
@@ -164,7 +164,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   protected void processAssetChange(PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
-    LOG.fine("Processing optimisation asset change: " + persistenceEvent);
+    LOG.fine("Processing optimization asset change: " + persistenceEvent);
     stopOptimisation(persistenceEvent.getEntity().getId());
 
     if (persistenceEvent.getCause() != PersistenceEvent.Cause.DELETE) {
@@ -297,7 +297,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
       }
     }
 
-    LOG.info("Processing optimisation asset attribute event: " + attributeEvent);
+    LOG.info("Processing optimization asset attribute event: " + attributeEvent);
     stopOptimisation(attributeEvent.getId());
 
     // Get latest asset from storage
@@ -310,7 +310,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   protected synchronized void startOptimisation(EnergyOptimisationAsset optimisationAsset) {
-    LOG.fine("Initialising optimiser for optimisation asset: " + optimisationAsset);
+    LOG.fine("Initializing optimizer for optimization asset: " + optimisationAsset);
     double intervalSize = optimisationAsset.getIntervalSize().orElse(0.25d);
     int financialWeighting = optimisationAsset.getFinancialWeighting().orElse(100);
 
@@ -322,7 +322,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
 
       if (periodSeconds < 300) {
         throw new IllegalStateException(
-            "Optimiser interval size is too small (minimum is 5 mins) for asset: "
+            "Optimizer interval size is too small (minimum is 5 mins) for asset: "
                 + optimisationAsset.getId());
       }
 
@@ -342,10 +342,10 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
           optimisationAsset.getId(),
           new OptimisationInstance(optimisationAsset, optimiser, optimisationFuture));
 
-      // Execute first optimisation at the period that started previous to now
+      // Execute first optimization at the period that started previous to now
       LOG.finest(
           getLogPrefix(optimisationAsset.getId())
-              + "Running first optimisation for time '"
+              + "Running first optimization for time '"
               + formatter.format(optimisationStartTime));
 
       executorService.execute(
@@ -355,12 +355,12 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
             } catch (Exception e) {
               LOG.log(
                   Level.SEVERE,
-                  "Failed to run energy optimiser for asset: " + optimisationAsset.getId(),
+                  "Failed to run energy optimizer for asset: " + optimisationAsset.getId(),
                   e);
             }
           });
     } catch (Exception e) {
-      LOG.log(Level.SEVERE, "Failed to start energy optimiser for asset: " + optimisationAsset, e);
+      LOG.log(Level.SEVERE, "Failed to start energy optimizer for asset: " + optimisationAsset, e);
     }
   }
 
@@ -372,16 +372,16 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
       return;
     }
 
-    LOG.fine("Removing optimiser for optimisation asset: " + optimisationAssetId);
+    LOG.fine("Removing optimizer for optimization asset: " + optimisationAssetId);
     optimisationInstance.optimiserFuture.cancel(false);
   }
 
   /**
-   * Schedules execution of the optimiser at the start of the interval window with up to 30s of
-   * offset randomness added so that multiple optimisers don't all run at exactly the same instance;
+   * Schedules execution of the optimizer at the start of the interval window with up to 30s of
+   * offset randomness added so that multiple optimizers don't all run at exactly the same instance;
    * the interval execution times are calculated relative to the hour. e.g. a 0.25h intervalSize
    * (15min) would execute at NN:00+offset, NN:15+offset, NN:30+offset, NN:45+offset...It is
-   * important that intervals coincide with any change in supplier tariff so that the optimisation
+   * important that intervals coincide with any change in supplier tariff so that the optimization
    * works effectively.
    */
   protected ScheduledFuture<?> scheduleOptimisation(
@@ -393,7 +393,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
 
     if (optimiser == null) {
       throw new IllegalStateException(
-          "Optimiser instance not found for asset: " + optimisationAssetId);
+          "Optimizer instance not found for asset: " + optimisationAssetId);
     }
 
     return scheduledExecutorService.scheduleAtFixedRate(
@@ -406,7 +406,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
           } catch (Exception e) {
             LOG.log(
                 Level.SEVERE,
-                "Failed to run energy optimiser for asset: " + optimisationAssetId,
+                "Failed to run energy optimizer for asset: " + optimisationAssetId,
                 e);
           }
         },
@@ -430,7 +430,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   protected String getLogPrefix(String optimisationAssetId) {
-    return "Optimisation '" + optimisationAssetId + "': ";
+    return "Optimization '" + optimisationAssetId + "': ";
   }
 
   protected void checkTimeoutAndThrow(String optimisationAssetId, long startTimeMillis)
@@ -439,7 +439,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     if (runtime > OPTIMISATION_TIMEOUT_MILLIS) {
       String logMsg =
           getLogPrefix(optimisationAssetId)
-              + "Optimisation has been running for "
+              + "Optimization has been running for "
               + runtime
               + "ms, timeout is at "
               + OPTIMISATION_TIMEOUT_MILLIS
@@ -450,8 +450,8 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   /**
-   * Runs the optimisation routine for the specified time; it is important that this method does not
-   * throw an exception as it will cancel the scheduled task thus stopping future optimisations.
+   * Runs the optimization routine for the specified time; it is important that this method does not
+   * throw an exception as it will cancel the scheduled task thus stopping future optimizations.
    */
   protected void runOptimisation(String optimisationAssetId, Instant optimisationTime)
       throws Exception {
@@ -526,7 +526,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
 
     LOG.finest(
         getLogPrefix(optimisationAssetId)
-            + "Fetching optimisable child assets of type '"
+            + "Fetching optimizable child assets of type '"
             + ElectricityStorageAsset.class.getSimpleName()
             + "'");
 
@@ -568,7 +568,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
                   // Exclude force charged assets (so we don't mess with the setpoint)
                   if (forceChargeAssetIds.contains(asset.getId())) {
                     LOG.finest(
-                        "Optimisable asset was requested to force charge so it won't be optimised: "
+                        "Optimizable asset was requested to force charge so it won't be optimized: "
                             + asset.getId());
                     @SuppressWarnings("OptionalGetWithoutIsPresent")
                     Attribute<Double> powerAttribute =
@@ -645,7 +645,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
                                   a.setPowerExportMax(smallestPowerExportMax);
                                 }
                                 LOG.finest(
-                                    "Excluding charger from optimisable assets and child vehicle will be used instead: "
+                                    "Excluding charger from optimizable assets and child vehicle will be used instead: "
                                         + asset.getId());
                                 return true;
                               }
@@ -664,7 +664,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     if (optimisableStorageAssets.isEmpty()) {
       LOG.warning(
           getLogPrefix(optimisationAssetId)
-              + "Expected at least one optimisable '"
+              + "Expected at least one optimizable '"
               + ElectricityStorageAsset.class.getSimpleName()
               + " asset with a '"
               + ElectricityAsset.POWER_SETPOINT.getName()
@@ -675,7 +675,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     if (LOG.isLoggable(Level.FINEST)) {
       LOG.finest(
           getLogPrefix(optimisationAssetId)
-              + "Found optimisable child assets of type '"
+              + "Found optimizable child assets of type '"
               + ElectricityStorageAsset.class.getSimpleName()
               + "': "
               + optimisableStorageAssets.stream()
@@ -756,7 +756,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
         .filter(
             asset -> {
               if (asset instanceof ElectricityChargerAsset) {
-                // Check if it has a child vehicle asset also check optimisable assets as child
+                // Check if it has a child vehicle asset also check optimizable assets as child
                 // vehicle could be in there
                 return plainStorageAssets.stream()
                         .noneMatch(
@@ -886,7 +886,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     double unoptimisedFinancialCost = 0d;
     double unoptimisedCarbonCost = 0d;
 
-    // Optimise storage assets with priority on storage assets with an energy schedule (already
+    // Optimize storage assets with priority on storage assets with an energy schedule (already
     // sorted above)
     double importPowerMax = supplierAsset.getPowerImportMax().orElse(Double.MAX_VALUE);
     double exportPowerMax = -1 * supplierAsset.getPowerExportMax().orElse(Double.MAX_VALUE);
@@ -905,7 +905,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
 
       LOG.finest(
           getLogPrefix(optimisationAssetId)
-              + "Optimising power set points for storage asset: "
+              + "Optimizing power set points for storage asset: "
               + storageAsset);
 
       if (!supportsExport && !supportsImport) {
@@ -997,7 +997,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
       if (hasEnergyMinRequirement) {
         LOG.finest(
             getLogPrefix(optimisationAssetId)
-                + "Normalising min energy requirements for storage asset: "
+                + "Normalizing min energy requirements for storage asset: "
                 + storageAsset.getId());
         optimiser.normaliseEnergyMinRequirements(
             energyLevelMins, powerImportMaxCalculator, powerExportMaxCalculator, energyLevel);
@@ -1032,7 +1032,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
           if (i == 0) {
             if (!storageAssetConnected(storageAsset)) {
               LOG.finest(
-                  "Optimised storage asset not connected so interval 0 will not be counted or actioned: "
+                  "Optimized storage asset not connected so interval 0 will not be counted or actioned: "
                       + storageAsset.getId());
               setpoints[i] = 0;
               continue;
@@ -1089,7 +1089,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
           storageAsset.getTariffImport().orElse(0d) * assetUnoptimisedPower * intervalSize;
     }
 
-    // Clear out un-optimised data for not found assets
+    // Clear out un-optimized data for not found assets
     obsoleteUnoptimisedAssetIds.forEach(
         optimisationInstance.unoptimisedStorageAssetEnergyLevels.keySet()::remove);
 
@@ -1206,7 +1206,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
                     // Average previous and next values to fill in gaps (goes up to 5 back and
                     // forward) - this fixes
                     // issues with resolution differences between stored predicted data and
-                    // optimisation interval
+                    // optimization interval
                     Double previous = null;
                     Double next = null;
                     int j = i - 1;
@@ -1261,7 +1261,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     boolean supportsExport = storageAsset.isSupportsExport().orElse(false);
     boolean supportsImport = storageAsset.isSupportsImport().orElse(false);
 
-    LOG.finest(getLogPrefix(optimisationAssetId) + "Optimising storage asset: " + storageAsset);
+    LOG.finest(getLogPrefix(optimisationAssetId) + "Optimizing storage asset: " + storageAsset);
 
     double energyCapacity = storageAsset.getEnergyCapacity().orElse(0d);
     double energyLevel = Math.min(energyCapacity, storageAsset.getEnergyLevel().orElse(-1d));
@@ -1392,7 +1392,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   /**
-   * Gets the un-optimised import power for the first (current) interval for the supplied storage
+   * Gets the un-optimized import power for the first (current) interval for the supplied storage
    * asset
    */
   protected double getStorageUnoptimisedImportPower(
@@ -1419,7 +1419,7 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     if (energyLevel < 0) {
       LOG.finest(
           getLogPrefix(optimisationAssetId)
-              + "Storage asset has no energy level so cannot calculate un-optimised power demand: "
+              + "Storage asset has no energy level so cannot calculate un-optimized power demand: "
               + storageAsset.getId());
       return 0;
     }

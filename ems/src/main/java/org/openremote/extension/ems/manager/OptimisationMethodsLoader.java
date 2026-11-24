@@ -56,7 +56,7 @@ public class OptimisationMethodsLoader {
     if (!currentOptimisationMethodName.equals("None")) {
       LOG.info(
           String.format(
-              "assetId='%s'; Optimisation method '%s' not found",
+              "assetId='%s'; Optimization method '%s' not found",
               energyOptimisationAssetId, currentOptimisationMethodName));
     }
   }
@@ -131,7 +131,7 @@ public class OptimisationMethodsLoader {
     } catch (Exception e) {
       LOG.info(
           String.format(
-              "An exception occurred during loading of optimisation methods; Exception: %s", e));
+              "An exception occurred during loading of optimization methods; Exception: %s", e));
     }
 
     return optimisationMethods;

@@ -77,7 +77,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
     def services = Lists.newArrayList(defaultServices())
     def spyOptimisationService = Spy(EnergyOptimisationService) {
-      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimisation for testing
+      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimization for testing
         optimisationAssetId, optimiser, startDuration, periodSeconds ->
         return null
       }
@@ -94,7 +94,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
     def timerService = container.getService(TimerService.class)
 
-    expect: "an optimisation instance should exist"
+    expect: "an optimization instance should exist"
     conditions.eventually {
       assert !optimisationService.assetOptimisationInstanceMap.isEmpty()
       assert optimisationService.assetOptimisationInstanceMap.get(managerTestSetup.electricityOptimisationAssetId) != null
@@ -106,7 +106,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     now = now.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS)
     advancePseudoClock(now.toEpochMilli()-timerService.getCurrentTimeMillis(), TimeUnit.MILLISECONDS, container)
 
-    then: "the optimisation start time should be correctly calculated"
+    then: "the optimization start time should be correctly calculated"
     def optimiser = optimisationService.assetOptimisationInstanceMap.get(managerTestSetup.electricityOptimisationAssetId).energyOptimiser
     def optimisationTime = optimisationService.getOptimisationStartTime(now.toEpochMilli(), (long)optimiser.intervalSize * 60 * 60)
     def optimisationDateTime = optimisationTime.atZone(ZoneId.systemDefault()).toLocalDateTime()
@@ -143,10 +143,10 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert (assetStorageService.find(managerTestSetup.electricitySolarAssetId) as ElectricityProducerSolarAsset).getPower().orElse(-1d) == producerPower.get(0)
     }
 
-    when: "the optimisation runs"
+    when: "the optimization runs"
     optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime)
 
-    then: "the setpoints of the storage asset for the next 24hrs should be correctly optimised"
+    then: "the setpoints of the storage asset for the next 24hrs should be correctly optimized"
     conditions.eventually {
       assert ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId)).getPowerSetpoint().orElse(0d) == 0d
       def setpoints = assetPredictedDatapointService.queryDatapoints(
@@ -171,7 +171,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert setpoints[6].value == 0d
     }
 
-    when: "storage asset import and export tariffs are added to make storage un-viable and optimisation is run"
+    when: "storage asset import and export tariffs are added to make storage un-viable and optimization is run"
     def batteryAsset = ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId))
     batteryAsset.setTariffExport(10)
     batteryAsset.setTariffImport(10)
@@ -203,7 +203,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert setpoints[6].value == 0d
     }
 
-    when: "storage asset import and export tariffs are modified to make storage viable in limited intervals and optimisation is run"
+    when: "storage asset import and export tariffs are modified to make storage viable in limited intervals and optimization is run"
     batteryAsset = ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId))
     batteryAsset.setTariffExport(5)
     batteryAsset.setTariffImport(5)
@@ -242,7 +242,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
     def services = Lists.newArrayList(defaultServices())
     def spyOptimisationService = Spy(EnergyOptimisationService) {
-      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimisation for testing
+      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimization for testing
         optimisationAssetId, optimiser, startDuration, periodSeconds ->
         return null
       }
@@ -259,7 +259,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
     def timerService = container.getService(TimerService.class)
 
-    expect: "an optimisation instance should exist"
+    expect: "an optimization instance should exist"
     conditions.eventually {
       assert !optimisationService.assetOptimisationInstanceMap.isEmpty()
       assert optimisationService.assetOptimisationInstanceMap.get(managerTestSetup.electricityOptimisationAssetId) != null
@@ -278,7 +278,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     now = now.truncatedTo(ChronoUnit.DAYS).plus(2, ChronoUnit.DAYS)
     advancePseudoClock(now.toEpochMilli()-timerService.getCurrentTimeMillis(), TimeUnit.MILLISECONDS, container)
 
-    then: "the optimisation start time should be correctly calculated"
+    then: "the optimization start time should be correctly calculated"
     def optimiser = optimisationService.assetOptimisationInstanceMap.get(managerTestSetup.electricityOptimisationAssetId).energyOptimiser
     def optimisationTime = optimisationService.getOptimisationStartTime(now.toEpochMilli(), (long)optimiser.intervalSize * 60 * 60)
     def optimisationDateTime = optimisationTime.atZone(ZoneId.systemDefault())
@@ -313,7 +313,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert (assetStorageService.find(managerTestSetup.electricitySolarAssetId) as ElectricityProducerSolarAsset).getPower().orElse(-1d) == producerPower.get(0)
     }
 
-    when: "the optimisation asset is reset which will cause optimisation to run"
+    when: "the optimization asset is reset which will cause optimization to run"
     def optimisationAsset = assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset
     optimisationAsset.setOptimisationDisabled(true)
     optimisationAsset.setFinancialSaving(0d)
@@ -347,7 +347,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert setpoints[6].value == -10d
     }
 
-    and: "the optimisation saving should be inverse of earning from lost production export -(10x3x0.05)"
+    and: "the optimization saving should be inverse of earning from lost production export -(10x3x0.05)"
     conditions.eventually {
       assert (assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset).getFinancialSaving().orElse(0d) == -1.5
     }
@@ -357,10 +357,10 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     batteryAsset = assetStorageService.merge(batteryAsset)
     advancePseudoClock(1, TimeUnit.SECONDS, container) // This prevents attribute timestamp issues
 
-    and: "another optimisation run occurs"
+    and: "another optimization run occurs"
     optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime.plus((long)optimiser.intervalSize*60, ChronoUnit.MINUTES))
 
-    then: "the optimisation saving should have decreased by the same amount (i.e. cost)"
+    then: "the optimization saving should have decreased by the same amount (i.e. cost)"
     conditions.eventually {
       assert ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId)).getPowerSetpoint().orElse(0d) == 10d
       assert (assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset).getFinancialSaving().orElse(0d) == -3.0
@@ -371,10 +371,10 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     batteryAsset = assetStorageService.merge(batteryAsset)
     advancePseudoClock(1, TimeUnit.SECONDS, container) // This prevents attribute timestamp issues
 
-    and: "another optimisation run occurs"
+    and: "another optimization run occurs"
     optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime.plus((long)optimiser.intervalSize*60*2, ChronoUnit.MINUTES))
 
-    then: "the optimisation saving should have decreased by the same amount (i.e. cost)"
+    then: "the optimization saving should have decreased by the same amount (i.e. cost)"
     conditions.eventually {
       assert ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId)).getPowerSetpoint().orElse(0d) == 10d
       assert (assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset).getFinancialSaving().orElse(0d) == -4.5
@@ -385,10 +385,10 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
     batteryAsset = assetStorageService.merge(batteryAsset)
     advancePseudoClock(1, TimeUnit.SECONDS, container) // This prevents attribute timestamp issues
 
-    and: "another optimisation run occurs"
+    and: "another optimization run occurs"
     optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime.plus((long)optimiser.intervalSize*60*3, ChronoUnit.MINUTES))
 
-    then: "the optimisation saving should have decreased by the same amount (i.e. cost)"
+    then: "the optimization saving should have decreased by the same amount (i.e. cost)"
     conditions.eventually {
       assert ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId)).getPowerSetpoint().orElse(0d) == 10d
       assert (assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset).getFinancialSaving().orElse(0d) == -6.0
@@ -404,15 +404,15 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
       assert (assetStorageService.find(managerTestSetup.electricitySolarAssetId) as ElectricityProducerSolarAsset).getPower().orElse(-1d) == producerPower.get(4)
     }
 
-    when: "another optimisation run occurs (this should now be exporting from storage)"
+    when: "another optimization run occurs (this should now be exporting from storage)"
     batteryAsset.setEnergyLevel(160d)
     batteryAsset = assetStorageService.merge(batteryAsset)
     advancePseudoClock(1, TimeUnit.SECONDS, container) // This prevents attribute timestamp issues
 
-    and: "another optimisation run occurs"
+    and: "another optimization run occurs"
     optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime.plus((long)optimiser.intervalSize*60*4, ChronoUnit.MINUTES))
 
-    then: "the optimisation saving should have increased by the cost to import 30kWh (as battery will now be exporting)"
+    then: "the optimization saving should have increased by the cost to import 30kWh (as battery will now be exporting)"
     conditions.eventually {
       assert ((ElectricityStorageAsset)assetStorageService.find(managerTestSetup.electricityBatteryAssetId)).getPowerSetpoint().orElse(0d) == -10d
       assert (assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset).getFinancialSaving().orElse(0d), closeTo(-6.0+2.4, 0.1)

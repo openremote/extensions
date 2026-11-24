@@ -153,7 +153,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     // Add service
     services.getMessageBrokerService().getContext().addRoutes(this);
 
-    // Find all energy optimisation assets
+    // Find all energy optimization assets
     List<EmsEnergyOptimisationAsset> energyOptimisationAssets =
         services
             .getAssetStorageService()
@@ -162,7 +162,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             .map(asset -> (EmsEnergyOptimisationAsset) asset)
             .toList();
 
-    // Start optimisation for enabled energy optimisation assets
+    // Start optimization for enabled energy optimization assets
     if (!energyOptimisationAssets.isEmpty()) {
       List<String> enabledEnergyOptimisationAssetIds =
           energyOptimisationAssets.stream()
@@ -268,7 +268,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
           } catch (Exception e) {
             LOG.severe(
                 String.format(
-                    "assetType='%s', assetId='%s'; Failed to run energy optimisation; Exception: %s",
+                    "assetType='%s', assetId='%s'; Failed to run energy optimization; Exception: %s",
                     EmsEnergyOptimisationAsset.class.getSimpleName(), assetId, e));
           }
         };
@@ -311,7 +311,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       // Update total forecasts
       updatePowerLimitProfileTotalForecasts(energyOptimisationAsset, gopacsAsset);
 
-      // Update energy optimisation asset attributes
+      // Update energy optimization asset attributes
       String[] energyOptimisationAssetAttributeNames =
           new String[] {
             EmsEnergyOptimisationAsset.POWER_LIMIT_MAXIMUM_PROFILE_MANUAL.getName(),
@@ -342,7 +342,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       energyOptimisationTimersMap.put(energyOptimisationAssetId, triggerTimeMillis);
     }
 
-    // Run selected optimisation method
+    // Run selected optimization method
     String optimisationMethodName =
         energyOptimisationAsset
             .getOptimisationMethod()
@@ -544,7 +544,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       return;
     }
 
-    // The forecast being submitted is the parent optimisation asset's net power.
+    // The forecast being submitted is the parent optimization asset's net power.
     String energyOptimisationAssetId = distroEnergyAsset.getParentId();
     if (energyOptimisationAssetId == null) {
       LOG.warning(
@@ -604,8 +604,8 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
    * Runs one Distro GOPACS order handler for the asset while {@code gopacsEnabled} is true and the
    * asset has a portfolio, and none otherwise. A running handler for the same portfolio is left
    * alone: its tracked orders are restored from the asset on deploy, but a redeploy would still
-   * drop an in-flight poll. A portfolio change stops the handler like a disable, cancelling the
-   * open orders placed under the old portfolio, and starts a new one.
+   * drop an in-flight poll. A portfolio change stops the handler like a disable, canceling the open
+   * orders placed under the old portfolio, and starts a new one.
    */
   private void reconcileDistroGopacsHandler(EmsDistroEnergyAsset asset) {
     synchronized (distroGopacsLifecycleLock) {
@@ -748,18 +748,18 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
             attributeEvent.getName());
     String attributeName = attributeEvent.getName();
 
-    // Disable/enable optimisation service
+    // Disable/enable optimization service
     if (attributeName.equals(EmsEnergyOptimisationAsset.DISABLE_OPTIMISATION_SERVICE.getName())) {
       boolean disabled = (Boolean) attributeEvent.getValue().orElse(false);
 
       if (!disabled && !energyOptimisationAssetsMap.containsKey(assetId)) {
         if (services.getGatewayService().getLocallyRegisteredGatewayId(assetId, null) == null) {
-          LOG.info(String.format("%s; Enabled energy optimisation service", logPrefix));
+          LOG.info(String.format("%s; Enabled energy optimization service", logPrefix));
           startOptimisation(assetId);
         }
       } else if (disabled && energyOptimisationAssetsMap.containsKey(assetId)) {
         stopOptimisation(assetId);
-        LOG.info(String.format("%s; Disabled energy optimisation service", logPrefix));
+        LOG.info(String.format("%s; Disabled energy optimization service", logPrefix));
       }
       return;
     }
@@ -884,7 +884,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       if (!energyOptimisationAssetsMap.containsKey(assetId)) {
         LOG.warning(
             String.format(
-                "%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.",
+                "%s; Optimization is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.",
                 logPrefix));
         return;
       }
@@ -949,7 +949,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
       if (!energyOptimisationAssetsMap.containsKey(assetId)) {
         LOG.warning(
             String.format(
-                "%s; Optimisation is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.",
+                "%s; Optimization is disabled. The manual power limit profile has been updated but has not been loaded into the forecast database.",
                 logPrefix));
         return;
       }
@@ -1008,7 +1008,7 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
               powerLimitMinimumProfileTotal);
     }
 
-    // Run selected optimisation method
+    // Run selected optimization method
     if (attributeName.equals(EmsEnergyOptimisationAsset.OPTIMISATION_METHOD.getName())) {
       if (energyOptimisationAssetsMap.containsKey(assetId)) {
         // Reset advanced settings attributes field

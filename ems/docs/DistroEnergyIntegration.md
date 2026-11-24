@@ -280,7 +280,7 @@ sequenceDiagram
 `BUY_NONE_SELL_NONE` suggests nothing. On `BUY_MODERATE_SELL_MODERATE` the side the batteries can offer more of wins,
 `BUY` on a draw. `BUY` means consume more (charge) and `SELL` means consume less (discharge).
 
-**Quantity** is the constant power the batteries under the parent optimisation asset can hold for the whole window:
+**Quantity** is the constant power the batteries under the parent optimization asset can hold for the whole window:
 
 - Only batteries allowed to charge (`BUY`) or discharge (`SELL`) and not `disconnected` count
 - Per battery, the lower of its power and its energy over the window:
@@ -323,7 +323,7 @@ portfolio and tracks those whose `assetId` is the asset's but are not tracked ye
 #### Order Lifecycle
 
 `PENDING` and `SUBMITTED` orders are open. Distro holds a `LOCKED` order for matching, so it cannot be replaced or
-cancelled (Distro answers `423`).
+canceled (Distro answers `423`).
 
 A price change replaces the `SUBMITTED` orders of the current announcement at the price the asset holds when the
 change is processed, so two quick changes cannot leave an order at the older price. Orders already at that price are
@@ -331,7 +331,7 @@ left alone. Every poll replaces again what it refreshed and finds at another pri
 `PENDING` when the price changed, or whose replace failed, gets the new price once it is `SUBMITTED`. Orders the
 operator asked to cancel keep their price.
 
-Open orders are cancelled when their announcement closes or is replaced by another, or when the operator sets
+Open orders are canceled when their announcement closes or is replaced by another, or when the operator sets
 `gopacsCancelOrders`. A failed cancel is retried after every poll that refreshes the order, until the cancel succeeds or
 the order is no longer open, at the latest when it expires. Each failed attempt is recorded as `CANCEL_FAILED` in
 `gopacsOrderHistory`. For the announcement case the retry follows from the order's announcement. For an operator cancel
@@ -348,7 +348,7 @@ saved on the asset, so a restart picks them up again, retries included.
 
 Setting `gopacsEnabled` to `false` or deleting the asset cancels every open order. A cancel that fails for a reason a
 retry may fix is tried up to five times in all, 1, 2, 4 and 8 minutes apart. If any are still open after that, the
-handler logs them at `SEVERE`: cancel them in Distro, as they can still be matched. `LOCKED` orders cannot be cancelled
+handler logs them at `SEVERE`: cancel them in Distro, as they can still be matched. `LOCKED` orders cannot be canceled
 and stay at Distro. After a disable they are tracked again once the handler is re-enabled. After a delete nothing tracks
 them any more and their trades are not recorded, so check for them in Distro before deleting an asset. Changing
 `portfolio` stops the handler in the same way and starts a new one under the new portfolio. Distro does not know the

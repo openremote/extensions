@@ -33,7 +33,7 @@ import java.time.ZonedDateTime
  *
  * Deliberately a plain {@code Specification} with no {@code ManagerContainerTrait}: that trait forces
  * {@code TIMER_CLOCK_TYPE: PSEUDO}, whose {@code init()} calls {@code TimeZone.setDefault("UTC")}
- * JVM-wide. Running under a forced-UTC JVM would hide exactly the DST behaviour under test here.
+ * JVM-wide. Running under a forced-UTC JVM would hide exactly the DST behavior under test here.
  *
  * The Distro Energy day-ahead API requires exactly one entry per quarter-hour of the market day: 96
  * normally, 92 on the spring-forward day and 100 on the fall-back day. Expected counts are
@@ -243,11 +243,11 @@ class DistroEnergyHandlerTest extends Specification {
     when:
     def data = DistroEnergyHandler.buildSubmissionData(FALL_BACK, MARKET, UTC_STORAGE, datapoints)
 
-    then: "only the repeated hour borrows a neighbour; an ordinary gap is a real trading position"
+    then: "only the repeated hour borrows a neighbor; an ordinary gap is a real trading position"
     data.size() == 100
     data[60].volume == 0.0d
 
-    and: "its neighbours are untouched"
+    and: "its neighbors are untouched"
     data[59].volume == volume(60)
     data[61].volume == volume(62)
   }

@@ -11,7 +11,7 @@ The `Ems Day Ahead Asset` must be a child asset of the `Ems Energy Optimisation 
 | Attribute Name               | Value Type | Units | Description                                                                                                                                                                                                                              |
 | ---------------------------- | ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `collectTimeForecasts`       | Text       | -     | Sets the time of day at which the forecast is collected from the `Ems Energy Optimisation Asset` for the `tariffExport` and `tariffImport` attributes. Example: 10:00                                                                    |
-| `useTariffDayAheadForecasts` | Boolean    | -     | When enabled, `tariffExportDayAheadForecast` and `tariffImportDayAheadForecast` are used as the day-ahead tariffs for optimisation instead of the `tariffExport` and `tariffImport` attributes from the `Ems Energy Optimisation Asset`. |
+| `useTariffDayAheadForecasts` | Boolean    | -     | When enabled, `tariffExportDayAheadForecast` and `tariffImportDayAheadForecast` are used as the day-ahead tariffs for optimization instead of the `tariffExport` and `tariffImport` attributes from the `Ems Energy Optimisation Asset`. |
 
 ## Output attributes
 
