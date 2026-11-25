@@ -45,7 +45,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "energyExportTotal",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
           .withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
@@ -54,7 +53,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "energyImportTotal",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
           .withUnits(UNITS_KILO, UNITS_WATT, UNITS_HOUR);
@@ -88,7 +86,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerConsumption",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -99,7 +96,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerFlexible",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -110,7 +106,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerNet",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -121,7 +116,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerProduction",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -136,7 +130,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerLimitMaximumProfileManual",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -152,7 +145,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerLimitMaximumProfileTotal",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -166,7 +158,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerLimitMinimumProfileManual",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -182,7 +173,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "powerLimitMinimumProfileTotal",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.STORE_DATA_POINTS))
@@ -192,7 +182,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "tariffExport",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
@@ -203,7 +192,6 @@ public class EmsEnergyOptimisationAsset extends Asset<EmsEnergyOptimisationAsset
       new AttributeDescriptor<>(
               "tariffImport",
               ValueType.NUMBER,
-              new MetaItem<>(MetaItemType.DATA_POINTS_MAX_AGE_DAYS, 7),
               new MetaItem<>(MetaItemType.HAS_PREDICTED_DATA_POINTS),
               new MetaItem<>(MetaItemType.READ_ONLY),
               new MetaItem<>(MetaItemType.RULE_STATE),
