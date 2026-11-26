@@ -156,10 +156,10 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     LOG.fine("Loading optimization assets...");
 
     List<EnergyOptimisationAsset> energyOptimisationAssets =
-            assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
-                    .map(asset -> (EnergyOptimisationAsset) asset)
-                    .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
-                    .toList();
+        assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
+            .map(asset -> (EnergyOptimisationAsset) asset)
+            .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
+            .toList();
 
     LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
 

@@ -197,15 +197,15 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
     LOG.fine("Loading producer wind assets...");
 
     List<ElectricityProducerWindAsset> electricityProducerWindAssets =
-            assetStorageService
-                    .findAll(new AssetQuery().types(ElectricityProducerWindAsset.class))
-                    .stream()
-                    .map(asset -> (ElectricityProducerWindAsset) asset)
-                    .filter(
-                            electricityProducerWindAsset ->
-                                    electricityProducerWindAsset.isIncludeForecastWindService().orElse(false)
-                                            && electricityProducerWindAsset.getLocation().isPresent())
-                    .toList();
+        assetStorageService
+            .findAll(new AssetQuery().types(ElectricityProducerWindAsset.class))
+            .stream()
+            .map(asset -> (ElectricityProducerWindAsset) asset)
+            .filter(
+                electricityProducerWindAsset ->
+                    electricityProducerWindAsset.isIncludeForecastWindService().orElse(false)
+                        && electricityProducerWindAsset.getLocation().isPresent())
+            .toList();
 
     LOG.fine("Found includes producer wind asset count = " + electricityProducerWindAssets.size());
 
