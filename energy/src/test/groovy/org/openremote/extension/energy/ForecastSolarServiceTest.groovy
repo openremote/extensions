@@ -19,6 +19,7 @@
 package org.openremote.extension.energy
 
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import jakarta.ws.rs.client.ClientRequestContext
 import jakarta.ws.rs.client.ClientRequestFilter
 import jakarta.ws.rs.core.MediaType
@@ -40,7 +41,10 @@ import org.openremote.test.ManagerContainerTrait
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
 
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
@@ -55,12 +59,28 @@ class ForecastSolarServiceTest extends Specification implements ManagerContainer
 
     def now = Instant.ofEpochMilli(TimerService.Clock.PSEUDO.currentTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
     def interval = now.truncatedTo(ChronoUnit.HOURS).plusMinutes(now.minute.intdiv(15) * 15)
-    // Cover both ends of the current interval, including a rollover during startup.
-    def watts = (-1..3).collectEntries { offset ->
-      def timestamp = interval.plusMinutes(offset * 15).format(ForecastSolarService.ISO_LOCAL_DATE_TIME_WITHOUT_T)
-      [(timestamp): 1000]
+    def payload = ForecastSolarServiceTest.getResourceAsStream("/forecasts/forecast-solar.json").withCloseable {
+      new JsonSlurper().parse(it)
     }
-    def body = JsonOutput.toJson([result: [watts: watts]])
+
+    // The sample starts with zero output. Move that point before the current interval.
+    def formatter = ForecastSolarService.ISO_LOCAL_DATE_TIME_WITHOUT_T
+    def sampleStart = LocalDateTime.parse(payload.result.watts.keySet().min(), formatter)
+    def forecastStart = interval.minusMinutes(30)
+    def shift = Duration.between(sampleStart, forecastStart)
+    ["watts", "watt_hours"].each { field ->
+      payload.result[field] = payload.result[field].collectEntries { timestamp, value ->
+        def shifted = LocalDateTime.parse(timestamp, formatter).plus(shift).format(formatter)
+        [(shifted): value]
+      }
+    }
+    long dayShift = ChronoUnit.DAYS.between(sampleStart.toLocalDate(), forecastStart.toLocalDate())
+    payload.result.watt_hours_day = payload.result.watt_hours_day.collectEntries { date, value ->
+      def shifted = LocalDate.parse(date).plusDays(dayShift)
+      [(shifted.toString()): value]
+    }
+
+    def body = JsonOutput.toJson(payload)
     request.abortWith(Response.ok(body, MediaType.APPLICATION_JSON_TYPE).build())
   }
 

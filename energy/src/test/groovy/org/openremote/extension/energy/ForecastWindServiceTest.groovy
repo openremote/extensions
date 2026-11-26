@@ -19,6 +19,7 @@
 package org.openremote.extension.energy
 
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import jakarta.ws.rs.client.ClientRequestContext
 import jakarta.ws.rs.client.ClientRequestFilter
 import jakarta.ws.rs.core.MediaType
@@ -53,9 +54,17 @@ class ForecastWindServiceTest extends Specification implements ManagerContainerT
     }
 
     def hour = Instant.now().truncatedTo(ChronoUnit.HOURS)
-    def current = [dt: hour.epochSecond, wind_speed: 6.0]
-    def hourly = [current, [dt: hour.plus(1, ChronoUnit.HOURS).epochSecond, wind_speed: 8.0]]
-    def body = JsonOutput.toJson([current: current, hourly: hourly])
+    def payload = ForecastWindServiceTest.getResourceAsStream("/forecasts/openweather-one-call.json").withCloseable {
+      new JsonSlurper().parse(it)
+    }
+
+    long shift = hour.epochSecond - payload.current.dt
+    ["dt", "sunrise", "sunset"].each { field ->
+      payload.current[field] += shift
+    }
+    payload.hourly.each { it.dt += shift }
+
+    def body = JsonOutput.toJson(payload)
     request.abortWith(Response.ok(body, MediaType.APPLICATION_JSON_TYPE).build())
   }
 
