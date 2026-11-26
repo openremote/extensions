@@ -108,7 +108,8 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   protected GatewayService gatewayService;
   protected ExecutorService executorService;
   protected ScheduledExecutorService scheduledExecutorService;
-  protected final Map<String, OptimisationInstance> assetOptimisationInstanceMap = new HashMap<>();
+  protected final Map<String, OptimisationInstance> assetOptimisationInstanceMap =
+      new ConcurrentHashMap<>();
   protected List<String> forceChargeAssetIds = new ArrayList<>();
 
   @Override
@@ -146,12 +147,12 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   @Override
-  public void stop(Container container) throws Exception {
+  public synchronized void stop(Container container) throws Exception {
     new ArrayList<>(assetOptimisationInstanceMap.keySet()).forEach(this::stopOptimisation);
   }
 
   @Override
-  public void startProducers(Container container) {
+  public synchronized void startProducers(Container container) {
     // Load all enabled optimization assets and instantiate an optimizer for each
     LOG.fine("Loading optimization assets...");
 
@@ -166,7 +167,8 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
     energyOptimisationAssets.forEach(this::startOptimisation);
   }
 
-  protected void processAssetChange(PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
+  protected synchronized void processAssetChange(
+      PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
     LOG.fine("Processing optimization asset change: " + persistenceEvent);
     stopOptimisation(persistenceEvent.getEntity().getId());
 
@@ -313,6 +315,10 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   protected synchronized void startOptimisation(EnergyOptimisationAsset optimisationAsset) {
+    if (assetOptimisationInstanceMap.containsKey(optimisationAsset.getId())) {
+      return;
+    }
+
     LOG.fine("Initializing optimizer for optimization asset: " + optimisationAsset);
     double intervalSize = optimisationAsset.getIntervalSize().orElse(0.25d);
     int financialWeighting = optimisationAsset.getFinancialWeighting().orElse(100);

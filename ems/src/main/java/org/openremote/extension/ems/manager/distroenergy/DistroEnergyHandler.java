@@ -47,6 +47,7 @@ import org.openremote.extension.ems.agent.EmsDistroEnergyAsset;
 import org.openremote.extension.ems.manager.distroenergy.dto.DayAheadSubmission;
 import org.openremote.extension.ems.manager.distroenergy.dto.SubmissionData;
 import org.openremote.manager.asset.AssetProcessingService;
+import org.openremote.manager.asset.AssetProcessingService.AttributeEventProcessorUnavailableException;
 import org.openremote.manager.datapoint.AssetPredictedDatapointService;
 import org.openremote.model.Container;
 import org.openremote.model.attribute.AttributeEvent;
@@ -242,9 +243,14 @@ public class DistroEnergyHandler {
     // Status on the asset, so a stalled handler is visible without the logs. daysSubmitted is
     // written on every run; lastSubmission only when something was sent, so a run that found no
     // forecast at all leaves a fresh daysSubmitted of 0 next to a stale lastSubmission.
-    sendAttributeEvent(EmsDistroEnergyAsset.DAYS_SUBMITTED, submitted);
-    if (submitted > 0) {
-      sendAttributeEvent(EmsDistroEnergyAsset.LAST_SUBMISSION, timerService.getCurrentTimeMillis());
+    try {
+      sendAttributeEvent(EmsDistroEnergyAsset.DAYS_SUBMITTED, submitted);
+      if (submitted > 0) {
+        sendAttributeEvent(
+            EmsDistroEnergyAsset.LAST_SUBMISSION, timerService.getCurrentTimeMillis());
+      }
+    } catch (AttributeEventProcessorUnavailableException e) {
+      LOG.log(Level.WARNING, "Could not publish day-ahead status for portfolio " + portfolio, e);
     }
 
     LOG.fine("Day-ahead run for portfolio " + portfolio + " submitted " + submitted + " day(s)");
