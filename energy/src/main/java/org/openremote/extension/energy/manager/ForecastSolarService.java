@@ -152,6 +152,24 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
 
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
 
+    // Start forecast solar thread
+    scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
+
+    clientEventService.addSubscription(
+        AttributeEvent.class,
+        new AssetFilter<AttributeEvent>()
+            .setAssetClasses(Collections.singletonList(ElectricityProducerSolarAsset.class)),
+        this::processElectricityProducerSolarAssetAttributeEvent);
+  }
+
+  @Override
+  public void stop(Container container) throws Exception {
+    // empty
+  }
+
+  @Override
+  public void startProducers(Container container) {
+
     // Load all enabled producer solar assets
     LOG.fine("Loading electricity producer solar assets...");
 
@@ -176,20 +194,6 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
       getSolarForecast(electricityProducerSolarAsset);
       updateSolarForecastAttribute(electricityProducerSolarAsset);
     }
-
-    // Start forecast solar thread
-    scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
-
-    clientEventService.addSubscription(
-        AttributeEvent.class,
-        new AssetFilter<AttributeEvent>()
-            .setAssetClasses(Collections.singletonList(ElectricityProducerSolarAsset.class)),
-        this::processElectricityProducerSolarAssetAttributeEvent);
-  }
-
-  @Override
-  public void stop(Container container) throws Exception {
-    // empty
   }
 
   protected synchronized void processElectricityProducerSolarAssetAttributeEvent(

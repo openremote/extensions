@@ -183,30 +183,33 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
 
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
 
-    // Load all enabled producer wind assets
-    LOG.fine("Loading producer wind assets...");
-
-    List<ElectricityProducerWindAsset> electricityProducerWindAssets =
-        assetStorageService
-            .findAll(new AssetQuery().types(ElectricityProducerWindAsset.class))
-            .stream()
-            .map(asset -> (ElectricityProducerWindAsset) asset)
-            .filter(
-                electricityProducerWindAsset ->
-                    electricityProducerWindAsset.isIncludeForecastWindService().orElse(false)
-                        && electricityProducerWindAsset.getLocation().isPresent())
-            .toList();
-
-    LOG.fine("Found includes producer wind asset count = " + electricityProducerWindAssets.size());
-
-    electricityProducerWindAssets.forEach(this::startCalculation);
-
     clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
   }
 
   @Override
   public void stop(Container container) throws Exception {
     new ArrayList<>(calculationFutures.keySet()).forEach(this::stopCalculation);
+  }
+
+  @Override
+  public void startProducers(Container container) {
+    // Load all enabled producer wind assets
+    LOG.fine("Loading producer wind assets...");
+
+    List<ElectricityProducerWindAsset> electricityProducerWindAssets =
+            assetStorageService
+                    .findAll(new AssetQuery().types(ElectricityProducerWindAsset.class))
+                    .stream()
+                    .map(asset -> (ElectricityProducerWindAsset) asset)
+                    .filter(
+                            electricityProducerWindAsset ->
+                                    electricityProducerWindAsset.isIncludeForecastWindService().orElse(false)
+                                            && electricityProducerWindAsset.getLocation().isPresent())
+                    .toList();
+
+    LOG.fine("Found includes producer wind asset count = " + electricityProducerWindAssets.size());
+
+    electricityProducerWindAssets.forEach(this::startCalculation);
   }
 
   protected void processAttributeEvent(AttributeEvent attributeEvent) {

@@ -128,19 +128,6 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   public void start(Container container) throws Exception {
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
 
-    // Load all enabled optimization assets and instantiate an optimizer for each
-    LOG.fine("Loading optimization assets...");
-
-    List<EnergyOptimisationAsset> energyOptimisationAssets =
-        assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
-            .map(asset -> (EnergyOptimisationAsset) asset)
-            .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
-            .toList();
-
-    LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
-
-    energyOptimisationAssets.forEach(this::startOptimisation);
-
     clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
   }
 
@@ -161,6 +148,22 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   @Override
   public void stop(Container container) throws Exception {
     new ArrayList<>(assetOptimisationInstanceMap.keySet()).forEach(this::stopOptimisation);
+  }
+
+  @Override
+  public void startProducers(Container container) {
+    // Load all enabled optimization assets and instantiate an optimizer for each
+    LOG.fine("Loading optimization assets...");
+
+    List<EnergyOptimisationAsset> energyOptimisationAssets =
+            assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
+                    .map(asset -> (EnergyOptimisationAsset) asset)
+                    .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
+                    .toList();
+
+    LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
+
+    energyOptimisationAssets.forEach(this::startOptimisation);
   }
 
   protected void processAssetChange(PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
