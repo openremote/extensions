@@ -62,6 +62,30 @@ To test a single extension:
 ./gradlew :entsoe:test
 ```
 
+### Manager integration tests
+
+The EMS, energy, and ENTSO-E test suites start an OpenRemote Manager and require PostgreSQL and Keycloak.
+From the extensions repository root, start the dev-testing stack from a compatible sibling Core checkout before running these suites.
+
+```bash
+docker compose -f ../core/profile/dev-testing.yml up -d --no-build
+```
+
+Adjust the path if Core is checked out elsewhere.
+Keep the Core checkout outside this repository so Gradle does not discover its build files.
+
+When adding tests that start a manager against the shared dev-testing stack, add the convention plugin to the extension's `build.gradle` file.
+
+```groovy
+plugins {
+  id 'openremote.manager-integration-tests'
+}
+```
+
+Manager integration tests reset the shared PostgreSQL schema.
+The plugin runs the participating extensions' test tasks one at a time within each Gradle invocation.
+Other Gradle tasks can still run in parallel.
+
 ## Versioning and publishing
 
 The repository uses Gradle-based release/version management.

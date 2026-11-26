@@ -18,8 +18,11 @@
  */
 package org.openremote.extension.energy
 
-import com.google.common.collect.Lists
 import org.openremote.container.timer.TimerService
+import org.openremote.extension.energy.manager.EnergyOptimisationService
+import org.openremote.extension.energy.manager.EnergyOptimiser
+import org.openremote.extension.energy.manager.ForecastSolarService
+import org.openremote.extension.energy.manager.ForecastWindService
 import org.openremote.extension.energy.model.ElectricityAsset
 import org.openremote.extension.energy.model.ElectricityBatteryAsset
 import org.openremote.extension.energy.model.ElectricityConsumerAsset
@@ -27,18 +30,15 @@ import org.openremote.extension.energy.model.ElectricityProducerSolarAsset
 import org.openremote.extension.energy.model.ElectricityStorageAsset
 import org.openremote.extension.energy.model.ElectricitySupplierAsset
 import org.openremote.extension.energy.model.EnergyOptimisationAsset
-import org.openremote.extension.energy.manager.EnergyOptimisationService
-import org.openremote.extension.energy.manager.EnergyOptimiser
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
 import org.openremote.manager.setup.SetupService
+import org.openremote.model.Container
 import org.openremote.model.attribute.AttributeEvent
 import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.datapoint.query.AssetDatapointIntervalQuery
-import org.openremote.model.util.ValueUtil
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.Ignore
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
 
@@ -46,6 +46,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 import static spock.util.matcher.HamcrestMatchers.closeTo
@@ -69,24 +71,48 @@ import static spock.util.matcher.HamcrestMatchers.closeTo
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-@Ignore
 class EnergyOptimisationAssetTest extends Specification implements ManagerContainerTrait {
+
+  def cleanup() {
+    // Each feature changes fixture assets and advances the pseudo clock.
+    stopContainer()
+  }
+
+  private Container startManualOptimisationContainer() {
+    def manualService = new ManualOptimisationService(Stub(ExecutorService))
+    def services = defaultServices().findAll {
+      !(it instanceof ForecastSolarService) && !(it instanceof ForecastWindService)
+    }.collect {
+      it instanceof EnergyOptimisationService ? manualService : it
+    }
+    return startContainer(defaultConfig(), services)
+  }
+
+  private static class ManualOptimisationService extends EnergyOptimisationService {
+    private final ExecutorService startupExecutor
+
+    ManualOptimisationService(ExecutorService startupExecutor) {
+      this.startupExecutor = startupExecutor
+    }
+
+    @Override
+    void init(Container container) {
+      super.init(container)
+      // The service submits an initial run independently of the recurring schedule.
+      executorService = startupExecutor
+    }
+
+    @Override
+    protected ScheduledFuture<?> scheduleOptimisation(String assetId, EnergyOptimiser optimiser, Duration delay, long periodSeconds) {
+      return null
+    }
+  }
+
   def "Test storage asset with consumer and producer"() {
 
     given: "the container environment is started"
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
-    def services = Lists.newArrayList(defaultServices())
-    def spyOptimisationService = Spy(EnergyOptimisationService) {
-      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimization for testing
-        optimisationAssetId, optimiser, startDuration, periodSeconds ->
-        return null
-      }
-    }
-
-    services.replaceAll {
-      it instanceof EnergyOptimisationService ? spyOptimisationService : it
-    }
-    def container = startContainer(defaultConfig(), services)
+    def container = startManualOptimisationContainer()
     def managerTestSetup = container.getService(SetupService.class).getTaskOfType(ManagerTestSetup.class)
     def optimisationService = container.getService(EnergyOptimisationService.class)
     def assetStorageService = container.getService(AssetStorageService.class)
@@ -240,18 +266,7 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
 
     given: "the container environment is started"
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
-    def services = Lists.newArrayList(defaultServices())
-    def spyOptimisationService = Spy(EnergyOptimisationService) {
-      scheduleOptimisation(_ as String, _ as EnergyOptimiser, _ as Duration, _ as Long) >> { // Don't use the scheduler as we will manually trigger the optimization for testing
-        optimisationAssetId, optimiser, startDuration, periodSeconds ->
-        return null
-      }
-    }
-
-    services.replaceAll {
-      it instanceof EnergyOptimisationService ? spyOptimisationService : it
-    }
-    def container = startContainer(defaultConfig(), services)
+    def container = startManualOptimisationContainer()
     def managerTestSetup = container.getService(SetupService.class).getTaskOfType(ManagerTestSetup.class)
     def optimisationService = container.getService(EnergyOptimisationService.class)
     def assetStorageService = container.getService(AssetStorageService.class)
@@ -309,17 +324,14 @@ class EnergyOptimisationAssetTest extends Specification implements ManagerContai
 
     then: "the current values of each attribute should have reached the DB"
     conditions.eventually {
+      assert (assetStorageService.find(managerTestSetup.electricitySupplierAssetId) as ElectricitySupplierAsset).getTariffImport().orElse(0d) == tariffImports.get(0)
+      assert (assetStorageService.find(managerTestSetup.electricitySupplierAssetId) as ElectricitySupplierAsset).getTariffExport().orElse(0d) == tariffExports.get(0)
       assert (assetStorageService.find(managerTestSetup.electricityConsumerAssetId) as ElectricityConsumerAsset).getPower().orElse(-1d) == consumerPower.get(0)
       assert (assetStorageService.find(managerTestSetup.electricitySolarAssetId) as ElectricityProducerSolarAsset).getPower().orElse(-1d) == producerPower.get(0)
     }
 
-    when: "the optimization asset is reset which will cause optimization to run"
-    def optimisationAsset = assetStorageService.find(managerTestSetup.electricityOptimisationAssetId) as EnergyOptimisationAsset
-    optimisationAsset.setOptimisationDisabled(true)
-    optimisationAsset.setFinancialSaving(0d)
-    optimisationAsset = ValueUtil.clone(assetStorageService.merge(optimisationAsset))
-    optimisationAsset.setOptimisationDisabled(false)
-    optimisationAsset = assetStorageService.merge(optimisationAsset)
+    when: "the first optimization runs after the input values have been persisted"
+    optimisationService.runOptimisation(managerTestSetup.electricityOptimisationAssetId, optimisationTime)
 
     then: "the battery setpoint should be set to max to store produced energy for future deficit"
     conditions.eventually {

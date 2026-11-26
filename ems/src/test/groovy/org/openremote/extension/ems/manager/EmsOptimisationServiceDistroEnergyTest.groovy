@@ -18,6 +18,8 @@
  */
 package org.openremote.extension.ems.manager
 
+import org.apache.camel.impl.DefaultCamelContext
+import org.openremote.container.message.MessageBrokerService
 import org.openremote.container.timer.TimerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
 import org.openremote.extension.ems.agent.EmsEnergyOptimisationAsset
@@ -27,10 +29,12 @@ import org.openremote.extension.ems.manager.distroenergy.DistroGopacsResource
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
+import org.openremote.manager.event.ClientEventService
 import org.openremote.model.Container
 import org.openremote.model.PersistenceEvent
 import org.openremote.model.attribute.AttributeEvent
 import org.openremote.model.attribute.AttributeRef
+import org.openremote.model.query.AssetQuery
 import org.openremote.model.util.ValueUtil
 import spock.lang.Specification
 
@@ -188,6 +192,41 @@ class EmsOptimisationServiceDistroEnergyTest extends Specification {
     "zero interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "0"
     "negative interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "-5"
     "non-numeric interval" | DistroEnergyHandler.DISTRO_ENERGY_REQUEST_INTERVAL | "hourly"
+  }
+
+  def "startup deploys the Distro GOPACS order handler in the producer phase"() {
+    given:
+    def asset = gopacsAsset(true)
+    def context = Stub(DefaultCamelContext)
+    def broker = Stub(MessageBrokerService) {
+      getContext() >> context
+    }
+    service.services = Services.builder()
+            .withAssetStorageService(assetStorageService)
+            .withClientEventService(Stub(ClientEventService))
+            .withMessageBrokerService(broker)
+            .build()
+
+    when:
+    service.start(null)
+
+    then:
+    0 * assetStorageService.findAll(_)
+    createdGopacsHandlers.isEmpty()
+
+    when:
+    service.startProducers(null)
+
+    then:
+    1 * assetStorageService.findAll({ AssetQuery query ->
+      query.types == [EmsDistroEnergyAsset.simpleName] as String[] &&
+      query.attributes?.items?.first()?.name?.value == EmsDistroEnergyAsset.GOPACS_ENABLED.name
+    }) >> [asset]
+    createdGopacsHandlers.size() == 1
+    createdGopacsHandlers[0].deployCount == 1
+
+    cleanup:
+    service.stop(null)
   }
 
   def "the GOPACS order handler runs while gopacsEnabled is true"() {
