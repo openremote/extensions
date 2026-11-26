@@ -97,6 +97,26 @@ class DistroEnergyHandlerStatusTest extends Specification {
     0 * assetProcessingService._
   }
 
+  def "an unavailable attribute route while writing #attributeName does not fail submission"() {
+    given: "the forecast API accepts one day, but Core rejects one of the resulting status writes"
+    handler = new FixedHorizonHandler(1, container)
+    def unavailableProcessor = new AssetProcessingService()
+
+    when:
+    handler.submitDayAheadForecasts()
+
+    then:
+    noExceptionThrown()
+    1 * assetProcessingService.sendAttributeEvent({
+      it.name == attributeName
+    }, _) >> { AttributeEvent event, String source ->
+      unavailableProcessor.sendAttributeEvent(event, source)
+    }
+
+    where:
+    attributeName << [EmsDistroEnergyAsset.DAYS_SUBMITTED.name, EmsDistroEnergyAsset.LAST_SUBMISSION.name]
+  }
+
   def "a run before gate closure starts at tomorrow, from gate closure at the day after"() {
     given: "a handler whose forecast covers every day"
     now = Instant.parse(instant).toEpochMilli()

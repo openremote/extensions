@@ -18,10 +18,14 @@
  */
 package org.openremote.extension.ems.manager
 
+import org.apache.camel.impl.DefaultCamelContext
+import org.openremote.container.message.MessageBrokerService
 import org.openremote.extension.ems.agent.EmsDistroEnergyAsset
 import org.openremote.extension.ems.agent.EmsGOPACSAsset
+import org.openremote.extension.ems.manager.gopacs.GOPACSHandler
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
+import org.openremote.manager.event.ClientEventService
 import org.openremote.model.PersistenceEvent
 import org.openremote.model.asset.Asset
 import org.openremote.model.attribute.AttributeEvent
@@ -51,6 +55,7 @@ class EmsOptimisationServiceGopacsInputsTest extends Specification {
   List<Asset<?>> storedAssets
   List<AttributeEvent> sent
   EmsOptimisationService service
+  boolean attributeRouteReady = true
 
   def setupSpec() {
     // Populates the asset model registry from this extension's own AssetModelProvider SPI
@@ -64,20 +69,31 @@ class EmsOptimisationServiceGopacsInputsTest extends Specification {
     def assetStorageService = Stub(AssetStorageService) {
       find(_ as String) >> { String assetId -> storedAssets.find { it.id == assetId } }
       findAll(_ as AssetQuery) >> { AssetQuery query ->
-        storedAssets.findAll {
-          it.type in query.types && it.parentId in query.parents*.id
+        storedAssets.findAll { asset ->
+          asset.type in query.types &&
+                  (!query.parents || asset.parentId in query.parents*.id) &&
+                  (query.attributes?.items ?: []).every { asset.hasAttribute(it.name.value) }
         }
       }
     }
     def assetProcessingService = Stub(AssetProcessingService) {
       sendAttributeEvent(_ as AttributeEvent, _ as String) >> { AttributeEvent event, String source ->
+        if (!attributeRouteReady) {
+          new AssetProcessingService().sendAttributeEvent(event, source)
+        }
         sent << event
       }
+    }
+    def context = Stub(DefaultCamelContext)
+    def broker = Stub(MessageBrokerService) {
+      getContext() >> context
     }
     service = new EmsOptimisationService()
     service.services = Services.builder()
             .withAssetStorageService(assetStorageService)
             .withAssetProcessingService(assetProcessingService)
+            .withClientEventService(Stub(ClientEventService))
+            .withMessageBrokerService(broker)
             .build()
   }
 
@@ -120,6 +136,32 @@ class EmsOptimisationServiceGopacsInputsTest extends Specification {
     (EmsDistroEnergyAsset.GOPACS_BID_VALIDITY_END.name): BID_VALIDITY_END,
     (EmsDistroEnergyAsset.GOPACS_EAN_EFFECTIVITY.name): EFFECTIVITY,
   ]
+
+  def "startup copies a saved GOPACS announcement only after the attribute route is ready"() {
+    given:
+    def distro = distroAsset()
+    distro.attributes.getOrCreate(EmsDistroEnergyAsset.GOPACS_ANNOUNCEMENT_ID).setValue("stale")
+    storedAssets << gopacsAsset() << distro
+    def handler = Stub(GOPACSHandler, constructorArgs: [EAN, "master", GOPACS_ID, null, null, null, null, "test-key"])
+    service.gopacsHandlerFactory = Stub(GOPACSHandler.Factory, constructorArgs: [null]) {
+      createHandler(EAN, _, GOPACS_ID) >> handler
+    }
+    attributeRouteReady = false
+
+    when:
+    service.start(null)
+
+    then:
+    noExceptionThrown()
+    sent.isEmpty()
+
+    when:
+    attributeRouteReady = true
+    service.startProducers(null)
+
+    then:
+    sentTo(DISTRO_ID) == ALL_INPUTS
+  }
 
   def "a GOPACS announcement change is copied to every Distro asset next to it"() {
     given:

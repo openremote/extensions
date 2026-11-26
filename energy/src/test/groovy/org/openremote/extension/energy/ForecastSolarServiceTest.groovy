@@ -18,9 +18,18 @@
  */
 package org.openremote.extension.energy
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import jakarta.ws.rs.client.ClientRequestContext
+import jakarta.ws.rs.client.ClientRequestFilter
+import jakarta.ws.rs.core.MediaType
+import jakarta.ws.rs.core.Response
+import org.openremote.container.timer.TimerService
 import org.openremote.container.web.WebTargetBuilder
-import org.openremote.extension.energy.model.ElectricityProducerSolarAsset
+import org.openremote.extension.energy.manager.EnergyOptimisationService
 import org.openremote.extension.energy.manager.ForecastSolarService
+import org.openremote.extension.energy.manager.ForecastWindService
+import org.openremote.extension.energy.model.ElectricityProducerSolarAsset
 import org.openremote.manager.asset.AssetProcessingService
 import org.openremote.manager.asset.AssetStorageService
 import org.openremote.manager.datapoint.AssetPredictedDatapointService
@@ -28,123 +37,51 @@ import org.openremote.manager.setup.SetupService
 import org.openremote.model.attribute.AttributeEvent
 import org.openremote.model.attribute.AttributeRef
 import org.openremote.model.geo.GeoJSONPoint
-import org.openremote.model.util.ValueUtil
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.Ignore
-import spock.lang.Shared
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
 
-import jakarta.ws.rs.client.ClientRequestContext
-import jakarta.ws.rs.client.ClientRequestFilter
-import jakarta.ws.rs.core.MediaType
-import jakarta.ws.rs.core.Response
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 import static org.openremote.extension.energy.manager.ForecastSolarService.OR_FORECAST_SOLAR_API_KEY
 
-@Ignore
 class ForecastSolarServiceTest extends Specification implements ManagerContainerTrait {
 
-  @Shared
-  def mockServer = new ClientRequestFilter() {
-
-    boolean finished = false
-
-    @Override
-    void filter(ClientRequestContext requestContext) throws IOException {
-      if (finished) return
-
-        def requestUri = requestContext.uri
-
-      switch (requestUri.host) {
-        case "api.forecast.solar":
-          def now = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS)
-          def content = "{\n" +
-                  "    \"result\": {\n" +
-                  "        \"watts\": {\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.toLocalTime().toString()}\": 0,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(15).toLocalTime().toString()}\": 780000,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(30).toLocalTime().toString()}\": 3904036,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(45).toLocalTime().toString()}\": 3854598,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(60).toLocalTime().toString()}\": 3746874,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(75).toLocalTime().toString()}\": 3675780,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(90).toLocalTime().toString()}\": 3553500,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(105).toLocalTime().toString()}\": 3439679,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(120).toLocalTime().toString()}\": 3278604,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(135).toLocalTime().toString()}\": 3137450,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(150).toLocalTime().toString()}\": 2954064,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(165).toLocalTime().toString()}\": 2739056,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(180).toLocalTime().toString()}\": 2493609,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(195).toLocalTime().toString()}\": 2254420,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(210).toLocalTime().toString()}\": 1949976,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(225).toLocalTime().toString()}\": 1697104,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(240).toLocalTime().toString()}\": 1452142,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(255).toLocalTime().toString()}\": 1194060,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(270).toLocalTime().toString()}\": 925642,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(285).toLocalTime().toString()}\": 761949,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(300).toLocalTime().toString()}\": 594217,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(315).toLocalTime().toString()}\": 423624,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(330).toLocalTime().toString()}\": 80000,\n"+
-                  "          \"${now.plusDays(1).toLocalDate().toString()} ${now.toLocalTime().toString()}\": 0\n"+
-                  "        },\n"+
-                  "        \"watt_hours\": {\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.toLocalTime().toString()}\": 0,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(15).toLocalTime().toString()}\": 3471000,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(30).toLocalTime().toString()}\": 20778893,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(45).toLocalTime().toString()}\": 21742542,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(60).toLocalTime().toString()}\": 22679261,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(75).toLocalTime().toString()}\": 23598206,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(90).toLocalTime().toString()}\": 24486581,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(105).toLocalTime().toString()}\": 25346501,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(120).toLocalTime().toString()}\": 26166152,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(135).toLocalTime().toString()}\": 26950514,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(150).toLocalTime().toString()}\": 27689030,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(165).toLocalTime().toString()}\": 28373794,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(180).toLocalTime().toString()}\": 28997196,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(195).toLocalTime().toString()}\": 29560801,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(210).toLocalTime().toString()}\": 30048295,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(225).toLocalTime().toString()}\": 30472571,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(240).toLocalTime().toString()}\": 30835607,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(255).toLocalTime().toString()}\": 31134122,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(270).toLocalTime().toString()}\": 31365532,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(285).toLocalTime().toString()}\": 31556020,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(300).toLocalTime().toString()}\": 31704574,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(315).toLocalTime().toString()}\": 31810480,\n"+
-                  "          \"${now.toLocalDate().toString()} ${now.plusMinutes(330).toLocalTime().toString()}\": 31817147,\n"+
-                  "          \"${now.plusDays(1).toLocalDate().toString()} ${now.toLocalTime().toString()}\": 0\n"+
-                  "        },\n"+
-                  "        \"watt_hours_day\": {\n"+
-                  "          \"${now.toLocalDate().toString()}\": 31817147\n"+
-                  "        }\n"+
-                  "      },\n"+
-                  "      \"message\": {\n"+
-                  "        \"code\": 0,\n"+
-                  "        \"type\": \"success\",\n"+
-                  "        \"text\": \"\",\n"+
-                  "        \"info\": {\n"+
-                  "          \"latitude\": 51.4969,\n"+
-                  "          \"longitude\": -0.2773,\n"+
-                  "          \"place\": \"W3 8BZ Turnham Green, Hounslow London Boro, England, GB\",\n"+
-                  "          \"timezone\": \"Europe/London\"\n"+
-                  "        },\n"+
-                  "        \"ratelimit\": {\n"+
-                  "          \"period\": 60,\n"+
-                  "          \"limit\": 5,\n"+
-                  "          \"remaining\": 4\n"+
-                  "        }\n"+
-                  "    }\n"+
-                  "}"
-          def responseBody = ValueUtil.JSON.readValue(content, ForecastSolarService.EstimateResponse.class)
-          requestContext.abortWith(
-                  Response.ok(responseBody, MediaType.APPLICATION_JSON_TYPE).build()
-          )
-          return
-      }
-
-      requestContext.abortWith(Response.serverError().build())
+  private static void stubForecast(ClientRequestContext request) {
+    if (request.uri.host != "api.forecast.solar") {
+      return
     }
+
+    def now = Instant.ofEpochMilli(TimerService.Clock.PSEUDO.currentTimeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+    def interval = now.truncatedTo(ChronoUnit.HOURS).plusMinutes(now.minute.intdiv(15) * 15)
+    def payload = ForecastSolarServiceTest.getResourceAsStream("/forecasts/forecast-solar.json").withCloseable {
+      new JsonSlurper().parse(it)
+    }
+
+    // The sample starts with zero output. Move that point before the current interval.
+    def formatter = ForecastSolarService.ISO_LOCAL_DATE_TIME_WITHOUT_T
+    def sampleStart = LocalDateTime.parse(payload.result.watts.keySet().min(), formatter)
+    def forecastStart = interval.minusMinutes(30)
+    def shift = Duration.between(sampleStart, forecastStart)
+    ["watts", "watt_hours"].each { field ->
+      payload.result[field] = payload.result[field].collectEntries { timestamp, value ->
+        def shifted = LocalDateTime.parse(timestamp, formatter).plus(shift).format(formatter)
+        [(shifted): value]
+      }
+    }
+    long dayShift = ChronoUnit.DAYS.between(sampleStart.toLocalDate(), forecastStart.toLocalDate())
+    payload.result.watt_hours_day = payload.result.watt_hours_day.collectEntries { date, value ->
+      def shifted = LocalDate.parse(date).plusDays(dayShift)
+      [(shifted.toString()): value]
+    }
+
+    def body = JsonOutput.toJson(payload)
+    request.abortWith(Response.ok(body, MediaType.APPLICATION_JSON_TYPE).build())
   }
 
   def "Test adding and removing asset with enabled attributes"() {
@@ -152,14 +89,20 @@ class ForecastSolarServiceTest extends Specification implements ManagerContainer
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
     def config = defaultConfig()
     config << [(OR_FORECAST_SOLAR_API_KEY): "test-key"]
-    WebTargetBuilder.client.register(mockServer, Integer.MAX_VALUE)
+    // A container restart closes the shared JAX-RS client, so stop it before installing the stub.
+    stopContainer()
+    WebTargetBuilder.getClient().register({ ClientRequestContext request ->
+      stubForecast(request)
+    } as ClientRequestFilter)
 
-    def container = startContainer(config, defaultServices())
+    def services = defaultServices().findAll {
+      !(it instanceof EnergyOptimisationService) && !(it instanceof ForecastWindService)
+    }
+    def container = startContainer(config, services)
     def managerTestSetup = container.getService(SetupService.class).getTaskOfType(ManagerTestSetup.class)
     def assetStorageService = container.getService(AssetStorageService.class)
     def assetPredictedDatapointService = container.getService(AssetPredictedDatapointService.class)
     def assetProcessingService = container.getService(AssetProcessingService.class)
-    def forecastSolarService = container.getService(ForecastSolarService.class)
 
     expect: "the asset should have filled in value for power and powerForecast"
     conditions.eventually {
@@ -240,7 +183,7 @@ class ForecastSolarServiceTest extends Specification implements ManagerContainer
       }.orElse(0d) != 0d
     }
 
-    cleanup: "disable mock filter"
-    mockServer.finished = true
+    cleanup: "stop forecast tasks and close the client with the test filter"
+    stopContainer()
   }
 }

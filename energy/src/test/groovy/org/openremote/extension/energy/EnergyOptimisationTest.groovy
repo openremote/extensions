@@ -21,7 +21,6 @@ package org.openremote.extension.energy
 import org.openremote.extension.energy.manager.EnergyOptimiser
 import org.openremote.model.util.UniqueIdentifierGenerator
 import org.openremote.model.util.Pair
-import spock.lang.Ignore
 import spock.lang.Specification
 
 import java.time.LocalDateTime
@@ -51,7 +50,6 @@ import static spock.util.matcher.HamcrestMatchers.closeTo
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-@Ignore
 class EnergyOptimisationTest extends Specification {
 
   def gridId = UniqueIdentifierGenerator.generateId("grid")
@@ -217,7 +215,7 @@ class EnergyOptimisationTest extends Specification {
 
     given: "an energy optimization instance"
     currentInterval = 0
-    def startOfDay = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
+    def startOfDay = LocalDateTime.of(2026, 1, 5, 0, 0)
     def currentTime = startOfDay.plus(23, ChronoUnit.HOURS)
     def optimisation = new EnergyOptimiser(intervalSize, 1d)
 
@@ -295,7 +293,7 @@ class EnergyOptimisationTest extends Specification {
 
     given: "an energy optimization instance"
     currentInterval = 0
-    def startOfDay = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
+    def startOfDay = LocalDateTime.of(2026, 1, 5, 0, 0)
     def currentTime = startOfDay.plus(23, ChronoUnit.HOURS)
     def optimisation = new EnergyOptimiser(intervalSize, 1d)
 

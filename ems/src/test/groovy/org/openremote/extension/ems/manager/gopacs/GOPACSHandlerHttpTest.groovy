@@ -23,21 +23,20 @@ import com.goterl.lazysodium.LazySodiumJava
 import com.goterl.lazysodium.SodiumJava
 import com.goterl.lazysodium.utils.KeyPair
 import jakarta.ws.rs.client.Entity
-import jakarta.ws.rs.core.Response
 import org.lfenergy.shapeshifter.api.USEFRoleType
 import org.lfenergy.shapeshifter.api.SignedMessage
 import org.lfenergy.shapeshifter.core.model.UftpParticipant
-import org.openremote.container.web.WebService
+import org.openremote.container.Container
 import org.openremote.extension.ems.manager.EmsOptimisationService
 import org.openremote.extension.ems.manager.EmsOptimisationSetupService
 import org.openremote.model.ContainerService
 import org.openremote.test.ManagerContainerTrait
-import spock.lang.IgnoreIf
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.util.concurrent.PollingConditions
 
 import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import static com.github.tomakehurst.wiremock.client.WireMock.containing
@@ -71,15 +70,12 @@ import static org.openremote.model.Constants.MASTER_REALM
  * shapeshifter itself uses to test {@code UftpSendMessageService}.
  *
  * Like the other manager-container integration tests in this repository (e.g. {@code EntsoeProtocolTest}),
- * this requires a running OpenRemote dev stack and is skipped on CI.
+ * this uses the OpenRemote dev-testing stack.
  *
  * Asset mutation (predicted datapoints / attribute events) is intentionally not re-asserted here -- those
  * writes are scheduled asynchronously and are already covered precisely by {@code GOPACSHandlerTest}. This
  * test focuses on the HTTP contract, so a placeholder asset id is sufficient.
  */
-@IgnoreIf({
-  System.getenv("GITHUB_ACTIONS") == "true"
-})
 class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTrait {
 
   static final String CONTRACTED_EAN = "ean.871234567890123456"
@@ -104,9 +100,8 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
   @Shared
   File privateKeyFile
   @Shared
+  Container runningContainer
   GOPACSHandler handler
-  @Shared
-  int serverPort
 
   def setupSpec() {
     // Two ed25519 keypairs: the DSO signs the inbound messages (its public key is served by the
@@ -118,21 +113,12 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
 
     KeyPair agr = lazySodium.cryptoSignKeypair()
     privateKeyFile = File.createTempFile("gopacs-agr-private-key", ".txt")
-    privateKeyFile.deleteOnExit()
     privateKeyFile.text = Base64.encoder.encodeToString(agr.secretKey.asBytes)
 
     wireMock = new WireMockServer(0)
     wireMock.start()
-  }
 
-  def cleanupSpec() {
-    handler?.undeploy()
-    wireMock?.stop()
-  }
-
-  def setup() {
-    // Must be a plain String (not a Groovy GString): OpenRemote's Config.init casts every config value to String.
-    String base = "http://localhost:${wireMock.port()}".toString()
+    String base = "http://127.0.0.1:${wireMock.port()}"
     def config = defaultConfig() << [
       (GOPACSHandler.GOPACS_CLIENT_ID) : "test-client",
       (GOPACSHandler.GOPACS_CLIENT_SECRET) : "test-secret",
@@ -145,27 +131,28 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
       (GOPACSHandler.GOPACS_FLEX_OFFER_DELAY_SECONDS): "0"
     ]
 
-    // startContainer reuses the already-running container when config (ignoring the web-server port)
-    // and services match, so this is cheap after the first feature.
-    def runningContainer = startContainer(config, gopacsServices())
+    runningContainer = startContainer(config, gopacsServices())
+  }
 
-    if (handler == null) {
-      serverPort = runningContainer.getConfig().get(WebService.OR_WEBSERVER_LISTEN_PORT) as int
+  def cleanupSpec() {
+    stopContainer()
+    wireMock?.stop()
+    privateKeyFile?.delete()
+  }
 
-      // Construct the production handler directly (real RESTEasy client, real send service, real
-      // JAX-RS deployment). EmsOptimisationService is excluded from the service list above so it
-      // cannot spin up a second handler on the same /gopacs deployment path.
-      handler = new GOPACSHandler(CONTRACTED_EAN, MASTER_REALM, ASSET_ID, runningContainer)
-      handler.deploy()
-    }
-
-    // Reset cross-test state: the participant cache leaks across features otherwise, and the request
-    // journal / stubs must start clean for the per-feature verifications.
-    handler.participants.clear()
+  def setup() {
     wireMock.resetAll()
     stubOAuthToken(ACCESS_TOKEN)
     stubAddressBook(dsoPublicKeyB64)
     stubBrokerAccepts()
+
+    // Each feature gets its own OAuth client, participant cache, and scheduled replies.
+    handler = new GOPACSHandler(CONTRACTED_EAN, MASTER_REALM, ASSET_ID, runningContainer)
+    handler.deploy()
+  }
+
+  def cleanup() {
+    handler?.undeploy()
   }
 
   // The manager services minus the EMS optimization services, which would otherwise deploy their own
@@ -181,11 +168,10 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
 
     when: "a signed FlexRequest is POSTed to the deployed endpoint"
-    Response response = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
+    int status = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
 
     then: "the transport call succeeds"
-    response.statusInfo.family == Response.Status.Family.SUCCESSFUL
-    response.close()
+    status == 204
 
     and: "verifying the signature fetched an OAuth2 token and resolved the DSO via the address book"
     conditions.eventually {
@@ -211,11 +197,10 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     def conditions = new PollingConditions(timeout: 10, delay: 0.2)
 
     when: "a signed FlexOrder is POSTed to the deployed endpoint"
-    Response response = postSignedAsDso(flexOrderXml(CONTRACTED_EAN, [4000, 8000]))
+    int status = postSignedAsDso(flexOrderXml(CONTRACTED_EAN, [4000, 8000]))
 
     then: "the transport call succeeds"
-    response.statusInfo.family == Response.Status.Family.SUCCESSFUL
-    response.close()
+    status == 204
 
     and: "a FlexOrderResponse is POSTed to the broker as signed XML with a bearer token"
     conditions.eventually {
@@ -227,41 +212,30 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
   }
 
   def "a validly-signed FlexRequest for a different congestion point is rejected via the broker without a FlexOffer"() {
-    given: "polling for the asynchronous outbound delivery"
-    def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+    when: "a signed out-of-scope FlexRequest is POSTed and the scheduled replies finish"
+    int status = postSignedAsDso(flexRequestXml("ean.999999999999999999"))
+    awaitScheduledReplies()
 
-    when: "a signed out-of-scope FlexRequest (different EAN) is POSTed"
-    Response response = postSignedAsDso(flexRequestXml("ean.999999999999999999"))
+    then: "the signed envelope is accepted"
+    status == 204
 
-    then: "the transport call still succeeds (the signed envelope is accepted)"
-    response.statusInfo.family == Response.Status.Family.SUCCESSFUL
-    response.close()
-
-    and: "a rejected FlexRequestResponse with a reason is delivered to the broker as signed XML"
-    conditions.eventually {
-      wireMock.verify(postRequestedFor(urlPathEqualTo(BROKER_PATH))
-              .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-              .withRequestBody(containing("SignedMessage")))
-      assert decodedBrokerPayloads().any {
-        it.contains("FlexRequestResponse") && it.contains('Result="Rejected"') && it.contains("RejectionReason=")
-      }
-    }
-
-    and: "no FlexOffer is ever delivered"
-    // Replies are scheduled with zero delay in this test; give any (erroneous) FlexOffer time to arrive.
-    Thread.sleep(1000)
+    and: "the only broker delivery is a signed rejection with a reason"
+    wireMock.verify(1, postRequestedFor(urlPathEqualTo(BROKER_PATH))
+            .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+            .withRequestBody(containing("SignedMessage")))
     def payloads = decodedBrokerPayloads()
     payloads.size() == 1
-    !payloads.any { it.contains("FlexOffer") }
+    payloads[0].contains("FlexRequestResponse")
+    payloads[0].contains('Result="Rejected"')
+    payloads[0].contains("RejectionReason=")
   }
 
   def "malformed transport XML is rejected with 400"() {
     when: "a body that is not a SignedMessage envelope is POSTed"
-    Response response = postXml("<not-a-signed-message/>")
+    int status = postXml("<not-a-signed-message/>")
 
     then: "the endpoint maps the failure to 400 Bad Request"
-    response.status == 400
-    response.close()
+    status == 400
 
     and: "nothing is delivered to the broker"
     wireMock.verify(0, postRequestedFor(urlPathEqualTo(BROKER_PATH)))
@@ -274,11 +248,10 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     stubAddressBook(wrongPublicKeyB64)
 
     when: "a validly-signed FlexRequest is POSTed"
-    Response response = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
+    int status = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
 
     then: "signature verification fails and the endpoint returns 400 (the UftpConnectorException branch)"
-    response.status == 400
-    response.close()
+    status == 400
 
     and: "nothing is delivered to the broker"
     wireMock.verify(0, postRequestedFor(urlPathEqualTo(BROKER_PATH)))
@@ -289,11 +262,10 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     wireMock.stubFor(post(urlPathEqualTo(OAUTH_PATH)).willReturn(tokenResponse))
 
     when: "a validly-signed FlexRequest is POSTed"
-    Response response = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
+    int status = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
 
     then: "without a bearer token the DSO cannot be resolved, verification fails and the endpoint returns 400"
-    response.status == 400
-    response.close()
+    status == 400
 
     and: "nothing is delivered to the broker"
     wireMock.verify(0, postRequestedFor(urlPathEqualTo(BROKER_PATH)))
@@ -309,31 +281,32 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     wireMock.stubFor(get(urlPathEqualTo(ADDRESS_BOOK_PATH)).willReturn(aResponse().withStatus(404)))
 
     when: "a validly-signed FlexRequest is POSTed"
-    Response response = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
+    int status = postSignedAsDso(flexRequestXml(CONTRACTED_EAN))
 
     then: "the sender cannot be resolved, verification fails and the endpoint returns 400"
-    response.status == 400
-    response.close()
+    status == 400
 
     and: "nothing is delivered to the broker"
     wireMock.verify(0, postRequestedFor(urlPathEqualTo(BROKER_PATH)))
   }
 
   def "the resolved participant is cached so a second inbound message does not trigger a second address-book lookup"() {
-    given:
-    def conditions = new PollingConditions(timeout: 10, delay: 0.2)
+    when: "two signed requests from the same sender are POSTed"
+    def xml = flexRequestXml("ean.999999999999999999")
+    int firstStatus = postSignedAsDso(xml)
+    int secondStatus = postSignedAsDso(xml)
+    awaitScheduledReplies()
 
-    when: "two signed in-scope FlexRequests are POSTed"
-    postSignedAsDso(flexRequestXml(CONTRACTED_EAN)).close()
-    conditions.eventually {
-      wireMock.verify(getRequestedFor(urlPathEqualTo(ADDRESS_BOOK_PATH)))
-    }
-    postSignedAsDso(flexRequestXml(CONTRACTED_EAN)).close()
-    // Let any (zero-delay) second lookup happen before asserting it did not.
-    Thread.sleep(1000)
-
-    then: "the address book is queried exactly once -- the second message uses the cached participant"
+    then: "both requests are accepted but the address book is queried once"
+    firstStatus == 204
+    secondStatus == 204
     wireMock.verify(1, getRequestedFor(urlPathEqualTo(ADDRESS_BOOK_PATH)))
+  }
+
+  private void awaitScheduledReplies() {
+    // These requests only schedule zero-delay broker sends. Snapshot after the HTTP response,
+    // when the handler has queued all work for the request.
+    handler.@scheduledFutureList.toArray().each { it.get(10, TimeUnit.SECONDS) }
   }
 
   // ---- WireMock stubs ----
@@ -355,7 +328,7 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
   // ---- HTTP helpers ----
 
   // Signs the payload XML as the DSO and POSTs the resulting transport XML to the deployed endpoint.
-  private Response postSignedAsDso(String payloadXml) {
+  private int postSignedAsDso(String payloadXml) {
     def sender = new UftpParticipant(DSO_DOMAIN, USEFRoleType.DSO)
     SignedMessage signed = handler.cryptoService.signMessage(payloadXml, sender, dsoPrivateKeyB64)
     return postXml(GOPACSHandler.serializer.toXml(signed))
@@ -371,13 +344,14 @@ class GOPACSHandlerHttpTest extends Specification implements ManagerContainerTra
     }
   }
 
-  private Response postXml(String transportXml) {
+  private int postXml(String transportXml) {
     // The deployment registers a realm-path-extractor filter (realmIndex 0), so the realm is the first
     // segment after the /gopacs context path: /gopacs/{realm}/message -> resource @Path("message").
     createClient(null)
-            .target(serverUri(serverPort).path("gopacs").path(MASTER_REALM).path("message"))
+            .target(serverUri(getServerPort()).path("gopacs").path(MASTER_REALM).path("message"))
             .request()
             .post(Entity.entity(transportXml, "text/xml"))
+            .withCloseable { it.status }
   }
 
   // ---- Embedded UFTP payload fixtures (attribute-style XML, matching the example message format) ----
