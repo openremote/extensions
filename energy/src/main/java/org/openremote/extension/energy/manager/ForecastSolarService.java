@@ -37,6 +37,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -48,6 +49,7 @@ import org.openremote.container.timer.TimerService;
 import org.openremote.container.web.WebTargetBuilder;
 import org.openremote.extension.energy.model.ElectricityProducerSolarAsset;
 import org.openremote.manager.asset.AssetProcessingService;
+import org.openremote.manager.asset.AssetProcessingService.AttributeEventProcessorUnavailableException;
 import org.openremote.manager.asset.AssetStorageService;
 import org.openremote.manager.datapoint.AssetPredictedDatapointService;
 import org.openremote.manager.event.ClientEventService;
@@ -107,7 +109,7 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
   protected ResteasyWebTarget forecastSolarTarget;
   private String forecastSolarApiKey;
   private final Map<String, ElectricityProducerSolarAsset> electricityProducerSolarAssetMap =
-      new HashMap<>();
+      new ConcurrentHashMap<>();
 
   @SuppressWarnings("unchecked")
   @Override
@@ -151,6 +153,23 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
             .build();
 
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
+    clientEventService.addSubscription(
+        AttributeEvent.class,
+        new AssetFilter<AttributeEvent>()
+            .setAssetClasses(Collections.singletonList(ElectricityProducerSolarAsset.class)),
+        this::processElectricityProducerSolarAssetAttributeEvent);
+  }
+
+  @Override
+  public void stop(Container container) throws Exception {
+    // empty
+  }
+
+  @Override
+  public void startProducers(Container container) {
+    if (forecastSolarTarget == null) {
+      return;
+    }
 
     // Load all enabled producer solar assets
     LOG.fine("Loading electricity producer solar assets...");
@@ -179,17 +198,6 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
 
     // Start forecast solar thread
     scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
-
-    clientEventService.addSubscription(
-        AttributeEvent.class,
-        new AssetFilter<AttributeEvent>()
-            .setAssetClasses(Collections.singletonList(ElectricityProducerSolarAsset.class)),
-        this::processElectricityProducerSolarAssetAttributeEvent);
-  }
-
-  @Override
-  public void stop(Container container) throws Exception {
-    // empty
   }
 
   protected synchronized void processElectricityProducerSolarAssetAttributeEvent(
@@ -332,8 +340,13 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
     // Update solar power forecast attribute every 15 minutes
     if ((currentMinute % 15) == 0) {
       electricityProducerSolarAssetMap.forEach(
-          (assetId, electricityProducerSolarAsset) ->
-              updateSolarForecastAttribute(electricityProducerSolarAsset));
+          (assetId, electricityProducerSolarAsset) -> {
+            try {
+              updateSolarForecastAttribute(electricityProducerSolarAsset);
+            } catch (AttributeEventProcessorUnavailableException e) {
+              LOG.log(Level.WARNING, "Could not publish solar forecast for asset " + assetId, e);
+            }
+          });
     }
   }
 

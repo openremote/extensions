@@ -182,6 +182,19 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
             .build();
 
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
+    clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
+  }
+
+  @Override
+  public synchronized void stop(Container container) throws Exception {
+    new ArrayList<>(calculationFutures.keySet()).forEach(this::stopCalculation);
+  }
+
+  @Override
+  public synchronized void startProducers(Container container) {
+    if (weatherForecastWebTarget == null) {
+      return;
+    }
 
     // Load all enabled producer wind assets
     LOG.fine("Loading producer wind assets...");
@@ -200,13 +213,6 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
     LOG.fine("Found includes producer wind asset count = " + electricityProducerWindAssets.size());
 
     electricityProducerWindAssets.forEach(this::startCalculation);
-
-    clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
-  }
-
-  @Override
-  public void stop(Container container) throws Exception {
-    new ArrayList<>(calculationFutures.keySet()).forEach(this::stopCalculation);
   }
 
   protected void processAttributeEvent(AttributeEvent attributeEvent) {
@@ -267,7 +273,7 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
     }
   }
 
-  protected void processAssetChange(
+  protected synchronized void processAssetChange(
       PersistenceEvent<ElectricityProducerWindAsset> persistenceEvent) {
     LOG.fine("Processing producer wind asset change: " + persistenceEvent);
     stopCalculation(persistenceEvent.getEntity().getId());
@@ -280,10 +286,16 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
     }
   }
 
-  protected void startCalculation(ElectricityProducerWindAsset electricityProducerWindAsset) {
+  protected synchronized void startCalculation(
+      ElectricityProducerWindAsset electricityProducerWindAsset) {
+    String assetId = electricityProducerWindAsset.getId();
+    if (calculationFutures.containsKey(assetId)) {
+      return;
+    }
+
     LOG.fine("Starting calculation for producer wind asset: " + electricityProducerWindAsset);
     calculationFutures.put(
-        electricityProducerWindAsset.getId(),
+        assetId,
         scheduledExecutorService.scheduleAtFixedRate(
             () -> {
               processWeatherData(electricityProducerWindAsset);
@@ -293,7 +305,7 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
             TimeUnit.HOURS));
   }
 
-  protected void stopCalculation(String electricityProducerWindAssetId) {
+  protected synchronized void stopCalculation(String electricityProducerWindAssetId) {
     ScheduledFuture<?> scheduledFuture = calculationFutures.remove(electricityProducerWindAssetId);
     if (scheduledFuture != null) {
       LOG.fine("Stopping calculation for producer wind asset: " + electricityProducerWindAssetId);

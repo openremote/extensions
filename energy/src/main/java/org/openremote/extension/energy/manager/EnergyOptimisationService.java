@@ -108,7 +108,8 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   protected GatewayService gatewayService;
   protected ExecutorService executorService;
   protected ScheduledExecutorService scheduledExecutorService;
-  protected final Map<String, OptimisationInstance> assetOptimisationInstanceMap = new HashMap<>();
+  protected final Map<String, OptimisationInstance> assetOptimisationInstanceMap =
+      new ConcurrentHashMap<>();
   protected List<String> forceChargeAssetIds = new ArrayList<>();
 
   @Override
@@ -128,19 +129,6 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   public void start(Container container) throws Exception {
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
 
-    // Load all enabled optimization assets and instantiate an optimizer for each
-    LOG.fine("Loading optimization assets...");
-
-    List<EnergyOptimisationAsset> energyOptimisationAssets =
-        assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
-            .map(asset -> (EnergyOptimisationAsset) asset)
-            .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
-            .toList();
-
-    LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
-
-    energyOptimisationAssets.forEach(this::startOptimisation);
-
     clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
   }
 
@@ -159,11 +147,28 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   @Override
-  public void stop(Container container) throws Exception {
+  public synchronized void stop(Container container) throws Exception {
     new ArrayList<>(assetOptimisationInstanceMap.keySet()).forEach(this::stopOptimisation);
   }
 
-  protected void processAssetChange(PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
+  @Override
+  public synchronized void startProducers(Container container) {
+    // Load all enabled optimization assets and instantiate an optimizer for each
+    LOG.fine("Loading optimization assets...");
+
+    List<EnergyOptimisationAsset> energyOptimisationAssets =
+        assetStorageService.findAll(new AssetQuery().types(EnergyOptimisationAsset.class)).stream()
+            .map(asset -> (EnergyOptimisationAsset) asset)
+            .filter(optimisationAsset -> !optimisationAsset.isOptimisationDisabled().orElse(false))
+            .toList();
+
+    LOG.fine("Found enabled optimization asset count = " + energyOptimisationAssets.size());
+
+    energyOptimisationAssets.forEach(this::startOptimisation);
+  }
+
+  protected synchronized void processAssetChange(
+      PersistenceEvent<EnergyOptimisationAsset> persistenceEvent) {
     LOG.fine("Processing optimization asset change: " + persistenceEvent);
     stopOptimisation(persistenceEvent.getEntity().getId());
 
@@ -310,6 +315,10 @@ public class EnergyOptimisationService extends RouteBuilder implements Container
   }
 
   protected synchronized void startOptimisation(EnergyOptimisationAsset optimisationAsset) {
+    if (assetOptimisationInstanceMap.containsKey(optimisationAsset.getId())) {
+      return;
+    }
+
     LOG.fine("Initializing optimizer for optimization asset: " + optimisationAsset);
     double intervalSize = optimisationAsset.getIntervalSize().orElse(0.25d);
     int financialWeighting = optimisationAsset.getFinancialWeighting().orElse(100);

@@ -153,6 +153,44 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     // Add service
     services.getMessageBrokerService().getContext().addRoutes(this);
 
+    // List of asset types that are part of the core EMS service
+    String[] assetTypes = {
+      EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
+      EmsEnergyOptimisationAsset.DESCRIPTOR.getName(),
+      EmsGOPACSAsset.DESCRIPTOR.getName(),
+      EmsDistroEnergyAsset.DESCRIPTOR.getName(),
+    };
+
+    // Listen to attribute events of listed asset types
+    services
+        .getClientEventService()
+        .addSubscription(
+            AttributeEvent.class,
+            new AssetFilter<AttributeEvent>().setAssetTypes(assetTypes),
+            this::processAttributeEvent);
+  }
+
+  @Override
+  public void stop(Container container) throws Exception {
+    synchronized (gopacsLifecycleLock) {
+      gopacsHandlerMap.forEach((ean, handler) -> handler.undeploy());
+      gopacsHandlerMap.clear();
+      gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
+      gopacsRedispatchHandlerMap.clear();
+    }
+    distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
+    distroEnergyHandlerMap.clear();
+    synchronized (distroGopacsLifecycleLock) {
+      // Open orders stay at Distro: the next start restores and keeps tracking them.
+      distroGopacsHandlerMap.forEach((assetId, handler) -> handler.undeploy(false));
+      distroGopacsHandlerMap.clear();
+    }
+    energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
+    energyOptimisationTimersMap.clear();
+  }
+
+  @Override
+  public void startProducers(Container container) {
     // Find all energy optimization assets
     List<EmsEnergyOptimisationAsset> energyOptimisationAssets =
         services
@@ -223,41 +261,6 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
         .stream()
         .map(asset -> (EmsDistroEnergyAsset) asset)
         .forEach(this::reconcileDistroGopacsHandler);
-
-    // List of asset types that are part of the core EMS service
-    String[] assetTypes = {
-      EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
-      EmsEnergyOptimisationAsset.DESCRIPTOR.getName(),
-      EmsGOPACSAsset.DESCRIPTOR.getName(),
-      EmsDistroEnergyAsset.DESCRIPTOR.getName(),
-    };
-
-    // Listen to attribute events of listed asset types
-    services
-        .getClientEventService()
-        .addSubscription(
-            AttributeEvent.class,
-            new AssetFilter<AttributeEvent>().setAssetTypes(assetTypes),
-            this::processAttributeEvent);
-  }
-
-  @Override
-  public void stop(Container container) throws Exception {
-    synchronized (gopacsLifecycleLock) {
-      gopacsHandlerMap.forEach((ean, handler) -> handler.undeploy());
-      gopacsHandlerMap.clear();
-      gopacsRedispatchHandlerMap.forEach((ean, handler) -> handler.stopPolling());
-      gopacsRedispatchHandlerMap.clear();
-    }
-    distroEnergyHandlerMap.forEach((assetId, handler) -> handler.undeploy());
-    distroEnergyHandlerMap.clear();
-    synchronized (distroGopacsLifecycleLock) {
-      // Open orders stay at Distro: the next start restores and keeps tracking them.
-      distroGopacsHandlerMap.forEach((assetId, handler) -> handler.undeploy(false));
-      distroGopacsHandlerMap.clear();
-    }
-    energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
-    energyOptimisationTimersMap.clear();
   }
 
   private void startOptimisation(String assetId) {
