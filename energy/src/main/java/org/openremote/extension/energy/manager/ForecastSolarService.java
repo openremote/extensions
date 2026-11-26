@@ -139,22 +139,8 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
 
   @Override
   public void start(Container container) throws Exception {
-    if (forecastSolarApiKey == null) {
-      LOG.fine("No value found for OR_FORECAST_SOLAR_API_KEY, ForecastSolarService won't start");
-      return;
-    }
-
-    forecastSolarTarget =
-        new WebTargetBuilder(
-                getClient(),
-                URI.create("https://api.forecast.solar/" + forecastSolarApiKey + "/estimate"))
-            .build();
 
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
-
-    // Start forecast solar thread
-    scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
-
     clientEventService.addSubscription(
         AttributeEvent.class,
         new AssetFilter<AttributeEvent>()
@@ -169,6 +155,17 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
 
   @Override
   public void startProducers(Container container) {
+
+    if (forecastSolarApiKey == null) {
+      LOG.fine("No value found for OR_FORECAST_SOLAR_API_KEY, ForecastSolarService won't start");
+      return;
+    }
+
+    forecastSolarTarget =
+            new WebTargetBuilder(
+                    getClient(),
+                    URI.create("https://api.forecast.solar/" + forecastSolarApiKey + "/estimate"))
+                    .build();
 
     // Load all enabled producer solar assets
     LOG.fine("Loading electricity producer solar assets...");
@@ -194,6 +191,10 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
       getSolarForecast(electricityProducerSolarAsset);
       updateSolarForecastAttribute(electricityProducerSolarAsset);
     }
+
+    // Start forecast solar thread
+    scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
+
   }
 
   protected synchronized void processElectricityProducerSolarAssetAttributeEvent(

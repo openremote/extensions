@@ -166,23 +166,7 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
 
   @Override
   public void start(Container container) throws Exception {
-    if (openWeatherAppId == null) {
-      LOG.fine("No value found for OR_OPEN_WEATHER_API_APP_ID, ForecastWindService won't start");
-      return;
-    }
-
-    weatherForecastWebTarget =
-        new WebTargetBuilder(
-                getClient(),
-                UriBuilder.fromUri("https://api.openweathermap.org/data/2.5")
-                    .queryParam("units", "metric")
-                    .queryParam("exclude", "minutely,daily,alerts")
-                    .queryParam("appid", openWeatherAppId)
-                    .build())
-            .build();
-
     container.getService(MessageBrokerService.class).getContext().addRoutes(this);
-
     clientEventService.addSubscription(AttributeEvent.class, null, this::processAttributeEvent);
   }
 
@@ -193,6 +177,22 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
 
   @Override
   public void startProducers(Container container) {
+
+    if (openWeatherAppId == null) {
+      LOG.fine("No value found for OR_OPEN_WEATHER_API_APP_ID, ForecastWindService won't start");
+      return;
+    }
+
+    weatherForecastWebTarget =
+            new WebTargetBuilder(
+                    getClient(),
+                    UriBuilder.fromUri("https://api.openweathermap.org/data/2.5")
+                            .queryParam("units", "metric")
+                            .queryParam("exclude", "minutely,daily,alerts")
+                            .queryParam("appid", openWeatherAppId)
+                            .build())
+                    .build();
+
     // Load all enabled producer wind assets
     LOG.fine("Loading producer wind assets...");
 

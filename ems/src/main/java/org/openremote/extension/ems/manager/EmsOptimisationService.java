@@ -153,77 +153,6 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     // Add service
     services.getMessageBrokerService().getContext().addRoutes(this);
 
-    // Find all energy optimization assets
-    List<EmsEnergyOptimisationAsset> energyOptimisationAssets =
-        services
-            .getAssetStorageService()
-            .findAll(new AssetQuery().types(EmsEnergyOptimisationAsset.class))
-            .stream()
-            .map(asset -> (EmsEnergyOptimisationAsset) asset)
-            .toList();
-
-    // Start optimization for enabled energy optimization assets
-    if (!energyOptimisationAssets.isEmpty()) {
-      List<String> enabledEnergyOptimisationAssetIds =
-          energyOptimisationAssets.stream()
-              .filter(
-                  energyOptimisationAsset ->
-                      services
-                              .getGatewayService()
-                              .getLocallyRegisteredGatewayId(energyOptimisationAsset.getId(), null)
-                          == null)
-              .filter(
-                  energyOptimisationAsset ->
-                      !energyOptimisationAsset.getOptimisationDisabled().orElse(false))
-              .map(Asset::getId)
-              .toList();
-
-      LOG.info(
-          String.format(
-              "Number of enabled '%s' assets = %s",
-              EmsEnergyOptimisationAsset.class.getSimpleName(),
-              enabledEnergyOptimisationAssetIds.size()));
-
-      enabledEnergyOptimisationAssetIds.forEach(this::startOptimisation);
-    }
-
-    // Start GOPACS handler for all GOPACS assets
-    services
-        .getAssetStorageService()
-        .findAll(
-            new AssetQuery()
-                .types(EmsGOPACSAsset.class)
-                .attributeName(EmsGOPACSAsset.CONTRACTED_EAN.getName()))
-        .stream()
-        .map(asset -> (EmsGOPACSAsset) asset)
-        .forEach(
-            asset -> {
-              reconcileGopacsAsset(asset);
-              syncDistroGopacsInputsFrom(asset);
-            });
-
-    // Start Distro Energy handler for all Distro Energy assets
-    services
-        .getAssetStorageService()
-        .findAll(
-            new AssetQuery()
-                .types(EmsDistroEnergyAsset.class)
-                .attributeName(EmsDistroEnergyAsset.PORTFOLIO.getName()))
-        .stream()
-        .map(asset -> (EmsDistroEnergyAsset) asset)
-        .forEach(this::startDistroEnergyHandler);
-
-    // Start Distro GOPACS order handler for every Distro Energy asset that has it enabled
-    services
-        .getAssetStorageService()
-        .findAll(
-            new AssetQuery()
-                .types(EmsDistroEnergyAsset.class)
-                .attributeName(EmsDistroEnergyAsset.GOPACS_ENABLED.getName()))
-        .stream()
-        .map(asset -> (EmsDistroEnergyAsset) asset)
-        .forEach(this::reconcileDistroGopacsHandler);
-
     // List of asset types that are part of the core EMS service
     String[] assetTypes = {
       EmsElectricityBatteryAsset.DESCRIPTOR.getName(),
@@ -258,6 +187,80 @@ public class EmsOptimisationService extends RouteBuilder implements ContainerSer
     }
     energyOptimisationAssetsMap.forEach((assetId, scheduledFuture) -> stopOptimisation(assetId));
     energyOptimisationTimersMap.clear();
+  }
+
+  @Override
+  public void startProducers(Container container) {
+    // Find all energy optimization assets
+    List<EmsEnergyOptimisationAsset> energyOptimisationAssets =
+            services
+                    .getAssetStorageService()
+                    .findAll(new AssetQuery().types(EmsEnergyOptimisationAsset.class))
+                    .stream()
+                    .map(asset -> (EmsEnergyOptimisationAsset) asset)
+                    .toList();
+
+    // Start optimization for enabled energy optimization assets
+    if (!energyOptimisationAssets.isEmpty()) {
+      List<String> enabledEnergyOptimisationAssetIds =
+              energyOptimisationAssets.stream()
+                      .filter(
+                              energyOptimisationAsset ->
+                                      services
+                                              .getGatewayService()
+                                              .getLocallyRegisteredGatewayId(energyOptimisationAsset.getId(), null)
+                                              == null)
+                      .filter(
+                              energyOptimisationAsset ->
+                                      !energyOptimisationAsset.getOptimisationDisabled().orElse(false))
+                      .map(Asset::getId)
+                      .toList();
+
+      LOG.info(
+              String.format(
+                      "Number of enabled '%s' assets = %s",
+                      EmsEnergyOptimisationAsset.class.getSimpleName(),
+                      enabledEnergyOptimisationAssetIds.size()));
+
+      enabledEnergyOptimisationAssetIds.forEach(this::startOptimisation);
+    }
+
+    // Start GOPACS handler for all GOPACS assets
+    services
+            .getAssetStorageService()
+            .findAll(
+                    new AssetQuery()
+                            .types(EmsGOPACSAsset.class)
+                            .attributeName(EmsGOPACSAsset.CONTRACTED_EAN.getName()))
+            .stream()
+            .map(asset -> (EmsGOPACSAsset) asset)
+            .forEach(
+                    asset -> {
+                      reconcileGopacsAsset(asset);
+                      syncDistroGopacsInputsFrom(asset);
+                    });
+
+    // Start Distro Energy handler for all Distro Energy assets
+    services
+            .getAssetStorageService()
+            .findAll(
+                    new AssetQuery()
+                            .types(EmsDistroEnergyAsset.class)
+                            .attributeName(EmsDistroEnergyAsset.PORTFOLIO.getName()))
+            .stream()
+            .map(asset -> (EmsDistroEnergyAsset) asset)
+            .forEach(this::startDistroEnergyHandler);
+
+    // Start Distro GOPACS order handler for every Distro Energy asset that has it enabled
+    services
+            .getAssetStorageService()
+            .findAll(
+                    new AssetQuery()
+                            .types(EmsDistroEnergyAsset.class)
+                            .attributeName(EmsDistroEnergyAsset.GOPACS_ENABLED.getName()))
+            .stream()
+            .map(asset -> (EmsDistroEnergyAsset) asset)
+            .forEach(this::reconcileDistroGopacsHandler);
   }
 
   private void startOptimisation(String assetId) {
