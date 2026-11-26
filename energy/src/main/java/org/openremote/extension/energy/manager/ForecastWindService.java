@@ -184,14 +184,14 @@ public class ForecastWindService extends RouteBuilder implements ContainerServic
     }
 
     weatherForecastWebTarget =
-            new WebTargetBuilder(
-                    getClient(),
-                    UriBuilder.fromUri("https://api.openweathermap.org/data/2.5")
-                            .queryParam("units", "metric")
-                            .queryParam("exclude", "minutely,daily,alerts")
-                            .queryParam("appid", openWeatherAppId)
-                            .build())
-                    .build();
+        new WebTargetBuilder(
+                getClient(),
+                UriBuilder.fromUri("https://api.openweathermap.org/data/2.5")
+                    .queryParam("units", "metric")
+                    .queryParam("exclude", "minutely,daily,alerts")
+                    .queryParam("appid", openWeatherAppId)
+                    .build())
+            .build();
 
     // Load all enabled producer wind assets
     LOG.fine("Loading producer wind assets...");

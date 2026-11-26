@@ -162,10 +162,10 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
     }
 
     forecastSolarTarget =
-            new WebTargetBuilder(
-                    getClient(),
-                    URI.create("https://api.forecast.solar/" + forecastSolarApiKey + "/estimate"))
-                    .build();
+        new WebTargetBuilder(
+                getClient(),
+                URI.create("https://api.forecast.solar/" + forecastSolarApiKey + "/estimate"))
+            .build();
 
     // Load all enabled producer solar assets
     LOG.fine("Loading electricity producer solar assets...");
@@ -194,7 +194,6 @@ public class ForecastSolarService extends RouteBuilder implements ContainerServi
 
     // Start forecast solar thread
     scheduledExecutorService.scheduleAtFixedRate(this::processSolarData, 1, 1, TimeUnit.MINUTES);
-
   }
 
   protected synchronized void processElectricityProducerSolarAssetAttributeEvent(
